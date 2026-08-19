@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function BoardPage() {
+function BoardContent() {
   const [posts, setPosts] = useState([]);
   const [category, setCategory] = useState('ALL');
   const [title, setTitle] = useState('');
@@ -14,8 +14,15 @@ export default function BoardPage() {
   const [loading, setLoading] = useState(true);
 
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
+    // URL 주소창의 ?category=... 값을 읽어서 해당 탭으로 자동 선택
+    const paramCategory = searchParams.get('category');
+    if (paramCategory) {
+      setCategory(paramCategory);
+    }
+
     const userData = localStorage.getItem('user');
     if (!userData) {
       router.push('/login');
@@ -23,7 +30,7 @@ export default function BoardPage() {
     }
     setUser(JSON.parse(userData));
     fetchPosts();
-  }, []);
+  }, [searchParams]);
 
   const fetchPosts = async () => {
     try {
@@ -60,7 +67,7 @@ export default function BoardPage() {
       setTitle('');
       setContent('');
       fetchPosts();
-      alert('게시글이 등록되었습니다!');
+      alert('게시글이 등록되었습니다.');
     } catch (err) {
       console.error(err);
       alert('글 작성에 실패했습니다.');
@@ -93,7 +100,7 @@ export default function BoardPage() {
         {/* 선생님 전용 글쓰기 폼 */}
         {user?.role === 'TEACHER' && (
           <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-4">
-            <h2 className="font-bold text-lg text-gray-800">새 게시글 작성</h2>
+            <h2 className="font-bold text-lg text-gray-800">✍️ 게시글 작성</h2>
             <form onSubmit={handleCreatePost} className="space-y-3">
               <div className="flex gap-2">
                 <select
@@ -132,7 +139,7 @@ export default function BoardPage() {
           </div>
         )}
 
-        {/* 카테고리 필터 */}
+        {/* 카테고리 필터 탭 */}
         <div className="flex gap-2 overflow-x-auto pb-2">
           {['ALL', 'NOTICE', 'HOMEWORK', 'VIDEO', 'MATERIAL'].map((cat) => (
             <button
@@ -187,5 +194,13 @@ export default function BoardPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function BoardPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center">로딩 중...</div>}>
+      <BoardContent />
+    </Suspense>
   );
 }

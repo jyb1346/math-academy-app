@@ -9,7 +9,7 @@ export default function TeacherEvalPage() {
   const [selectedStudent, setSelectedStudent] = useState('');
   const [evalDate, setEvalDate] = useState(new Date().toISOString().split('T')[0]);
   
-  // 6가지 평가 점수 상태 (기본값 8점)
+  // 6가지 평가 점수 상태 (기본값 설정)
   const [scoreTardiness, setScoreTardiness] = useState(10);
   const [scoreHomework, setScoreHomework] = useState(8);
   const [scoreFocus, setScoreFocus] = useState(8);

@@ -17,8 +17,7 @@ function BoardContent() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    // URL 주소창의 ?category=... 값을 읽어서 해당 탭으로 자동 선택
-    const paramCategory = searchParams.get('category');
+    const paramCategory = searchParams ? searchParams.get('category') : null;
     if (paramCategory) {
       setCategory(paramCategory);
     }
@@ -97,7 +96,6 @@ function BoardContent() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 mt-6 space-y-6">
-        {/* 선생님 전용 글쓰기 폼 */}
         {user?.role === 'TEACHER' && (
           <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-4">
             <h2 className="font-bold text-lg text-gray-800">✍️ 게시글 작성</h2>
@@ -139,7 +137,6 @@ function BoardContent() {
           </div>
         )}
 
-        {/* 카테고리 필터 탭 */}
         <div className="flex gap-2 overflow-x-auto pb-2">
           {['ALL', 'NOTICE', 'HOMEWORK', 'VIDEO', 'MATERIAL'].map((cat) => (
             <button
@@ -160,7 +157,6 @@ function BoardContent() {
           ))}
         </div>
 
-        {/* 게시글 목록 */}
         <div className="space-y-3">
           {filteredPosts.length === 0 ? (
             <p className="text-center py-8 text-gray-500">

@@ -13,9 +13,14 @@ import {
 } from 'recharts';
 
 export default function StudentReportPage() {
-  const { id } = useParams(); // evaluation id 또는 student_id
+  const { id } = useParams();
   const [evalData, setEvalData] = useState(null);
   const [loading, setLoading] = useState(true);
+  
+  // 학부모 답장 상태
+  const [replyText, setReplyText] = useState('');
+  const [submittingReply, setSubmittingReply] = useState(false);
+
   const router = useRouter();
 
   useEffect(() => {
@@ -32,10 +37,41 @@ export default function StudentReportPage() {
 
       if (error) throw error;
       setEvalData(data);
+      if (data?.parent_reply) {
+        setReplyText(data.parent_reply);
+      }
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 학부모 답장 제출 함수
+  const handleReplySubmit = async (e) => {
+    e.preventDefault();
+    if (!replyText.trim()) return alert('답장 내용을 입력해 주세요.');
+
+    setSubmittingReply(true);
+
+    try {
+      const { error } = await supabase
+        .from('daily_evaluations')
+        .update({
+          parent_reply: replyText,
+          parent_reply_at: new Date().toISOString(),
+        })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      alert('담당 선생님께 답장이 성공적으로 전달되었습니다!');
+      fetchEvaluation();
+    } catch (err) {
+      console.error(err);
+      alert('답장 전송에 실패했습니다.');
+    } finally {
+      setSubmittingReply(false);
     }
   };
 
@@ -47,7 +83,6 @@ export default function StudentReportPage() {
     return <div className="p-10 text-center text-gray-500">등록된 피드백 정보를 찾을 수 없습니다.</div>;
   }
 
-  // 육각형 레이더 차트용 데이터 파싱 (10점 만점 기준)
   const chartData = [
     { subject: '출석/지각', A: evalData.score_tardiness, fullMark: 10 },
     { subject: '숙제완성도', A: evalData.score_homework, fullMark: 10 },
@@ -59,7 +94,7 @@ export default function StudentReportPage() {
 
   return (
     <div className="min-h-screen bg-blue-50 py-8 px-4 flex flex-col items-center justify-center">
-      <div className="max-w-md w-full bg-white rounded-3xl shadow-xl border border-blue-100 overflow-hidden">
+      <div className="max-w-md w-full bg-white rounded-3xl shadow-xl border border-blue-100 overflow-hidden space-y-2">
         
         {/* 상단 리포트 헤더 */}
         <div className="bg-blue-600 text-white p-6 text-center space-y-1">
@@ -77,7 +112,7 @@ export default function StudentReportPage() {
         {/* 육각형 그래프 영역 */}
         <div className="p-4 flex flex-col items-center">
           <h3 className="text-sm font-bold text-gray-700 mt-2 mb-1 text-center">
-            📈 6가지 영역별 학습 분석
+            📊 6가지 영역별 학습 분석
           </h3>
           <div className="w-full h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -97,17 +132,40 @@ export default function StudentReportPage() {
           </div>
         </div>
 
-        {/* 선생님 한 줄 피드백 */}
+        {/* 선생님 피드백 */}
         <div className="p-6 bg-gray-50 border-t border-gray-100 space-y-2">
           <h4 className="text-xs font-bold text-blue-600 uppercase tracking-wider">
             Teacher's Feedback
           </h4>
           <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap bg-white p-4 rounded-xl border border-gray-200">
-            {evalData.comment || '오늘도 수고 많았습니다!'}
+            {evalData.comment || '오늘도 수고 많았습니다.'}
           </p>
         </div>
 
-        {/* 하단 닫기/홈으로 버튼 */}
+        {/* 학부모 답장 작성 섹션 (새로 추가) */}
+        <div className="p-6 bg-white border-t border-gray-100 space-y-3">
+          <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+            💬 선생님께 답장 남기기
+          </h4>
+          <form onSubmit={handleReplySubmit} className="space-y-2">
+            <textarea
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              placeholder="선생님께 전달할 감사 인사나 문의사항을 입력해 주세요."
+              rows={3}
+              className="w-full p-3 border rounded-xl text-sm bg-slate-50 focus:outline-blue-500"
+            />
+            <button
+              type="submit"
+              disabled={submittingReply}
+              className="w-full bg-blue-600 text-white font-bold py-2.5 rounded-xl text-xs hover:bg-blue-700 transition disabled:bg-gray-400"
+            >
+              {submittingReply ? '전송 중...' : '답장 전송하기'}
+            </button>
+          </form>
+        </div>
+
+        {/* 하단 이동 버튼 */}
         <div className="p-4 bg-white text-center">
           <button
             onClick={() => router.push('/')}

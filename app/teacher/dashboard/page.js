@@ -8,9 +8,9 @@ export default function TeacherDashboard() {
   const [user, setUser] = useState(null);
   const [students, setStudents] = useState([]);
   const [teachers, setTeachers] = useState([]);
+  const [parentReplies, setParentReplies] = useState([]);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
 
-  // 신규 계정 추가 폼 상태
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -32,6 +32,7 @@ export default function TeacherDashboard() {
     }
     setUser(parsedUser);
     fetchUsers();
+    fetchMyParentReplies(parsedUser.id);
   }, []);
 
   const fetchUsers = async () => {
@@ -45,6 +46,23 @@ export default function TeacherDashboard() {
       }
     } catch (err) {
       console.error('사용자 목록 가져오기 오류:', err);
+    }
+  };
+
+  // 로그인한 선생님 전용 학부모 답장 가져오기
+  const fetchMyParentReplies = async (teacherId) => {
+    try {
+      const { data, error } = await supabase
+        .from('daily_evaluations')
+        .select('*, users!daily_evaluations_student_id_fkey(name)')
+        .eq('teacher_id', teacherId)
+        .not('parent_reply', 'is', null)
+        .order('parent_reply_at', { ascending: false });
+
+      if (error) throw error;
+      setParentReplies(data || []);
+    } catch (err) {
+      console.error('학부모 답장 로드 에러:', err);
     }
   };
 
@@ -83,7 +101,6 @@ export default function TeacherDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-50 pb-12">
-      {/* 헤더 영역 */}
       <header className="bg-blue-600 text-white py-6 px-8 shadow-md flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-black">{user.name} 선생님 교무실</h1>
@@ -99,7 +116,35 @@ export default function TeacherDashboard() {
 
       <main className="max-w-5xl mx-auto px-4 mt-8 space-y-8">
         
-        {/* Today's Attendance Check */}
+        {/* 나에게 온 학부모 답장 목록 (선생님 본인에게 온 답장만 노출) */}
+        <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+          <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+            💌 학부모 답장 알림 ({parentReplies.length}건)
+          </h2>
+          {parentReplies.length === 0 ? (
+            <p className="text-sm text-slate-400 py-4 text-center">도착한 학부모 답장이 없습니다.</p>
+          ) : (
+            <div className="space-y-3 max-h-64 overflow-y-auto">
+              {parentReplies.map((reply) => (
+                <div key={reply.id} className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 space-y-1">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-bold text-blue-700">
+                      {reply.users?.name} 학생 학부모님
+                    </span>
+                    <span className="text-slate-400">
+                      수업일: {reply.eval_date} ({new Date(reply.parent_reply_at).toLocaleDateString()})
+                    </span>
+                  </div>
+                  <p className="text-sm text-slate-700 font-medium">
+                    "{reply.parent_reply}"
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* 출결 체크 섹션 */}
         <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -140,55 +185,8 @@ export default function TeacherDashboard() {
           </div>
         </section>
 
-        {/* Account Management */}
-        <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-              👥 학원 계정 관리 (강사/원생)
-            </h2>
-            <button
-              onClick={() => setShowAddUserModal(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-xl shadow transition"
-            >
-              + 신규 등록
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-              <h3 className="text-xs font-bold text-slate-500 mb-2">
-                👩‍🏫 등록된 선생님 ({teachers.length}명)
-              </h3>
-              <div className="space-y-2">
-                {teachers.map((t) => (
-                  <div key={t.id} className="bg-white p-2.5 rounded-lg border text-xs flex justify-between">
-                    <span className="font-bold text-slate-700">{t.name} 선생님</span>
-                    <span className="text-slate-400">{t.email}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-              <h3 className="text-xs font-bold text-slate-500 mb-2">
-                🧑‍🎓 등록된 학생 ({students.length}명)
-              </h3>
-              <div className="space-y-2">
-                {students.map((s) => (
-                  <div key={s.id} className="bg-white p-2.5 rounded-lg border text-xs flex justify-between">
-                    <span className="font-bold text-slate-700">{s.name} 학생</span>
-                    <span className="text-slate-400">{s.email}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* 하단 기능 메뉴 그리드 (수업 피드백 버튼 추가) */}
+        {/* 하단 기능 메뉴 그리드 */}
         <section className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
-          
-          {/* 새로 추가된 당일 수업 피드백 버튼 */}
           <button
             onClick={() => router.push('/teacher/eval')}
             className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white p-4 rounded-2xl shadow-md hover:shadow-lg hover:scale-105 transition flex flex-col items-center justify-center space-y-2 text-center"
@@ -230,77 +228,6 @@ export default function TeacherDashboard() {
         </section>
 
       </main>
-
-      {/* 신규 계정 추가 모달 */}
-      {showAddUserModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md space-y-4 shadow-xl">
-            <h3 className="text-lg font-bold text-slate-800">신규 계정 추가</h3>
-            <form onSubmit={handleAddUser} className="space-y-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">구분</label>
-                <select
-                  value={newRole}
-                  onChange={(e) => setNewRole(e.target.value)}
-                  className="w-full p-2.5 border rounded-xl text-sm bg-slate-50"
-                >
-                  <option value="STUDENT">학생</option>
-                  <option value="TEACHER">선생님</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">이름</label>
-                <input
-                  type="text"
-                  required
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  placeholder="예: 홍길동"
-                  className="w-full p-2.5 border rounded-xl text-sm bg-slate-50"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">이메일 (아이디)</label>
-                <input
-                  type="email"
-                  required
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  placeholder="student@test.com"
-                  className="w-full p-2.5 border rounded-xl text-sm bg-slate-50"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">비밀번호</label>
-                <input
-                  type="password"
-                  required
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="비밀번호 입력"
-                  className="w-full p-2.5 border rounded-xl text-sm bg-slate-50"
-                />
-              </div>
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddUserModal(false)}
-                  className="w-1/2 bg-slate-200 text-slate-700 py-2.5 rounded-xl font-bold text-xs"
-                >
-                  취소
-                </button>
-                <button
-                  type="submit"
-                  className="w-1/2 bg-blue-600 text-white py-2.5 rounded-xl font-bold text-xs shadow"
-                >
-                  등록하기
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 }

@@ -1,0 +1,1666 @@
+﻿'use client';
+
+import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
+import { useRouter } from 'next/navigation';
+
+export default function BoardPage() {
+  const [posts, setPosts] = useState([]);
+  const [category, setCategory] = useState('ALL');
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
+  const [newCategory, setNewCategory] = useState('NOTICE');
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const router = useRouter();
+
+  useEffect(() => {
+    const userData = localStorage.getItem('user');
+    if (!userData) {
+      router.push('/login');
+      return;
+    }
+    setUser(JSON.parse(userData));
+    fetchPosts();
+  }, []);
+
+  const fetchPosts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('posts')
+        .select('*, users(name)')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setPosts(data || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreatePost = async (e) => {
+    e.preventDefault();
+    if (!title.trim() || !content.trim()) return;
+
+    try {
+      const { error } = await supabase.from('posts').insert([
+        {
+          title,
+          content,
+          category: newCategory,
+          author_id: user.id,
+        },
+      ]);
+
+      if (error) throw error;
+
+      setTitle('');
+      setContent('');
+      fetchPosts();
+      alert('寃뚯떆湲???깅줉?섏뿀?듬땲??');
+    } catch (err) {
+      console.error(err);
+      alert('湲 ?묒꽦???ㅽ뙣?덉뒿?덈떎.');
+    }
+  };
+
+  const filteredPosts =
+    category === 'ALL' ? posts : posts.filter((p) => p.category === category);
+
+  if (loading) return <div className="p-8 text-center">濡쒕뵫 以?..</div>;
+
+  return (
+    <div className="min-h-screen bg-gray-50 pb-12">
+      <header className="bg-white border-b py-4 px-6 shadow-sm flex justify-between items-center">
+        <h1
+          onClick={() => router.push('/')}
+          className="text-xl font-bold text-blue-600 cursor-pointer"
+        >
+          ?덉닔???숈썝 寃뚯떆??
+        </h1>
+        <button
+          onClick={() => router.back()}
+          className="text-sm text-gray-600 hover:underline"
+        >
+          ???ㅻ줈媛湲?
+        </button>
+      </header>
+
+      <main className="max-w-4xl mx-auto px-4 mt-6 space-y-6">
+        {/* ?좎깮???꾩슜 湲?곌린 ??*/}
+        {user?.role === 'TEACHER' && (
+          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-4">
+            <h2 className="font-bold text-lg text-gray-800">??寃뚯떆湲 ?묒꽦</h2>
+            <form onSubmit={handleCreatePost} className="space-y-3">
+              <div className="flex gap-2">
+                <select
+                  value={newCategory}
+                  onChange={(e) => setNewCategory(e.target.value)}
+                  className="p-2 border rounded-lg text-sm"
+                >
+                  <option value="NOTICE">?뱼 怨듭??ы빆</option>
+                  <option value="HOMEWORK">?뱷 ?숈젣 ?뚮┝</option>
+                  <option value="VIDEO">?렗 蹂듭뒿 ?곸긽</option>
+                  <option value="MATERIAL">?뱞 媛뺤쓽 ?먮즺</option>
+                </select>
+                <input
+                  type="text"
+                  placeholder="?쒕ぉ???낅젰?섏꽭??
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="flex-1 p-2 border rounded-lg text-sm"
+                />
+              </div>
+              <textarea
+                placeholder="?댁슜???낅젰?섏꽭??
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                className="w-full p-2 border rounded-lg text-sm h-24"
+              />
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-blue-700"
+                >
+                  ?깅줉?섍린
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* 移댄뀒怨좊━ ?꾪꽣 */}
+        <div className="flex gap-2 overflow-x-auto pb-2">
+          {['ALL', 'NOTICE', 'HOMEWORK', 'VIDEO', 'MATERIAL'].map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setCategory(cat)}
+              className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition ${
+                category === cat
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white border text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              {cat === 'ALL' && '?꾩껜'}
+              {cat === 'NOTICE' && '?뱼 怨듭??ы빆'}
+              {cat === 'HOMEWORK' && '?뱷 ?숈젣 ?뚮┝'}
+              {cat === 'VIDEO' && '?렗 蹂듭뒿 ?곸긽'}
+              {cat === 'MATERIAL' && '?뱞 媛뺤쓽 ?먮즺'}
+            </button>
+          ))}
+        </div>
+
+        {/* 寃뚯떆湲 紐⑸줉 */}
+        <div className="space-y-3">
+          {filteredPosts.length === 0 ? (
+            <p className="text-center py-8 text-gray-500">
+              ?깅줉??寃뚯떆湲???놁뒿?덈떎.
+            </p>
+          ) : (
+            filteredPosts.map((post) => (
+              <div
+                key={post.id}
+                className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm space-y-2"
+              >
+                <div className="flex justify-between items-center text-xs text-gray-500">
+                  <span className="font-bold text-blue-600">
+                    {post.category === 'NOTICE' && '?뱼 怨듭??ы빆'}
+                    {post.category === 'HOMEWORK' && '?뱷 ?숈젣 ?뚮┝'}
+                    {post.category === 'VIDEO' && '?렗 蹂듭뒿 ?곸긽'}
+                    {post.category === 'MATERIAL' && '?뱞 媛뺤쓽 ?먮즺'}
+                  </span>
+                  <span>{new Date(post.created_at).toLocaleDateString()}</span>
+                </div>
+                <h3 className="font-bold text-base text-gray-800">{post.title}</h3>
+                <p className="text-sm text-gray-600 whitespace-pre-wrap">
+                  {post.content}
+                </p>
+                <div className="text-xs text-gray-400 text-right">
+                  ?묒꽦?? {post.users?.name || '?좎깮??}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
+
+export default function LoginPage() {
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState('STUDENT'); // 湲곕낯媛? ?숈깮
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      // ?낅젰諛쏆? ?뺣낫濡?DB?먯꽌 ?ъ슜??議고쉶
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', email.trim())
+        .eq('role', role);
+
+      if (error) {
+        alert(`DB ?먮윭 諛쒖깮: ${error.message}`);
+        setLoading(false);
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        alert(`?쇱튂?섎뒗 ?뚯썝 ?뺣낫媛 ?놁뒿?덈떎.\n?낅젰 ?대찓?? [${email.trim()}]\n?좏깮 沅뚰븳: [${role}]`);
+        setLoading(false);
+        return;
+      }
+
+      const userData = data[0];
+      // 濡쒓렇???깃났 ??濡쒖뺄 ?ㅽ넗由ъ????ъ슜???뺣낫 ???
+      localStorage.setItem('user', JSON.stringify(userData));
+
+      alert(`${userData.name}???섏쁺?⑸땲??`);
+
+      if (userData.role === 'TEACHER') {
+        router.push('/teacher/dashboard');
+      } else {
+        router.push('/student/dashboard');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('濡쒓렇??泥섎━ 以??먮윭媛 諛쒖깮?덉뒿?덈떎.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-md p-8">
+        <h2 className="text-2xl font-bold text-center text-gray-800 mb-6">
+          ?숈썝 愿由??쒖뒪??濡쒓렇??
+        </h2>
+
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">援щ텇</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setRole('STUDENT')}
+                className={`py-2 rounded-lg font-medium border transition ${
+                  role === 'STUDENT'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-600 border-gray-300'
+                }`}
+              >
+                ?숈깮 濡쒓렇??
+              </button>
+              <button
+                type="button"
+                onClick={() => setRole('TEACHER')}
+                className={`py-2 rounded-lg font-medium border transition ${
+                  role === 'TEACHER'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-600 border-gray-300'
+                }`}
+              >
+                ?좎깮??濡쒓렇??
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">?대찓??怨꾩젙</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="example@test.com"
+              required
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition disabled:bg-gray-400"
+          >
+            {loading ? '濡쒓렇??以?..' : '濡쒓렇?명븯湲?}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+'use client';
+
+import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
+import { useRouter } from 'next/navigation';
+
+export default function QnaPage() {
+  const [user, setUser] = useState(null);
+  const [qnaList, setQnaList] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // 吏덈Ц ?묒꽦 ?곹깭 (?숈깮??
+  const [showQuestionModal, setShowQuestionModal] = useState(false);
+  const [title, setTitle] = useState('');
+  const [question, setQuestion] = useState('');
+  const [questionImage, setQuestionImage] = useState(null);
+  const [uploadingQuestionImg, setUploadingQuestionImg] = useState(false);
+
+  // ?듬? ?묒꽦 ?곹깭 (?좎깮?섏슜)
+  const [replyingId, setReplyingId] = useState(null);
+  const [answerText, setAnswerText] = useState('');
+  const [answerImage, setAnswerImage] = useState(null);
+  const [uploadingAnswerImg, setUploadingAnswerImg] = useState(false);
+
+  const router = useRouter();
+
+  useEffect(() => {
+    const userData = localStorage.getItem('user');
+    if (!userData) {
+      router.push('/login');
+      return;
+    }
+    const parsedUser = JSON.parse(userData);
+    setUser(parsedUser);
+    fetchQnaList();
+  }, []);
+
+  // Q&A 紐⑸줉 遺덈윭?ㅺ린
+  const fetchQnaList = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('qna')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setQnaList(data || []);
+    } catch (err) {
+      console.error(err);
+      alert('吏덈Ц 紐⑸줉??遺덈윭?ㅼ? 紐삵뻽?듬땲??');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ?대?吏 ?낅줈??怨듯넻 ?⑥닔
+  const uploadImageToStorage = async (file) => {
+    if (!file) return null;
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+    const filePath = `qna/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('qna-images')
+      .upload(filePath, file);
+
+    if (uploadError) throw uploadError;
+
+    const { data } = supabase.storage
+      .from('qna-images')
+      .getPublicUrl(filePath);
+
+    return data.publicUrl;
+  };
+
+  // ?숈깮: 吏덈Ц ?깅줉
+  const handleCreateQuestion = async (e) => {
+    e.preventDefault();
+    if (!title.trim() || !question.trim()) {
+      alert('?쒕ぉ怨?吏덈Ц ?댁슜???낅젰?댁＜?몄슂.');
+      return;
+    }
+
+    setUploadingQuestionImg(true);
+
+    try {
+      let imageUrl = null;
+      if (questionImage) {
+        imageUrl = await uploadImageToStorage(questionImage);
+      }
+
+      const { error } = await supabase.from('qna').insert([
+        {
+          student_id: user.id,
+          title: title,
+          question: question,
+          question_image_url: imageUrl,
+          status: 'PENDING',
+        },
+      ]);
+
+      if (error) throw error;
+
+      alert('吏덈Ц怨?臾몄젣 ?ъ쭊???깃났?곸쑝濡??깅줉?섏뿀?듬땲??');
+      setTitle('');
+      setQuestion('');
+      setQuestionImage(null);
+      setShowQuestionModal(false);
+      fetchQnaList();
+    } catch (err) {
+      console.error(err);
+      alert(`吏덈Ц ?깅줉 ?ㅽ뙣: ${err.message}`);
+    } finally {
+      setUploadingQuestionImg(false);
+    }
+  };
+
+  // ?좎깮?? ?듬? ?깅줉
+  const handleCreateAnswer = async (qnaId) => {
+    if (!answerText.trim()) {
+      alert('?듬? ?댁슜???낅젰?댁＜?몄슂.');
+      return;
+    }
+
+    setUploadingAnswerImg(true);
+
+    try {
+      let imageUrl = null;
+      if (answerImage) {
+        imageUrl = await uploadImageToStorage(answerImage);
+      }
+
+      const { error } = await supabase
+        .from('qna')
+        .update({
+          answer: answerText,
+          answer_image_url: imageUrl || undefined,
+          teacher_id: user.id,
+          status: 'ANSWERED',
+          answered_at: new Date().toISOString(),
+        })
+        .eq('id', qnaId);
+
+      if (error) throw error;
+
+      alert('?듬????깃났?곸쑝濡??깅줉?섏뿀?듬땲??');
+      setReplyingId(null);
+      setAnswerText('');
+      setAnswerImage(null);
+      fetchQnaList();
+    } catch (err) {
+      console.error(err);
+      alert(`?듬? ?깅줉 ?ㅽ뙣: ${err.message}`);
+    } finally {
+      setUploadingAnswerImg(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 pb-12">
+      {/* ?곷떒 ?ㅻ뜑 */}
+      <header className="bg-blue-600 text-white py-6 px-4 shadow-md">
+        <div className="max-w-4xl mx-auto flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold">??1:1 Q&A ?섑븰 吏덈Ц寃뚯떆??/h1>
+            <p className="text-sm opacity-90">
+              {user?.name} {user?.role === 'TEACHER' ? '?좎깮?? : '?숈깮'} 濡쒓렇??以?
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              if (user?.role === 'TEACHER') {
+                router.push('/teacher/dashboard');
+              } else {
+                router.push('/student/dashboard');
+              }
+            }}
+            className="bg-blue-700 hover:bg-blue-800 text-xs px-3 py-2 rounded-lg transition"
+          >
+            ????쒕낫?쒕줈 ?뚯븘媛湲?
+          </button>
+        </div>
+      </header>
+
+      <main className="max-w-4xl mx-auto px-4 mt-8 space-y-6">
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-bold text-gray-800">吏덈Ц 諛??듬? 紐⑸줉</h2>
+          {user?.role === 'STUDENT' && (
+            <button
+              onClick={() => setShowQuestionModal(true)}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-blue-700 transition"
+            >
+              + 吏덈Ц?섍린 (?ъ쭊 泥⑤?)
+            </button>
+          )}
+        </div>
+
+        {/* 吏덈Ц?섍린 紐⑤떖 (?숈깮?꾩슜) */}
+        {showQuestionModal && (
+          <div className="bg-white p-6 rounded-2xl border border-gray-300 shadow-md space-y-4">
+            <h3 className="text-lg font-bold text-gray-800">?좎깮?섍퍡 吏덈Ц?섍린</h3>
+            <form onSubmit={handleCreateQuestion} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">吏덈Ц ?쒕ぉ</label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="?? [?섑븰I] ?쇨컖?⑥닔 ?⑥썝 15踰?臾몄젣 吏덈Ц?낅땲??
+                  required
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">吏덈Ц ?댁슜</label>
+                <textarea
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                  placeholder="?由ъ? ?딅뒗 ??닿낵?뺤씠??紐⑤Ⅴ??媛쒕뀗???곸뼱二쇱꽭??"
+                  rows={4}
+                  required
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  ?벝 臾몄젣 ?ъ쭊 泥⑤? (?좏깮)
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setQuestionImage(e.target.files[0])}
+                  className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowQuestionModal(false)}
+                  className="px-4 py-2 rounded-lg border border-gray-300 text-gray-600 font-medium text-sm"
+                >
+                  痍⑥냼
+                </button>
+                <button
+                  type="submit"
+                  disabled={uploadingQuestionImg}
+                  className="px-4 py-2 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700 transition text-sm disabled:bg-gray-400"
+                >
+                  {uploadingQuestionImg ? '?ъ쭊 ?낅줈??以?..' : '吏덈Ц ?깅줉'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* Q&A 紐⑸줉 */}
+        {loading ? (
+          <p className="text-center py-8 text-gray-500">濡쒕뵫 以?..</p>
+        ) : qnaList.length === 0 ? (
+          <div className="bg-white p-8 rounded-2xl border border-gray-200 text-center text-gray-500">
+            ?깅줉??吏덈Ц???놁뒿?덈떎.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {qnaList.map((item) => (
+              <div key={item.id} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
+                <div className="flex justify-between items-start">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                        item.status === 'ANSWERED'
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-yellow-100 text-yellow-700'
+                      }`}
+                    >
+                      {item.status === 'ANSWERED' ? '?듬??꾨즺' : '?듬??湲?}
+                    </span>
+                    <h3 className="text-lg font-bold text-gray-800">{item.title}</h3>
+                  </div>
+                  <span className="text-xs text-gray-400">
+                    {new Date(item.created_at).toLocaleDateString('ko-KR')}
+                  </span>
+                </div>
+
+                {/* 吏덈Ц ?뺣낫 諛?泥⑤? ?ъ쭊 */}
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 space-y-3">
+                  <p className="text-xs text-blue-600 font-bold">Q. ?숈깮 吏덈Ц</p>
+                  <p className="text-gray-700 whitespace-pre-wrap text-sm leading-relaxed">
+                    {item.question}
+                  </p>
+
+                  {/* 吏덈Ц ?대?吏 ?쒖떆 */}
+                  {item.question_image_url && (
+                    <div className="mt-2">
+                      <p className="text-xs text-gray-500 mb-1 font-semibold">?벜 泥⑤???臾몄젣 ?대?吏:</p>
+                      <a href={item.question_image_url} target="_blank" rel="noopener noreferrer">
+                        <img
+                          src={item.question_image_url}
+                          alt="臾몄젣 ?대?吏"
+                          className="max-h-64 rounded-lg border border-gray-200 hover:opacity-90 transition"
+                        />
+                      </a>
+                    </div>
+                  )}
+                </div>
+
+                {/* ?좎깮???듬? 諛??댁꽕 ?대?吏 */}
+                {item.answer && (
+                  <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 space-y-3">
+                    <p className="text-xs text-blue-800 font-bold">
+                      A. ?μ쁺諛??좎깮???듬?
+                      {item.answered_at && (
+                        <span className="font-normal text-gray-500 ml-2">
+                          ({new Date(item.answered_at).toLocaleDateString('ko-KR')})
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-gray-800 whitespace-pre-wrap text-sm leading-relaxed">
+                      {item.answer}
+                    </p>
+
+                    {/* ?듬? ????대?吏 ?쒖떆 */}
+                    {item.answer_image_url && (
+                      <div className="mt-2">
+                        <p className="text-xs text-blue-700 mb-1 font-semibold">?륅툘 泥⑤???????댁꽕 ?대?吏:</p>
+                        <a href={item.answer_image_url} target="_blank" rel="noopener noreferrer">
+                          <img
+                            src={item.answer_image_url}
+                            alt="?듬? ????대?吏"
+                            className="max-h-64 rounded-lg border border-blue-200 hover:opacity-90 transition"
+                          />
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ?좎깮???듬? ?묒꽦 ??*/}
+                {user?.role === 'TEACHER' && (
+                  <div className="pt-2">
+                    {replyingId === item.id ? (
+                      <div className="space-y-3 mt-2 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                        <textarea
+                          value={answerText}
+                          onChange={(e) => setAnswerText(e.target.value)}
+                          placeholder="?숈깮?먭쾶 ?꾨떖??移쒖젅?????諛??댁꽕???낅젰?섏꽭??.."
+                          rows={3}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">
+                            ?륅툘 ?댁꽕 ????ъ쭊 泥⑤? (?좏깮)
+                          </label>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => setAnswerImage(e.target.files[0])}
+                            className="w-full text-xs text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-100 file:text-blue-700"
+                          />
+                        </div>
+                        <div className="flex justify-end gap-2 pt-1">
+                          <button
+                            onClick={() => {
+                              setReplyingId(null);
+                              setAnswerText('');
+                              setAnswerImage(null);
+                            }}
+                            className="px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg text-gray-600"
+                          >
+                            痍⑥냼
+                          </button>
+                          <button
+                            onClick={() => handleCreateAnswer(item.id)}
+                            disabled={uploadingAnswerImg}
+                            className="px-3 py-1.5 text-xs font-bold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400"
+                          >
+                            {uploadingAnswerImg ? '?낅줈??以?..' : '?듬? ?깅줉'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setReplyingId(item.id);
+                          setAnswerText(item.answer || '');
+                        }}
+                        className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"
+                      >
+                        {item.answer ? '?륅툘 ?듬?/?댁꽕 ?대?吏 ?섏젙?섍린' : '?뮠 1:1 ?듬? 諛??댁꽕 ?ъ쭊 ?ш린'}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+'use client';
+
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import { useParams, useRouter } from 'next/navigation';
+import {
+  Radar,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  ResponsiveContainer,
+} from 'recharts';
+
+export default function StudentReportPage() {
+  const { id } = useParams(); // evaluation id ?먮뒗 student_id
+  const [evalData, setEvalData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (id) fetchEvaluation();
+  }, [id]);
+
+  const fetchEvaluation = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('daily_evaluations')
+        .select('*, users!daily_evaluations_student_id_fkey(name)')
+        .eq('id', id)
+        .single();
+
+      if (error) throw error;
+      setEvalData(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="p-10 text-center text-gray-500">由ы룷?몃? 遺덈윭?ㅻ뒗 以묒엯?덈떎...</div>;
+  }
+
+  if (!evalData) {
+    return <div className="p-10 text-center text-gray-500">?깅줉???쇰뱶諛??뺣낫瑜?李얠쓣 ???놁뒿?덈떎.</div>;
+  }
+
+  // ?↔컖???덉씠??李⑦듃???곗씠???뚯떛 (10??留뚯젏 湲곗?)
+  const chartData = [
+    { subject: '異쒖꽍/吏媛?, A: evalData.score_tardiness, fullMark: 10 },
+    { subject: '?숈젣?꾩꽦??, A: evalData.score_homework, fullMark: 10 },
+    { subject: '?섏뾽紐곗엯??, A: evalData.score_focus, fullMark: 10 },
+    { subject: '媛쒕뀗?댄빐??, A: evalData.score_concept, fullMark: 10 },
+    { subject: '?섏뾽?쒖씠??, A: evalData.score_difficulty, fullMark: 10 },
+    { subject: '?뚯뒪?몄젏??, A: evalData.score_test, fullMark: 10 },
+  ];
+
+  return (
+    <div className="min-h-screen bg-blue-50 py-8 px-4 flex flex-col items-center justify-center">
+      <div className="max-w-md w-full bg-white rounded-3xl shadow-xl border border-blue-100 overflow-hidden">
+        
+        {/* ?곷떒 由ы룷???ㅻ뜑 */}
+        <div className="bg-blue-600 text-white p-6 text-center space-y-1">
+          <span className="bg-blue-500/50 text-white text-xs px-3 py-1 rounded-full font-semibold">
+            ?덉닔???쇱씪 ?숈뒿 蹂닿퀬??
+          </span>
+          <h2 className="text-2xl font-extrabold pt-2">
+            {evalData.users?.name || '?숈깮'} ?쇰뱶諛?
+          </h2>
+          <p className="text-xs text-blue-100">
+            ?섏뾽 ?쇱옄: {evalData.eval_date}
+          </p>
+        </div>
+
+        {/* ?↔컖??洹몃옒???곸뿭 */}
+        <div className="p-4 flex flex-col items-center">
+          <h3 className="text-sm font-bold text-gray-700 mt-2 mb-1 text-center">
+            ?뱢 6媛吏 ?곸뿭蹂??숈뒿 遺꾩꽍
+          </h3>
+          <div className="w-full h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <RadarChart cx="50%" cy="50%" outerRadius="70%" data={chartData}>
+                <PolarGrid stroke="#e2e8f0" />
+                <PolarAngleAxis dataKey="subject" tick={{ fill: '#4b5563', fontSize: 12, fontWeight: 'bold' }} />
+                <PolarRadiusAxis angle={30} domain={[0, 10]} stroke="#cbd5e1" />
+                <Radar
+                  name="?깆랬??
+                  dataKey="A"
+                  stroke="#2563eb"
+                  fill="#3b82f6"
+                  fillOpacity={0.5}
+                />
+              </RadarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* ?좎깮????以??쇰뱶諛?*/}
+        <div className="p-6 bg-gray-50 border-t border-gray-100 space-y-2">
+          <h4 className="text-xs font-bold text-blue-600 uppercase tracking-wider">
+            Teacher's Feedback
+          </h4>
+          <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap bg-white p-4 rounded-xl border border-gray-200">
+            {evalData.comment || '?ㅻ뒛???섍퀬 留롮븯?듬땲??'}
+          </p>
+        </div>
+
+        {/* ?섎떒 ?リ린/?덉쑝濡?踰꾪듉 */}
+        <div className="p-4 bg-white text-center">
+          <button
+            onClick={() => router.push('/')}
+            className="text-xs font-bold text-gray-500 hover:text-blue-600 underline"
+          >
+            ?덉닔???덉쑝濡??대룞
+          </button>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+'use client';
+
+import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
+import { useRouter } from 'next/navigation';
+
+export default function StudentDashboard() {
+  const [student, setStudent] = useState(null);
+  const [attendanceList, setAttendanceList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+
+  useEffect(() => {
+    // ??λ맂 濡쒓렇???뺣낫 遺덈윭?ㅺ린
+    const userData = localStorage.getItem('user');
+    if (!userData) {
+      router.push('/login');
+      return;
+    }
+    const parsedUser = JSON.parse(userData);
+    if (parsedUser.role !== 'STUDENT') {
+      alert('?숈깮 沅뚰븳???꾩슂?⑸땲??');
+      router.push('/login');
+      return;
+    }
+    setStudent(parsedUser);
+    fetchAttendance(parsedUser.id);
+  }, []);
+
+  // ?섏쓽 異쒓껐 湲곕줉 媛?몄삤湲?
+  const fetchAttendance = async (studentId) => {
+    try {
+      const { data, error } = await supabase
+        .from('attendance')
+        .select('*')
+        .eq('student_id', studentId)
+        .order('check_in_time', { ascending: false });
+
+      if (error) throw error;
+      setAttendanceList(data || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) return <div className="p-8 text-center">濡쒕뵫 以?..</div>;
+
+  return (
+    <div className="min-h-screen bg-gray-50 pb-12">
+      {/* ?곷떒 ?ㅻ뜑 */}
+      <header className="bg-blue-600 text-white py-6 px-4 shadow-md">
+        <div className="max-w-4xl mx-auto flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold">{student?.name} ?숈깮 媛뺤쓽??/h1>
+            <p className="text-sm opacity-90">?대떦 ?좎깮?? ?μ쁺諛??좎깮??/p>
+          </div>
+          <button
+            onClick={() => {
+              localStorage.removeItem('user');
+              router.push('/login');
+            }}
+            className="bg-blue-700 hover:bg-blue-800 text-xs px-3 py-2 rounded-lg transition"
+          >
+            濡쒓렇?꾩썐
+          </button>
+        </div>
+      </header>
+
+      <main className="max-w-4xl mx-auto px-4 mt-8 space-y-8">
+        {/* 異쒓껐 ?꾪솴 移대뱶 */}
+        <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <span>?뱟</span> ?섏쓽 異쒖꽍 湲곕줉
+          </h2>
+          {attendanceList.length === 0 ? (
+            <p className="text-gray-500 text-center py-4">?꾩쭅 湲곕줉??異쒓껐 ?뺣낫媛 ?놁뒿?덈떎.</p>
+          ) : (
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {attendanceList.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex justify-between items-center p-3 bg-gray-50 rounded-lg text-sm"
+                >
+                  <span className="text-gray-600">
+                    {new Date(item.check_in_time).toLocaleString('ko-KR')}
+                  </span>
+                  <span
+                    className={`font-bold px-3 py-1 rounded-full text-xs ${
+                      item.status === 'PRESENT'
+                        ? 'bg-green-100 text-green-700'
+                        : item.status === 'LATE'
+                        ? 'bg-yellow-100 text-yellow-700'
+                        : 'bg-red-100 text-red-700'
+                    }`}
+                  >
+                    {item.status === 'PRESENT'
+                      ? '異쒖꽍'
+                      : item.status === 'LATE'
+                      ? '吏媛?
+                      : '寃곗꽍'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+      {/* 寃뚯떆??硫붾돱 紐⑸줉 */}
+        <section className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div 
+            onClick={() => router.push('/board')}
+            className="bg-white p-5 rounded-xl border border-gray-200 text-center font-bold text-gray-700 shadow-sm cursor-pointer hover:border-blue-500 hover:shadow-md transition flex flex-col items-center gap-2"
+          >
+            <span className="text-2xl">?뱼</span>
+            <span>怨듭??ы빆</span>
+          </div>
+          <div 
+            onClick={() => router.push('/board')}
+            className="bg-white p-5 rounded-xl border border-gray-200 text-center font-bold text-gray-700 shadow-sm cursor-pointer hover:border-blue-500 hover:shadow-md transition flex flex-col items-center gap-2"
+          >
+            <span className="text-2xl">?뱷</span>
+            <span>?숈젣 ?뺤씤/?쒖텧</span>
+          </div>
+          <div 
+            onClick={() => router.push('/board')}
+            className="bg-white p-5 rounded-xl border border-gray-200 text-center font-bold text-gray-700 shadow-sm cursor-pointer hover:border-blue-500 hover:shadow-md transition flex flex-col items-center gap-2"
+          >
+            <span className="text-2xl">?렗</span>
+            <span>蹂듭뒿 ?곸긽</span>
+          </div>
+          <div 
+            onClick={() => router.push('/board')}
+            className="bg-white p-5 rounded-xl border border-gray-200 text-center font-bold text-gray-700 shadow-sm cursor-pointer hover:border-blue-500 hover:shadow-md transition flex flex-col items-center gap-2"
+          >
+            <span className="text-2xl">?뱞</span>
+            <span>媛뺤쓽 ?먮즺</span>
+          </div>
+          <div 
+            onClick={() => router.push('/board')}
+            className="bg-white p-5 rounded-xl border border-gray-200 text-center font-bold text-gray-700 shadow-sm cursor-pointer hover:border-blue-500 hover:shadow-md transition flex flex-col items-center gap-2"
+          >
+            <span className="text-2xl">狩?/span>
+            <span>?섍컯 ?꾧린</span>
+          </div>
+         <div 
+            onClick={() => router.push('/qna')}
+            className="bg-white p-5 rounded-xl border border-gray-200 text-center font-bold text-gray-700 shadow-sm cursor-pointer hover:border-blue-500 hover:shadow-md transition flex flex-col items-center gap-2"
+          >
+            <span className="text-2xl">??/span>
+            <span>1:1 Q&A 吏덈Ц</span>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+'use client';
+
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import { useRouter } from 'next/navigation';
+
+export default function TeacherDashboard() {
+  const [user, setUser] = useState(null);
+  const [students, setStudents] = useState([]);
+  const [teachers, setTeachers] = useState([]);
+  const [showAddUserModal, setShowAddUserModal] = useState(false);
+
+  // ?좉퇋 怨꾩젙 異붽? ???곹깭
+  const [newName, setNewName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newRole, setNewRole] = useState('STUDENT');
+
+  const router = useRouter();
+
+  useEffect(() => {
+    const userData = localStorage.getItem('user');
+    if (!userData) {
+      router.push('/login');
+      return;
+    }
+    const parsedUser = JSON.parse(userData);
+    if (parsedUser.role !== 'TEACHER') {
+      alert('?좎깮??怨꾩젙?쇰줈留??묎렐?????덉뒿?덈떎.');
+      router.push('/');
+      return;
+    }
+    setUser(parsedUser);
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = async () => {
+    try {
+      const { data, error } = await supabase.from('users').select('*');
+      if (error) throw error;
+
+      if (data) {
+        setStudents(data.filter((u) => u.role === 'STUDENT'));
+        setTeachers(data.filter((u) => u.role === 'TEACHER'));
+      }
+    } catch (err) {
+      console.error('?ъ슜??紐⑸줉 媛?몄삤湲??ㅻ쪟:', err);
+    }
+  };
+
+  const handleAddUser = async (e) => {
+    e.preventDefault();
+    try {
+      const { data, error } = await supabase.from('users').insert([
+        {
+          email: newEmail,
+          password: newPassword,
+          name: newName,
+          role: newRole,
+        },
+      ]);
+
+      if (error) throw error;
+
+      alert('?깃났?곸쑝濡??깅줉?섏뿀?듬땲??');
+      setShowAddUserModal(false);
+      setNewName('');
+      setNewEmail('');
+      setNewPassword('');
+      fetchUsers();
+    } catch (err) {
+      console.error(err);
+      alert('怨꾩젙 ?깅줉???ㅽ뙣?덉뒿?덈떎.');
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('user');
+    router.push('/login');
+  };
+
+  if (!user) return <div className="p-10 text-center">濡쒕뵫 以?..</div>;
+
+  return (
+    <div className="min-h-screen bg-slate-50 pb-12">
+      {/* ?ㅻ뜑 ?곸뿭 */}
+      <header className="bg-blue-600 text-white py-6 px-8 shadow-md flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-black">{user.name} ?좎깮??援먮Т??/h1>
+          <p className="text-xs text-blue-100 mt-1">?ㅻ쭏???숈썝 愿由???쒕낫??/p>
+        </div>
+        <button
+          onClick={handleLogout}
+          className="bg-blue-700 hover:bg-blue-800 text-white text-xs px-4 py-2 rounded-lg font-bold transition"
+        >
+          濡쒓렇?꾩썐
+        </button>
+      </header>
+
+      <main className="max-w-5xl mx-auto px-4 mt-8 space-y-8">
+        
+        {/* Today's Attendance Check */}
+        <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              ?벑 ?ㅻ뒛 ?섏뾽 異쒓껐 泥댄겕
+            </h2>
+            <span className="text-xs text-slate-400 font-semibold">
+              {new Date().toLocaleDateString('ko-KR')}
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            {students.length === 0 ? (
+              <p className="text-sm text-slate-400 py-4 text-center">?깅줉???숈깮???놁뒿?덈떎.</p>
+            ) : (
+              students.map((student) => (
+                <div
+                  key={student.id}
+                  className="flex items-center justify-between bg-slate-50 p-4 rounded-xl border border-slate-100"
+                >
+                  <div>
+                    <span className="font-bold text-slate-800 text-sm">{student.name} ?숈깮</span>
+                    <span className="text-xs text-slate-400 ml-2">{student.email}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-xs font-bold px-3 py-1.5 rounded-lg transition">
+                      異쒖꽍
+                    </button>
+                    <button className="bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs font-bold px-3 py-1.5 rounded-lg transition">
+                      吏媛?
+                    </button>
+                    <button className="bg-rose-100 hover:bg-rose-200 text-rose-700 text-xs font-bold px-3 py-1.5 rounded-lg transition">
+                      寃곗꽍
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+
+        {/* Account Management */}
+        <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              ?뫁 ?숈썝 怨꾩젙 愿由?(媛뺤궗/?먯깮)
+            </h2>
+            <button
+              onClick={() => setShowAddUserModal(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-xl shadow transition"
+            >
+              + ?좉퇋 ?깅줉
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+              <h3 className="text-xs font-bold text-slate-500 mb-2">
+                ?뫆?랅윆??깅줉???좎깮??({teachers.length}紐?
+              </h3>
+              <div className="space-y-2">
+                {teachers.map((t) => (
+                  <div key={t.id} className="bg-white p-2.5 rounded-lg border text-xs flex justify-between">
+                    <span className="font-bold text-slate-700">{t.name} ?좎깮??/span>
+                    <span className="text-slate-400">{t.email}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+              <h3 className="text-xs font-bold text-slate-500 mb-2">
+                ?쭛?랅윃??깅줉???숈깮 ({students.length}紐?
+              </h3>
+              <div className="space-y-2">
+                {students.map((s) => (
+                  <div key={s.id} className="bg-white p-2.5 rounded-lg border text-xs flex justify-between">
+                    <span className="font-bold text-slate-700">{s.name} ?숈깮</span>
+                    <span className="text-slate-400">{s.email}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ?섎떒 湲곕뒫 硫붾돱 洹몃━??(?섏뾽 ?쇰뱶諛?踰꾪듉 異붽?) */}
+        <section className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+          
+          {/* ?덈줈 異붽????뱀씪 ?섏뾽 ?쇰뱶諛?踰꾪듉 */}
+          <button
+            onClick={() => router.push('/teacher/eval')}
+            className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white p-4 rounded-2xl shadow-md hover:shadow-lg hover:scale-105 transition flex flex-col items-center justify-center space-y-2 text-center"
+          >
+            <span className="text-2xl">?뱤</span>
+            <span className="font-bold text-xs">?쇱씪 ?섏뾽 ?쇰뱶諛?/span>
+          </button>
+
+          <button
+            onClick={() => router.push('/board')}
+            className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition flex flex-col items-center justify-center space-y-2 text-center"
+          >
+            <span className="text-2xl">?뱼</span>
+            <span className="font-bold text-xs text-slate-700">怨듭??ы빆</span>
+          </button>
+
+          <button className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition flex flex-col items-center justify-center space-y-2 text-center opacity-60 cursor-not-allowed">
+            <span className="text-2xl">?뱷</span>
+            <span className="font-bold text-xs text-slate-700">?숈젣 ?뚮┝</span>
+          </button>
+
+          <button className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition flex flex-col items-center justify-center space-y-2 text-center opacity-60 cursor-not-allowed">
+            <span className="text-2xl">?렗</span>
+            <span className="font-bold text-xs text-slate-700">蹂듭뒿 ?곸긽</span>
+          </button>
+
+          <button className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition flex flex-col items-center justify-center space-y-2 text-center opacity-60 cursor-not-allowed">
+            <span className="text-2xl">?뱞</span>
+            <span className="font-bold text-xs text-slate-700">媛뺤쓽 ?먮즺</span>
+          </button>
+
+          <button
+            onClick={() => router.push('/qna')}
+            className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition flex flex-col items-center justify-center space-y-2 text-center"
+          >
+            <span className="text-2xl">??/span>
+            <span className="font-bold text-xs text-slate-700">1:1 Q&A 吏덈Ц</span>
+          </button>
+        </section>
+
+      </main>
+
+      {/* ?좉퇋 怨꾩젙 異붽? 紐⑤떖 */}
+      {showAddUserModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md space-y-4 shadow-xl">
+            <h3 className="text-lg font-bold text-slate-800">?좉퇋 怨꾩젙 異붽?</h3>
+            <form onSubmit={handleAddUser} className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">援щ텇</label>
+                <select
+                  value={newRole}
+                  onChange={(e) => setNewRole(e.target.value)}
+                  className="w-full p-2.5 border rounded-xl text-sm bg-slate-50"
+                >
+                  <option value="STUDENT">?숈깮</option>
+                  <option value="TEACHER">?좎깮??/option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">?대쫫</label>
+                <input
+                  type="text"
+                  required
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="?? ?띻만??
+                  className="w-full p-2.5 border rounded-xl text-sm bg-slate-50"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">?대찓??(?꾩씠??</label>
+                <input
+                  type="email"
+                  required
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  placeholder="student@test.com"
+                  className="w-full p-2.5 border rounded-xl text-sm bg-slate-50"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">鍮꾨?踰덊샇</label>
+                <input
+                  type="password"
+                  required
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="鍮꾨?踰덊샇 ?낅젰"
+                  className="w-full p-2.5 border rounded-xl text-sm bg-slate-50"
+                />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddUserModal(false)}
+                  className="w-1/2 bg-slate-200 text-slate-700 py-2.5 rounded-xl font-bold text-xs"
+                >
+                  痍⑥냼
+                </button>
+                <button
+                  type="submit"
+                  className="w-1/2 bg-blue-600 text-white py-2.5 rounded-xl font-bold text-xs shadow"
+                >
+                  ?깅줉?섍린
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+'use client';
+
+import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
+import { useRouter } from 'next/navigation';
+
+export default function TeacherEvalPage() {
+  const [students, setStudents] = useState([]);
+  const [selectedStudent, setSelectedStudent] = useState('');
+  const [evalDate, setEvalDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  // 6媛吏 ?됯? ?먯닔 ?곹깭 (湲곕낯媛??ㅼ젙)
+  const [scoreTardiness, setScoreTardiness] = useState(10);
+  const [scoreHomework, setScoreHomework] = useState(8);
+  const [scoreFocus, setScoreFocus] = useState(8);
+  const [scoreConcept, setScoreConcept] = useState(8);
+  const [scoreDifficulty, setScoreDifficulty] = useState(5);
+  const [scoreTest, setScoreTest] = useState(8);
+  const [comment, setComment] = useState('');
+
+  const [loading, setLoading] = useState(false);
+  const [teacher, setTeacher] = useState(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    const userData = localStorage.getItem('user');
+    if (!userData) {
+      router.push('/login');
+      return;
+    }
+    const user = JSON.parse(userData);
+    setTeacher(user);
+    fetchStudents();
+  }, []);
+
+  // ?숈깮 紐⑸줉 媛?몄삤湲?
+  const fetchStudents = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, name')
+        .eq('role', 'STUDENT');
+
+      if (error) throw error;
+      setStudents(data || []);
+      if (data && data.length > 0) {
+        setSelectedStudent(data[0].id);
+      }
+    } catch (err) {
+      console.error('?숈깮 紐⑸줉 濡쒕뱶 ?ㅽ뙣:', err);
+    }
+  };
+
+  // ?됯? ????쒖텧
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedStudent) {
+      alert('?숈깮???좏깮??二쇱꽭??');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const { error } = await supabase.from('daily_evaluations').insert([
+        {
+          student_id: selectedStudent,
+          teacher_id: teacher?.id,
+          eval_date: evalDate,
+          score_tardiness: Number(scoreTardiness),
+          score_homework: Number(scoreHomework),
+          score_focus: Number(scoreFocus),
+          score_concept: Number(scoreConcept),
+          score_difficulty: Number(scoreDifficulty),
+          score_test: Number(scoreTest),
+          comment: comment,
+        },
+      ]);
+
+      if (error) throw error;
+
+      alert('?뱀씪 ?섏뾽 ?쇰뱶諛깆씠 ?깃났?곸쑝濡??깅줉?섏뿀?듬땲??');
+      setComment('');
+    } catch (err) {
+      console.error(err);
+      alert('?됯? ??μ뿉 ?ㅽ뙣?덉뒿?덈떎.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 pb-12">
+      <header className="bg-white border-b py-4 px-6 shadow-sm flex justify-between items-center">
+        <h1 
+          onClick={() => router.push('/')}
+          className="text-xl font-bold text-blue-600 cursor-pointer"
+        >
+          ?덉닔???쇱씪 ?숈뒿 ?쇰뱶諛??묒꽦
+        </h1>
+        <button
+          onClick={() => router.back()}
+          className="text-sm text-gray-600 hover:underline"
+        >
+          ???ㅻ줈媛湲?
+        </button>
+      </header>
+
+      <main className="max-w-2xl mx-auto px-4 mt-6">
+        <form onSubmit={handleSubmit} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
+          
+          {/* ?숈깮 諛??좎쭨 ?좏깮 */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-1">?숈깮 ?좏깮</label>
+              <select
+                value={selectedStudent}
+                onChange={(e) => setSelectedStudent(e.target.value)}
+                className="w-full p-2.5 border rounded-xl text-sm bg-gray-50 focus:outline-blue-500"
+              >
+                {students.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} ?숈깮
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-1">?섏뾽 ?쇱옄</label>
+              <input
+                type="date"
+                value={evalDate}
+                onChange={(e) => setEvalDate(e.target.value)}
+                className="w-full p-2.5 border rounded-xl text-sm bg-gray-50 focus:outline-blue-500"
+              />
+            </div>
+          </div>
+
+          <hr className="border-gray-100" />
+
+          {/* 6媛???ぉ ?됯? ?щ씪?대뜑 */}
+          <div className="space-y-5">
+            <h3 className="font-bold text-gray-800 text-base">?뱤 ?섏뾽 ?깆랬???됯? (1~10??</h3>
+
+            {/* 1. 吏媛??щ? */}
+            <div className="space-y-1">
+              <div className="flex justify-between text-sm font-semibold">
+                <span>1. 異쒖꽍 諛?吏媛?/span>
+                <span className="text-blue-600 font-bold">{scoreTardiness}??/span>
+              </div>
+              <input
+                type="range" min="1" max="10"
+                value={scoreTardiness}
+                onChange={(e) => setScoreTardiness(e.target.value)}
+                className="w-full accent-blue-600 cursor-pointer"
+              />
+            </div>
+
+            {/* 2. ?숈젣 ?꾩꽦??*/}
+            <div className="space-y-1">
+              <div className="flex justify-between text-sm font-semibold">
+                <span>2. ?숈젣 ?꾩꽦??/span>
+                <span className="text-blue-600 font-bold">{scoreHomework}??/span>
+              </div>
+              <input
+                type="range" min="1" max="10"
+                value={scoreHomework}
+                onChange={(e) => setScoreHomework(e.target.value)}
+                className="w-full accent-blue-600 cursor-pointer"
+              />
+            </div>
+
+            {/* 3. ?섏뾽 紐곗엯??*/}
+            <div className="space-y-1">
+              <div className="flex justify-between text-sm font-semibold">
+                <span>3. ?섏뾽 紐곗엯??/span>
+                <span className="text-blue-600 font-bold">{scoreFocus}??/span>
+              </div>
+              <input
+                type="range" min="1" max="10"
+                value={scoreFocus}
+                onChange={(e) => setScoreFocus(e.target.value)}
+                className="w-full accent-blue-600 cursor-pointer"
+              />
+            </div>
+
+            {/* 4. 媛쒕뀗 ?댄빐??*/}
+            <div className="space-y-1">
+              <div className="flex justify-between text-sm font-semibold">
+                <span>4. 媛쒕뀗 ?댄빐??/span>
+                <span className="text-blue-600 font-bold">{scoreConcept}??/span>
+              </div>
+              <input
+                type="range" min="1" max="10"
+                value={scoreConcept}
+                onChange={(e) => setScoreConcept(e.target.value)}
+                className="w-full accent-blue-600 cursor-pointer"
+              />
+            </div>
+
+            {/* 5. ?섏뾽 ?쒖씠??*/}
+            <div className="space-y-1">
+              <div className="flex justify-between text-sm font-semibold">
+                <span>5. 泥닿컧 ?섏뾽 ?쒖씠??/span>
+                <span className="text-blue-600 font-bold">{scoreDifficulty}??/span>
+              </div>
+              <input
+                type="range" min="1" max="10"
+                value={scoreDifficulty}
+                onChange={(e) => setScoreDifficulty(e.target.value)}
+                className="w-full accent-blue-600 cursor-pointer"
+              />
+            </div>
+
+            {/* 6. ?뚯뒪???먯닔 */}
+            <div className="space-y-1">
+              <div className="flex justify-between text-sm font-semibold">
+                <span>6. ?뚯뒪???먯닔</span>
+                <span className="text-blue-600 font-bold">{scoreTest}??/span>
+              </div>
+              <input
+                type="range" min="1" max="10"
+                value={scoreTest}
+                onChange={(e) => setScoreTest(e.target.value)}
+                className="w-full accent-blue-600 cursor-pointer"
+              />
+            </div>
+          </div>
+
+          {/* ?좎깮????以?珥앺룊 */}
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-1">?뮠 ?좎깮????以??쇰뱶諛?/label>
+            <textarea
+              placeholder="?ㅻ뒛 ?섏뾽?먯꽌 ?섑븳 ?먯씠??蹂댁셿???먯쓣 ?곸뼱二쇱꽭??"
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              className="w-full p-3 border rounded-xl text-sm h-24 focus:outline-blue-500"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl shadow-md hover:bg-blue-700 transition"
+          >
+            {loading ? '?깅줉 以?..' : '?쇰뱶諛??깅줉 諛?由ы룷???앹꽦'}
+          </button>
+
+        </form>
+      </main>
+    </div>
+  );
+}
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "Create Next App",
+  description: "Generated by create next app",
+};
+
+export default function RootLayout({ children }: LayoutProps<"/">) {
+  return (
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
+      <body className="min-h-full flex flex-col">{children}</body>
+    </html>
+  );
+}
+'use client';
+
+import { useRouter } from 'next/navigation';
+
+export default function Home() {
+  const router = useRouter();
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* 源붾걫?댁쭊 以묒븰 ?뺣젹 ?ㅻ뜑 */}
+      <header className="bg-white border-b border-gray-200 py-4 px-4 shadow-sm text-center">
+        <div className="max-w-5xl mx-auto">
+          <h1 
+            onClick={() => router.push('/')}
+            className="text-xl sm:text-2xl font-bold text-blue-600 cursor-pointer inline-block"
+          >
+            ?덉닔???숈썝 愿由??쒖뒪??
+          </h1>
+        </div>
+      </header>
+
+      {/* ?덉뼱濡??뱀뀡 */}
+      <section className="bg-blue-600 text-white py-12 sm:py-16 px-4 text-center">
+        <div className="max-w-3xl mx-auto space-y-4">
+          <h2 className="text-2xl sm:text-4xl font-extrabold leading-snug">
+            泥닿퀎?곸씤 ?섑븰 ?숈뒿 愿由ъ쓽 ?쒖옉
+          </h2>
+          <p className="text-sm sm:text-base opacity-90 leading-relaxed">
+            媛쒕퀎 留욎땄 ?숈젣 愿由? 異쒓껐 ?뚮┝, 蹂듭뒿 ?곸긽源뚯? ?쒓납?먯꽌 ?ㅻ쭏?명븯寃?愿由ы븯?몄슂.
+          </p>
+          <div className="pt-3">
+            <button
+              onClick={() => router.push('/login')}
+              className="bg-white text-blue-600 font-bold px-8 py-3.5 rounded-xl shadow-lg hover:bg-gray-100 transition text-base active:scale-95"
+            >
+              ??媛뺤쓽???묒냽?섍린
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* ?숈썝 ?듭떖 ?쒖뒪???뚭컻 */}
+      <main className="max-w-4xl mx-auto px-4 py-10 space-y-6 flex-1 w-full">
+        <h3 className="text-lg font-bold text-gray-800 text-center">?숈썝 ?듭떖 ?쒖뒪??/h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-white p-5 rounded-2xl border border-gray-200 text-center space-y-2 shadow-sm">
+            <span className="text-3xl">?벑</span>
+            <h4 className="font-bold text-gray-800">?ㅼ떆媛?異쒓껐 愿由?/h4>
+            <p className="text-xs text-gray-500">?섏뾽 ?쒖옉 ???깆썝 泥댄겕 諛?遺紐⑤떂 ?뚮┝ 吏??/p>
+          </div>
+          <div className="bg-white p-5 rounded-2xl border border-gray-200 text-center space-y-2 shadow-sm">
+            <span className="text-3xl">?렗</span>
+            <h4 className="font-bold text-gray-800">蹂듭뒿 ?곸긽 ?쒓났</h4>
+            <p className="text-xs text-gray-500">?볦튇 ?섏뾽?대굹 ?댄빐?섍린 ?대젮??媛쒕뀗 諛섎났 ?숈뒿</p>
+          </div>
+          <div className="bg-white p-5 rounded-2xl border border-gray-200 text-center space-y-2 shadow-sm">
+            <span className="text-3xl">??/span>
+            <h4 className="font-bold text-gray-800">1:1 Q&A 吏덈Ц</h4>
+            <p className="text-xs text-gray-500">臾몄젣 ?ъ쭊 珥ъ쁺 ?낅줈??諛??좎깮?섏쓽 移쒖젅??????댁꽕</p>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+/// <reference types="next" />
+/// <reference types="next/image-types/global" />
+import "./.next/types/routes.d.ts";
+import "./.next/types/root-params.d.ts";
+
+// NOTE: This file should not be edited
+// see https://nextjs.org/docs/app/api-reference/config/typescript for more information.
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  /* config options here */
+};
+
+export default nextConfig;

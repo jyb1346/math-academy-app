@@ -11,8 +11,8 @@ function BoardContent() {
   const [content, setContent] = useState('');
   const [newCategory, setNewCategory] = useState('NOTICE');
   const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
+  const [googleFormUrl, setGoogleFormUrl] = useState('');
   
-  // 교재별 다중 숙제 목록 상태
   const [homeworkList, setHomeworkList] = useState([
     { bookTitle: '', range: '' },
   ]);
@@ -74,7 +74,6 @@ function BoardContent() {
     }
   };
 
-  // 교재 입력 항목 추가/삭제/변경 함수
   const handleAddBook = () => {
     setHomeworkList([...homeworkList, { bookTitle: '', range: '' }]);
   };
@@ -94,7 +93,6 @@ function BoardContent() {
     if (!title.trim()) return alert('제목을 입력해주세요.');
 
     try {
-      // 숙제 카테고리일 경우 교재별 숙제 목록을 본문 텍스트에 조합하여 저장
       let finalContent = content;
       if (newCategory === 'HOMEWORK') {
         const bookDetails = homeworkList
@@ -102,7 +100,8 @@ function BoardContent() {
           .map((item) => `📘 [${item.bookTitle}] ${item.range}`)
           .join('\n');
         
-        finalContent = `${bookDetails}\n\n📝 메모:\n${content}`;
+        const formLinkText = googleFormUrl.trim() ? `\n\n🔗 구글 폼 링크: ${googleFormUrl.trim()}` : '';
+        finalContent = `${bookDetails}${formLinkText}\n\n📝 메모:\n${content}`;
       }
 
       const postData = {
@@ -118,6 +117,7 @@ function BoardContent() {
 
       setTitle('');
       setContent('');
+      setGoogleFormUrl('');
       setHomeworkList([{ bookTitle: '', range: '' }]);
       fetchPosts();
       alert('성공적으로 등록되었습니다.');
@@ -127,7 +127,6 @@ function BoardContent() {
     }
   };
 
-  // 교재별/학생별 숙제 토글
   const toggleHomeworkStatus = async (postId, studentId, bookTitle) => {
     const key = `${postId}_${studentId}_${bookTitle}`;
     const currentStatus = submissions[key] || false;
@@ -195,7 +194,7 @@ function BoardContent() {
                 />
               </div>
 
-              {/* 숙제 선택 시 교재별 다중 숙제 입력 UI */}
+              {/* 숙제 선택 시 교재 및 구글 폼 입력 UI */}
               {newCategory === 'HOMEWORK' && (
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
                   <div className="flex justify-between items-center">
@@ -236,6 +235,20 @@ function BoardContent() {
                       )}
                     </div>
                   ))}
+
+                  {/* 구글 폼 URL 입력창 */}
+                  <div className="pt-2 border-t border-slate-200">
+                    <label className="block text-xs font-bold text-slate-600 mb-1">
+                      📋 구글 설문지 제출 링크 (선택)
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="https://forms.gle/..."
+                      value={googleFormUrl}
+                      onChange={(e) => setGoogleFormUrl(e.target.value)}
+                      className="w-full p-2 border rounded-lg text-sm bg-white"
+                    />
+                  </div>
                 </div>
               )}
 
@@ -280,10 +293,13 @@ function BoardContent() {
             <p className="text-center py-8 text-gray-500">등록된 게시글이 없습니다.</p>
           ) : (
             filteredPosts.map((post) => {
-              // 본문 텍스트에서 교재목록 추출
               const bookLines = post.content
                 .split('\n')
                 .filter((line) => line.startsWith('📘 ['));
+
+              // 구글 폼 링크 추출
+              const formMatch = post.content.match(/🔗 구글 폼 링크: (https?:\/\/[^\s]+)/);
+              const formUrl = formMatch ? formMatch[1] : null;
 
               return (
                 <div key={post.id} className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm space-y-3">
@@ -306,6 +322,21 @@ function BoardContent() {
 
                   <h3 className="font-bold text-base text-gray-800">{post.title}</h3>
                   <p className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">{post.content}</p>
+
+                  {/* 구글 폼 이동 버튼 */}
+                  {formUrl && (
+                    <div className="pt-2">
+                      <a
+                        href={formUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-lg text-xs shadow transition"
+                      >
+                        <span>📋 구글 폼 숙제 제출하기</span>
+                        <span>↗</span>
+                      </a>
+                    </div>
+                  )}
 
                   {/* 선생님용 교재별/학생별 숙제 검사표 */}
                   {user?.role === 'TEACHER' && post.category === 'HOMEWORK' && bookLines.length > 0 && (

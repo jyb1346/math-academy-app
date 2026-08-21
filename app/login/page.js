@@ -6,7 +6,8 @@ import { supabase } from '@/lib/supabase';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState('STUDENT'); // 기본값: 학생
+  const [password, setPassword] = useState('');
+  const [role, setRole] = useState('STUDENT');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
@@ -15,12 +16,13 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // 입력받은 정보로 DB에서 사용자 조회
+      // 이메일, 권한, 비밀번호 일치 여부 확인
       const { data, error } = await supabase
         .from('users')
         .select('*')
         .eq('email', email.trim())
-        .eq('role', role);
+        .eq('role', role)
+        .eq('password', password.trim());
 
       if (error) {
         alert(`DB 에러 발생: ${error.message}`);
@@ -29,13 +31,12 @@ export default function LoginPage() {
       }
 
       if (!data || data.length === 0) {
-        alert(`일치하는 회원 정보가 없습니다.\n입력 이메일: [${email.trim()}]\n선택 권한: [${role}]`);
+        alert('일치하는 회원 정보가 없거나 비밀번호가 틀렸습니다.');
         setLoading(false);
         return;
       }
 
       const userData = data[0];
-      // 로그인 성공 시 로컬 스토리지에 사용자 정보 저장
       localStorage.setItem('user', JSON.stringify(userData));
 
       alert(`${userData.name}님 환영합니다!`);
@@ -57,7 +58,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
       <div className="max-w-md w-full bg-white rounded-2xl shadow-md p-8">
         <h2 className="text-2xl font-bold text-center text-gray-800 mb-6">
-          학원 관리 시스템 로그인
+          품수학 학원 로그인
         </h2>
 
         <form onSubmit={handleLogin} className="space-y-4">
@@ -97,7 +98,19 @@ export default function LoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="example@test.com"
               required
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">비밀번호</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="비밀번호 입력"
+              required
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
             />
           </div>
 

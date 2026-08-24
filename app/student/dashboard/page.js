@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 
@@ -116,7 +115,7 @@ export default function StudentDashboard() {
 
           {/* 3. 복습영상게시판 */}
           <div
-            onClick={() => alert('복습영상 준비 중입니다.')}
+            onClick={() => router.push('/board/video')}
             className="group relative bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs cursor-pointer hover:border-red-300 transition-all duration-300"
           >
             <div className="flex justify-between items-start">
@@ -133,7 +132,7 @@ export default function StudentDashboard() {
 
           {/* 4. 수업자료게시판 */}
           <div
-            onClick={() => alert('수업자료 준비 중입니다.')}
+            onClick={() => router.push('/board/material')}
             className="group relative bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs cursor-pointer hover:border-emerald-300 transition-all duration-300"
           >
             <div className="flex justify-between items-start">
@@ -150,7 +149,7 @@ export default function StudentDashboard() {
 
           {/* 5. Q&A게시판 */}
           <div
-            onClick={() => alert('Q&A 준비 중입니다.')}
+            onClick={() => router.push('/board/qna')}
             className="group relative bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs cursor-pointer hover:border-amber-300 transition-all duration-300 col-span-1 md:col-span-2"
           >
             <div className="flex justify-between items-start">

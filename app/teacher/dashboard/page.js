@@ -11,27 +11,27 @@ export default function TeacherDashboard() {
   const [classStudents, setClassStudents] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // 반 생성 폼 상태
+  // 반 생성 폼
   const [newClassName, setNewClassName] = useState('');
 
-  // 개별 학생 신규 등록 폼 상태
+  // 개별 학생 등록 폼
   const [studentName, setStudentName] = useState('');
   const [studentEmail, setStudentEmail] = useState('');
   const [studentPassword, setStudentPassword] = useState('1234');
   const [parentPhone, setParentPhone] = useState('');
 
-  // 학생 수정 모달 상태
+  // 학생 수정 모달
   const [editingStudent, setEditingStudent] = useState(null);
 
-  // 일괄 학생 등록 모달 상태
+  // 일괄 학생 등록 모달
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [batchInputText, setBatchInputText] = useState('');
 
-  // 특정 반에 학생 일괄 배정 모달 상태
+  // 특정 반에 학생 일괄 배정 모달
   const [assignTargetClass, setAssignTargetClass] = useState(null);
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
 
-  // 학생-반 배정 드롭다운 선택 상태
+  // 학생 개별 배정 드롭다운
   const [selectedClassMap, setSelectedClassMap] = useState({});
 
   const router = useRouter();
@@ -44,60 +44,32 @@ export default function TeacherDashboard() {
     }
     try {
       const parsedUser = JSON.parse(userData);
-      if (parsedUser.role !== 'TEACHER' && parsedUser.role !== 'HEAD_TEACHER') {
-        alert('선생님/원장님 권한이 필요합니다.');
-        router.push('/');
-        return;
-      }
-      
-      fetchLatestUser(parsedUser);
+      setUser(parsedUser);
+      fetchTeacherData(parsedUser.id);
     } catch (e) {
       console.error(e);
       router.push('/login');
     }
   }, []);
 
-  const fetchLatestUser = async (localUser) => {
+  const fetchTeacherData = async (teacherId) => {
     try {
-      const { data: dbUser, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', localUser.id)
-        .single();
-
-      if (!error && dbUser) {
-        localStorage.setItem('user', JSON.stringify(dbUser));
-        setUser(dbUser);
-        fetchDashboardData(dbUser);
-      } else {
-        setUser(localUser);
-        fetchDashboardData(localUser);
-      }
-    } catch (e) {
-      setUser(localUser);
-      fetchDashboardData(localUser);
-    }
-  };
-
-  // 🎯 본인이 담당하는 반과 학생만 조회하도록 통일
-  const fetchDashboardData = async (currentUser) => {
-    try {
-      // 1. 내 담당 반만 조회 (teacher_id = 내 ID)
+      // 1. 본인 담당 반만 조회
       const { data: cData } = await supabase
         .from('classes')
         .select('*')
-        .eq('teacher_id', currentUser.id);
+        .eq('teacher_id', teacherId);
       setClasses(cData || []);
 
-      // 2. 내 담당 학생만 조회 (teacher_id = 내 ID)
+      // 2. 본인 담당 학생만 조회
       const { data: stData } = await supabase
         .from('users')
         .select('*')
         .eq('role', 'STUDENT')
-        .eq('teacher_id', currentUser.id);
+        .eq('teacher_id', teacherId);
       setStudents(stData || []);
 
-      // 3. 반-학생 매핑 조회
+      // 3. 반-학생 배정 현황 조회
       const { data: csData } = await supabase.from('class_students').select('*');
       setClassStudents(csData || []);
 
@@ -108,7 +80,7 @@ export default function TeacherDashboard() {
     }
   };
 
-  // 1️⃣ 반 생성
+  // 반 생성
   const handleCreateClass = async (e) => {
     e.preventDefault();
     if (!newClassName.trim()) return alert('반 이름을 입력해주세요.');
@@ -121,7 +93,7 @@ export default function TeacherDashboard() {
 
       alert(`[${newClassName}] 반이 개설되었습니다.`);
       setNewClassName('');
-      fetchDashboardData(user);
+      fetchTeacherData(user.id);
     } catch (err) {
       alert(`반 개설 실패: ${err.message}`);
     }
@@ -133,13 +105,13 @@ export default function TeacherDashboard() {
     try {
       const { error } = await supabase.from('classes').delete().eq('id', classId);
       if (error) throw error;
-      fetchDashboardData(user);
+      fetchTeacherData(user.id);
     } catch (err) {
       alert(`삭제 실패: ${err.message}`);
     }
   };
 
-  // 2️⃣ 개별 학생 등록
+  // 개별 학생 등록
   const handleCreateSingleStudent = async (e) => {
     e.preventDefault();
     if (!studentName.trim() || !studentEmail.trim()) {
@@ -163,13 +135,13 @@ export default function TeacherDashboard() {
       setStudentName('');
       setStudentEmail('');
       setParentPhone('');
-      fetchDashboardData(user);
+      fetchTeacherData(user.id);
     } catch (err) {
       alert(`등록 실패: ${err.message}`);
     }
   };
 
-  // 3️⃣ 일괄 학생 등록
+  // 일괄 학생 등록
   const handleBatchCreateStudents = async (e) => {
     e.preventDefault();
     if (!batchInputText.trim()) return alert('학생 명단을 입력해주세요.');
@@ -206,13 +178,13 @@ export default function TeacherDashboard() {
       alert(`${payloads.length}명의 학생 계정이 생성되었습니다.`);
       setBatchInputText('');
       setShowBatchModal(false);
-      fetchDashboardData(user);
+      fetchTeacherData(user.id);
     } catch (err) {
       alert(`일괄 생성 실패: ${err.message}`);
     }
   };
 
-  // 4️⃣ 학생 정보 수정
+  // 학생 정보 수정
   const handleUpdateStudent = async (e) => {
     e.preventDefault();
     if (!editingStudent) return;
@@ -231,7 +203,7 @@ export default function TeacherDashboard() {
 
       alert('학생 정보가 수정되었습니다.');
       setEditingStudent(null);
-      fetchDashboardData(user);
+      fetchTeacherData(user.id);
     } catch (err) {
       alert(`수정 실패: ${err.message}`);
     }
@@ -243,13 +215,13 @@ export default function TeacherDashboard() {
     try {
       const { error } = await supabase.from('users').delete().eq('id', studentId);
       if (error) throw error;
-      fetchDashboardData(user);
+      fetchTeacherData(user.id);
     } catch (err) {
       alert(`삭제 실패: ${err.message}`);
     }
   };
 
-  // 5️⃣ 학생 개별 반 배정
+  // 개별 반 배정
   const handleAssignClass = async (studentId) => {
     const classId = selectedClassMap[studentId];
     if (!classId) return alert('배정할 반을 선택해 주세요.');
@@ -263,13 +235,13 @@ export default function TeacherDashboard() {
 
       if (error) throw error;
       alert('반 배정이 완료되었습니다.');
-      fetchDashboardData(user);
+      fetchTeacherData(user.id);
     } catch (err) {
       alert(`배정 실패: ${err.message}`);
     }
   };
 
-  // 6️⃣ 반 일괄 배정 모달 오픈
+  // 특정 반에 여러 학생 일괄 지정 배정 모달
   const openClassAssignModal = (cls) => {
     setAssignTargetClass(cls);
     const currentStudentIds = classStudents
@@ -308,7 +280,7 @@ export default function TeacherDashboard() {
 
       alert(`[${assignTargetClass.name}] 반에 ${selectedStudentIds.length}명의 학생 배정이 완료되었습니다.`);
       setAssignTargetClass(null);
-      fetchDashboardData(user);
+      fetchTeacherData(user.id);
     } catch (err) {
       alert(`배정 실패: ${err.message}`);
     }
@@ -316,7 +288,7 @@ export default function TeacherDashboard() {
 
   if (loading) return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center font-bold text-slate-600">
-      품수학 대시보드 로딩 중...
+      교무실 대시보드 로딩 중...
     </div>
   );
 
@@ -325,7 +297,7 @@ export default function TeacherDashboard() {
   return (
     <div className="min-h-screen bg-slate-100/70 pb-20 font-sans text-slate-800">
       
-      {/* 헤더 */}
+      {/* 📘 선생님 헤더 */}
       <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-30 px-6 py-4 flex justify-between items-center shadow-xs">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-black text-lg shadow-md shadow-blue-500/20 cursor-pointer" onClick={() => router.push('/')}>
@@ -336,27 +308,35 @@ export default function TeacherDashboard() {
               품수학 학원 교무실
             </h1>
             <p className="text-[11px] text-slate-400 font-semibold flex items-center gap-1.5 mt-0.5">
-              <span className={`font-black px-2 py-0.5 rounded-md text-[10px] ${
-                isHeadTeacher ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-indigo-50 text-indigo-700'
-              }`}>
-                {isHeadTeacher ? '👑 원장님' : '📘 선생님'}
+              <span className="bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-md text-[10px]">
+                📘 {isHeadTeacher ? '원장님 (내 수업 모드)' : '선생님'}
               </span>
               <span>{user?.name} 선생님 대시보드</span>
             </p>
           </div>
         </div>
 
-        <button
-          onClick={() => { localStorage.removeItem('user'); router.push('/login'); }}
-          className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3.5 py-2 rounded-xl transition"
-        >
-          로그아웃
-        </button>
+        <div className="flex items-center gap-2">
+          {isHeadTeacher && (
+            <button
+              onClick={() => router.push('/admin/dashboard')}
+              className="text-xs bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-bold px-3.5 py-2 rounded-xl transition"
+            >
+              👑 학원 통합 관리 뷰로 이동
+            </button>
+          )}
+          <button
+            onClick={() => { localStorage.removeItem('user'); router.push('/login'); }}
+            className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3.5 py-2 rounded-xl transition"
+          >
+            로그아웃
+          </button>
+        </div>
       </header>
 
       <main className="max-w-5xl mx-auto px-4 mt-8 space-y-8">
 
-        {/* 🎯 1. 메인 대형 메뉴 (일일피드백 & 반별게시판) */}
+        {/* 🎯 1. 메인 대형 액션 메뉴 */}
         <section className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             
@@ -437,7 +417,7 @@ export default function TeacherDashboard() {
               placeholder="신규 반 이름 입력 (예: 중3 심화A반)"
               value={newClassName}
               onChange={(e) => setNewClassName(e.target.value)}
-              className="flex-1 p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 transition"
+              className="flex-1 p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 transition"
             />
             <button
               type="submit"
@@ -486,7 +466,7 @@ export default function TeacherDashboard() {
           </div>
         </section>
 
-        {/* 👤 3. 학생 신규 등록 */}
+        {/* 👤 3. 내 담당 학생 신규 등록 */}
         <section className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-5">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-4">
             <div>

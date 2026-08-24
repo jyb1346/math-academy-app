@@ -45,7 +45,6 @@ function HexagonRadarChart({ scores, twoWeekAvgScores }) {
           return <line key={i} x1={center} y1={center} x2={x2} y2={y2} stroke="#cbd5e1" strokeWidth="1" />;
         })}
 
-        {/* 🎯 [변경] 학생 본인의 최근 2주 평균 오버랩 (오렌지 점선) */}
         {twoWeekAvgScores && (
           <polygon
             points={getCoordinates([
@@ -63,7 +62,6 @@ function HexagonRadarChart({ scores, twoWeekAvgScores }) {
           />
         )}
 
-        {/* 선택한 날짜의 피드백 (파란 면적) */}
         <polygon
           points={getCoordinates(values)}
           fill="rgba(37, 99, 235, 0.3)"
@@ -119,7 +117,6 @@ export default function EvalHistoryPage() {
   const [classes, setClasses] = useState([]);
   const [classStudents, setClassStudents] = useState([]);
 
-  // 필터 상태
   const [selectedClassId, setSelectedClassId] = useState('ALL');
   const [selectedStudentId, setSelectedStudentId] = useState('ALL');
   const [selectedDate, setSelectedDate] = useState('');
@@ -190,7 +187,6 @@ export default function EvalHistoryPage() {
     }
   };
 
-  // 🎯 [핵심] 해당 학생의 기준 날짜 대비 최근 2주(14일) 동안의 성취도 평균 계산
   const getTwoWeekAvgScores = (studentId, currentEvalDate) => {
     if (!currentEvalDate) return null;
 
@@ -198,7 +194,6 @@ export default function EvalHistoryPage() {
     const twoWeeksAgo = new Date(targetDate);
     twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
 
-    // 해당 학생의 최근 14일간 작성된 피드백 데이터 필터링
     const studentTwoWeekEvals = evaluations.filter((e) => {
       if (e.student_id !== studentId) return false;
       const evalDateObj = new Date(e.eval_date);
@@ -228,6 +223,28 @@ export default function EvalHistoryPage() {
       homework: Number((total.homework / count).toFixed(1)),
       perseverance: Number((total.perseverance / count).toFixed(1)),
     };
+  };
+
+  const renderAttendanceBadge = (status, latenessMins) => {
+    if (status === 'LATE') {
+      return (
+        <span className="bg-amber-100 text-amber-800 border border-amber-300 text-xs font-black px-2.5 py-0.5 rounded-full">
+          ⏰ {latenessMins || 10}분 지각
+        </span>
+      );
+    }
+    if (status === 'ABSENT') {
+      return (
+        <span className="bg-rose-100 text-rose-800 border border-rose-300 text-xs font-black px-2.5 py-0.5 rounded-full">
+          🔴 결석
+        </span>
+      );
+    }
+    return (
+      <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-black px-2.5 py-0.5 rounded-full">
+        🟢 정시 출석
+      </span>
+    );
   };
 
   const filteredEvals = evaluations.filter((item) => {
@@ -331,18 +348,20 @@ export default function EvalHistoryPage() {
               <p className="text-center py-12 text-slate-400 text-xs font-bold">작성하신 학습 피드백 내역이 없습니다.</p>
             ) : (
               filteredEvals.map((item) => {
-                // 🎯 기준 수업일로부터 최근 2주간 학생 본인의 평균점수 추출
                 const twoWeekAvgScores = getTwoWeekAvgScores(item.student_id, item.eval_date);
 
                 return (
                   <div key={item.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
                     
                     <div className="flex justify-between items-center border-b pb-3 text-xs">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-extrabold text-base text-slate-800">{item.users?.name} 학생</span>
                         <span className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full font-bold border border-blue-200">
                           📅 수업일: {item.eval_date}
                         </span>
+                        
+                        {/* 🎯 [추가] 출결/지각 뱃지 */}
+                        {renderAttendanceBadge(item.attendance_status, item.lateness_minutes)}
                       </div>
                       <button
                         onClick={() => handleDeleteEval(item.id, item.users?.name, item.eval_date)}

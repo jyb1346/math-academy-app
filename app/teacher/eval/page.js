@@ -6,25 +6,25 @@ import { useRouter } from 'next/navigation';
 
 export default function TeacherEvalPage() {
   const [user, setUser] = useState(null);
-  const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
-  const [classStudents, setClassStudents] = useState([]);
-  
-  // 선택된 반 필터 ('ALL' 또는 class.id)
-  const [selectedClassId, setSelectedClassId] = useState('ALL');
-  const [selectedStudent, setSelectedStudent] = useState(null);
+  const [selectedClassId, setSelectedClassId] = useState('');
+  const [students, setStudents] = useState([]);
+  const [selectedStudentId, setSelectedStudentId] = useState('');
 
-  // 평가 폼 상태 (1~10점 선택)
+  // 🎯 평가 항목 상태 (6개 + 출결/지각)
   const [evalDate, setEvalDate] = useState(new Date().toISOString().split('T')[0]);
-  const [attendance, setAttendance] = useState('ATTEND');
-  const [concept, setConcept] = useState(8);      // 개념 이해도
-  const [calculation, setCalculation] = useState(8);  // 계산 정확도
-  const [application, setApplication] = useState(7);  // 응용/유형 해결력
-  const [attitude, setAttitude] = useState(8);     // 수업 집중도
-  const [homework, setHomework] = useState(9);     // 과제 완성도 (오타 수정: fontHomework -> setHomework)
-  const [perseverance, setPerseverance] = useState(7); // 오답/끈기
+  const [attendanceStatus, setAttendanceStatus] = useState('ATTEND'); // ATTEND, LATE, ABSENT
+  const [latenessMinutes, setLatenessMinutes] = useState(10); // 지각 분
+
+  const [conceptScore, setConceptScore] = useState(8);
+  const [calcScore, setCalcScore] = useState(8);
+  const [appScore, setAppScore] = useState(8);
+  const [attitudeScore, setAttitudeScore] = useState(8);
+  const [homeworkScore, setHomeworkScore] = useState(8);
+  const [perseveranceScore, setPerseveranceScore] = useState(8);
+
   const [teacherComment, setTeacherComment] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const router = useRouter();
 
@@ -36,79 +36,98 @@ export default function TeacherEvalPage() {
     }
     const parsedUser = JSON.parse(userData);
     if (parsedUser.role !== 'TEACHER' && parsedUser.role !== 'HEAD_TEACHER') {
-      alert('선생님 접근 권한이 필요합니다.');
+      alert('선생님 권한이 필요합니다.');
       router.push('/');
       return;
     }
     setUser(parsedUser);
-    fetchInitialData(parsedUser);
+    fetchData(parsedUser);
   }, []);
 
-  const fetchInitialData = async (currentUser) => {
+  const fetchData = async (currentUser) => {
     try {
-      // 🎯 [핵심] 원장님도 기본적으로 '내가 직접 담당하는 학생'만 피드백 작성에 가져옴
-      const { data: stData } = await supabase
-        .from('users')
-        .select('*')
-        .eq('role', 'STUDENT')
-        .eq('teacher_id', currentUser.id);
-      setStudents(stData || []);
-
-      // 🎯 [핵심] 내가 만든 반만 피드백 선택 필터에 가져옴
       const { data: cData } = await supabase
         .from('classes')
         .select('*')
         .eq('teacher_id', currentUser.id);
-      setClasses(cData || []);
+      
+      const classList = cData || [];
+      setClasses(classList);
 
-      const { data: csData } = await supabase.from('class_students').select('*');
-      setClassStudents(csData || []);
-
+      if (classList.length > 0) {
+        setSelectedClassId(classList[0].id.toString());
+        fetchClassStudents(classList[0].id);
+      } else {
+        const { data: stData } = await supabase
+          .from('users')
+          .select('id, name, email')
+          .eq('role', 'STUDENT')
+          .eq('teacher_id', currentUser.id);
+        setStudents(stData || []);
+        if (stData && stData.length > 0) setSelectedStudentId(stData[0].id);
+      }
     } catch (err) {
       console.error(err);
-    }
-  };
-
-  const filteredStudents = students.filter((st) => {
-    if (selectedClassId === 'ALL') return true;
-    return classStudents.some(
-      (cs) => cs.class_id === parseInt(selectedClassId) && cs.student_id === st.id
-    );
-  });
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!selectedStudent) return alert('학생을 선택해 주세요.');
-
-    setLoading(true);
-    try {
-      const evalData = {
-        student_id: selectedStudent.id,
-        teacher_id: user.id, // 로그인한 원장님 본인의 ID로 저장
-        eval_date: evalDate,
-        attendance,
-        concept_score: parseInt(concept),
-        calc_score: parseInt(calculation),
-        app_score: parseInt(application),
-        attitude_score: parseInt(attitude),
-        homework_score: parseInt(homework),
-        perseverance_score: parseInt(perseverance),
-        teacher_comment: teacherComment,
-      };
-
-      const { error } = await supabase.from('daily_evaluations').insert([evalData]);
-      if (error) throw error;
-
-      alert(`[${selectedStudent.name}] 학생의 일일 학습 피드백이 저장되었습니다.`);
-      setTeacherComment('');
-    } catch (err) {
-      alert(`등록 실패: ${err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  if (!user) return <div className="p-8 text-center font-bold">로딩 중...</div>;
+  const fetchClassStudents = async (classId) => {
+    try {
+      const { data: csData } = await supabase
+        .from('class_students')
+        .select('student_id, users(id, name, email)')
+        .eq('class_id', classId);
+
+      if (csData) {
+        const stList = csData.map((item) => item.users).filter(Boolean);
+        setStudents(stList);
+        if (stList.length > 0) setSelectedStudentId(stList[0].id);
+        else setSelectedStudentId('');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleClassChange = (e) => {
+    const cId = e.target.value;
+    setSelectedClassId(cId);
+    fetchClassStudents(cId);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedStudentId) return alert('학생을 선택해 주세요.');
+
+    try {
+      const payload = {
+        teacher_id: user.id,
+        student_id: selectedStudentId,
+        eval_date: evalDate,
+        attendance_status: attendanceStatus,
+        lateness_minutes: attendanceStatus === 'LATE' ? parseInt(latenessMinutes) : 0,
+        concept_score: parseInt(conceptScore),
+        calc_score: parseInt(calcScore),
+        app_score: parseInt(appScore),
+        attitude_score: parseInt(attitudeScore),
+        homework_score: parseInt(homeworkScore),
+        perseverance_score: parseInt(perseveranceScore),
+        teacher_comment: teacherComment,
+      };
+
+      const { error } = await supabase.from('daily_evaluations').insert([payload]);
+      if (error) throw error;
+
+      alert('일일 피드백이 등록되었습니다!');
+      setTeacherComment('');
+    } catch (err) {
+      alert(`등록 실패: ${err.message}`);
+    }
+  };
+
+  if (loading) return <div className="p-8 text-center font-bold">로딩 중...</div>;
 
   return (
     <div className="min-h-screen bg-slate-50 pb-16">
@@ -121,195 +140,215 @@ export default function TeacherEvalPage() {
         </button>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 mt-6 space-y-6">
+      <main className="max-w-3xl mx-auto px-4 mt-6 space-y-6">
         <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
-          <h2 className="text-lg font-bold text-slate-800 border-b pb-3 flex items-center gap-2">
-            <span>📊</span> 일일 학습 피드백 작성 ({user.name} 선생님 전용)
-          </h2>
-
-          {/* 1. 반(Class) 필터 탭 */}
-          <div className="space-y-2">
-            <label className="block text-xs font-bold text-slate-600">🏫 내 개설 반 선택 필터</label>
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              <button
-                type="button"
-                onClick={() => { setSelectedClassId('ALL'); setSelectedStudent(null); }}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
-                  selectedClassId === 'ALL'
-                    ? 'bg-slate-900 text-white shadow'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                전체 내 담당 학생 ({students.length}명)
-              </button>
-              {classes.map((cls) => {
-                const count = classStudents.filter((cs) => cs.class_id === cls.id).length;
-                return (
-                  <button
-                    key={cls.id}
-                    type="button"
-                    onClick={() => { setSelectedClassId(cls.id.toString()); setSelectedStudent(null); }}
-                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
-                      selectedClassId === cls.id.toString()
-                        ? 'bg-indigo-600 text-white shadow'
-                        : 'bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100'
-                    }`}
-                  >
-                    📘 {cls.name} ({count}명)
-                  </button>
-                );
-              })}
+          <div className="border-b pb-4 flex justify-between items-center">
+            <div>
+              <h2 className="text-lg font-bold text-slate-800">📝 일일 학습 피드백 및 성취도 입력</h2>
+              <p className="text-xs text-slate-400 mt-0.5">학생별 6대 학습 영역 성취도와 출결/지각 상태를 기록합니다.</p>
             </div>
+            <button
+              onClick={() => router.push('/teacher/eval/history')}
+              className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-xl transition"
+            >
+              📋 피드백 내역 보기
+            </button>
           </div>
 
-          {/* 2. 학생 선택 버블 */}
-          <div className="space-y-2">
-            <label className="block text-xs font-bold text-slate-600">👤 피드백 작성할 학생 선택</label>
-            {filteredStudents.length === 0 ? (
-              <p className="text-xs text-slate-400 py-4 text-center bg-slate-50 rounded-xl">
-                선택한 반에 소속된 내 담당 학생이 없습니다.
-              </p>
-            ) : (
-              <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-1">
-                {filteredStudents.map((st) => {
-                  const isSelected = selectedStudent?.id === st.id;
-                  return (
-                    <button
-                      key={st.id}
-                      type="button"
-                      onClick={() => setSelectedStudent(st)}
-                      className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-                        isSelected
-                          ? 'bg-blue-600 text-white shadow-md scale-105'
-                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
-                      }`}
-                    >
-                      <span>{st.name}</span>
-                      {isSelected && <span>✓</span>}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* 3. 영역 평가 입력 폼 */}
-          {selectedStudent ? (
-            <form onSubmit={handleSubmit} className="space-y-5 pt-4 border-t border-slate-100">
-              <div className="bg-blue-50/70 p-3 rounded-xl border border-blue-200 text-xs font-bold text-blue-900 flex justify-between items-center">
-                <span>🎯 평가 학생: {selectedStudent.name} ({selectedStudent.email})</span>
-                <div className="flex items-center gap-2">
-                  <span>수업일:</span>
-                  <input
-                    type="date"
-                    value={evalDate}
-                    onChange={(e) => setEvalDate(e.target.value)}
-                    className="p-1 px-2 border rounded-lg text-xs bg-white font-bold"
-                  />
-                </div>
-              </div>
-
-              {/* 6대 영역 점수 슬라이더 */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                
-                <div className="bg-white p-3 rounded-xl border border-slate-100 space-y-1">
-                  <div className="flex justify-between items-center text-xs font-bold">
-                    <span>📐 개념 이해도</span>
-                    <span className="text-blue-600 font-black text-sm">{concept}점</span>
-                  </div>
-                  <input
-                    type="range" min="1" max="10" value={concept}
-                    onChange={(e) => setConcept(e.target.value)}
-                    className="w-full accent-blue-600"
-                  />
-                </div>
-
-                <div className="bg-white p-3 rounded-xl border border-slate-100 space-y-1">
-                  <div className="flex justify-between items-center text-xs font-bold">
-                    <span>✏️ 연산/계산 정확도</span>
-                    <span className="text-blue-600 font-black text-sm">{calculation}점</span>
-                  </div>
-                  <input
-                    type="range" min="1" max="10" value={calculation}
-                    onChange={(e) => setCalculation(e.target.value)}
-                    className="w-full accent-blue-600"
-                  />
-                </div>
-
-                <div className="bg-white p-3 rounded-xl border border-slate-100 space-y-1">
-                  <div className="flex justify-between items-center text-xs font-bold">
-                    <span>💡 응용/심화 해결력</span>
-                    <span className="text-blue-600 font-black text-sm">{application}점</span>
-                  </div>
-                  <input
-                    type="range" min="1" max="10" value={application}
-                    onChange={(e) => setApplication(e.target.value)}
-                    className="w-full accent-blue-600"
-                  />
-                </div>
-
-                <div className="bg-white p-3 rounded-xl border border-slate-100 space-y-1">
-                  <div className="flex justify-between items-center text-xs font-bold">
-                    <span>🔥 수업 태도/집중도</span>
-                    <span className="text-blue-600 font-black text-sm">{attitude}점</span>
-                  </div>
-                  <input
-                    type="range" min="1" max="10" value={attitude}
-                    onChange={(e) => setAttitude(e.target.value)}
-                    className="w-full accent-blue-600"
-                  />
-                </div>
-
-                <div className="bg-white p-3 rounded-xl border border-slate-100 space-y-1">
-                  <div className="flex justify-between items-center text-xs font-bold">
-                    <span>📚 과제 이행 및 완성도</span>
-                    <span className="text-blue-600 font-black text-sm">{homework}점</span>
-                  </div>
-                  <input
-                    type="range" min="1" max="10" value={homework}
-                    onChange={(e) => setHomework(e.target.value)}
-                    className="w-full accent-blue-600"
-                  />
-                </div>
-
-                <div className="bg-white p-3 rounded-xl border border-slate-100 space-y-1">
-                  <div className="flex justify-between items-center text-xs font-bold">
-                    <span>🧩 오답 복습 및 끈기</span>
-                    <span className="text-blue-600 font-black text-sm">{perseverance}점</span>
-                  </div>
-                  <input
-                    type="range" min="1" max="10" value={perseverance}
-                    onChange={(e) => setPerseverance(e.target.value)}
-                    className="w-full accent-blue-600"
-                  />
-                </div>
-
+          <form onSubmit={handleSubmit} className="space-y-6">
+            
+            {/* 반 & 학생 & 날짜 선택 */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">🏫 담당 반 선택</label>
+                <select
+                  value={selectedClassId}
+                  onChange={handleClassChange}
+                  className="w-full p-2.5 border rounded-xl text-xs bg-white font-bold text-slate-800"
+                >
+                  {classes.map((cls) => (
+                    <option key={cls.id} value={cls.id}>📘 {cls.name}</option>
+                  ))}
+                </select>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">선생님 총평 코멘트</label>
-                <textarea
-                  required
-                  placeholder="오늘 수업 성취도 및 보완할 점을 자유롭게 기록해 주세요."
-                  value={teacherComment}
-                  onChange={(e) => setTeacherComment(e.target.value)}
-                  className="w-full p-3 border rounded-xl text-sm h-24"
-                />
+                <label className="block text-xs font-bold text-slate-600 mb-1">👤 학생 선택</label>
+                <select
+                  value={selectedStudentId}
+                  onChange={(e) => setSelectedStudentId(e.target.value)}
+                  className="w-full p-2.5 border rounded-xl text-xs bg-white font-bold text-slate-800"
+                >
+                  {students.length === 0 ? (
+                    <option value="">등록된 학생 없음</option>
+                  ) : (
+                    students.map((st) => (
+                      <option key={st.id} value={st.id}>{st.name} ({st.email})</option>
+                    ))
+                  )}
+                </select>
               </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold text-sm hover:bg-blue-700 shadow transition disabled:bg-slate-300"
-              >
-                {loading ? '저장 중...' : '피드백 저장하기'}
-              </button>
-            </form>
-          ) : (
-            <div className="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-400 text-xs font-bold">
-              위에서 학생을 선택하시면 피드백 입력 창이 나타납니다.
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">📅 수업 날짜</label>
+                <input
+                  type="date"
+                  value={evalDate}
+                  onChange={(e) => setEvalDate(e.target.value)}
+                  className="w-full p-2 border rounded-xl text-xs bg-white font-bold text-slate-800"
+                />
+              </div>
             </div>
-          )}
+
+            {/* 🎯 [추가] 출결 및 지각 정보 선택 폼 */}
+            <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-200/80 space-y-3">
+              <span className="text-xs font-extrabold text-amber-900 block">⏰ 출석 및 지각 상태 기록</span>
+              <div className="flex flex-wrap gap-2 items-center">
+                <button
+                  type="button"
+                  onClick={() => setAttendanceStatus('ATTEND')}
+                  className={`px-4 py-2 rounded-xl text-xs font-extrabold transition ${
+                    attendanceStatus === 'ATTEND'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-white text-slate-600 border border-slate-200'
+                  }`}
+                >
+                  🟢 정시 출석
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAttendanceStatus('LATE')}
+                  className={`px-4 py-2 rounded-xl text-xs font-extrabold transition ${
+                    attendanceStatus === 'LATE'
+                      ? 'bg-amber-500 text-white shadow-sm'
+                      : 'bg-white text-slate-600 border border-slate-200'
+                  }`}
+                >
+                  ⏰ 지각
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAttendanceStatus('ABSENT')}
+                  className={`px-4 py-2 rounded-xl text-xs font-extrabold transition ${
+                    attendanceStatus === 'ABSENT'
+                      ? 'bg-rose-600 text-white shadow-sm'
+                      : 'bg-white text-slate-600 border border-slate-200'
+                  }`}
+                >
+                  🔴 결석
+                </button>
+
+                {/* 지각 선택 시 분 입력 세부 옵션 */}
+                {attendanceStatus === 'LATE' && (
+                  <div className="flex items-center gap-1.5 ml-2 bg-white px-3 py-1.5 rounded-xl border border-amber-300">
+                    <span className="text-xs font-bold text-amber-800">지각 시간:</span>
+                    <select
+                      value={latenessMinutes}
+                      onChange={(e) => setLatenessMinutes(e.target.value)}
+                      className="text-xs font-extrabold text-amber-900 bg-transparent focus:outline-none"
+                    >
+                      <option value={5}>5분 지각</option>
+                      <option value={10}>10분 지각</option>
+                      <option value={15}>15분 지각</option>
+                      <option value={20}>20분 지각</option>
+                      <option value={30}>30분 이상 지각</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 6대 영역 점수 슬라이더 */}
+            <div className="space-y-4 pt-2">
+              <h3 className="text-xs font-bold text-slate-700">📊 6대 성취도 영역 (각 1~10점)</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1">
+                  <div className="flex justify-between text-xs font-bold">
+                    <span>📘 개념 이해도</span>
+                    <span className="text-blue-600 font-black">{conceptScore}점</span>
+                  </div>
+                  <input
+                    type="range" min="1" max="10" value={conceptScore}
+                    onChange={(e) => setConceptScore(e.target.value)} className="w-full accent-blue-600"
+                  />
+                </div>
+
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1">
+                  <div className="flex justify-between text-xs font-bold">
+                    <span>🔢 연산/계산 정확도</span>
+                    <span className="text-blue-600 font-black">{calcScore}점</span>
+                  </div>
+                  <input
+                    type="range" min="1" max="10" value={calcScore}
+                    onChange={(e) => setCalcScore(e.target.value)} className="w-full accent-blue-600"
+                  />
+                </div>
+
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1">
+                  <div className="flex justify-between text-xs font-bold">
+                    <span>💡 응용/심화 해결력</span>
+                    <span className="text-blue-600 font-black">{appScore}점</span>
+                  </div>
+                  <input
+                    type="range" min="1" max="10" value={appScore}
+                    onChange={(e) => setAppScore(e.target.value)} className="w-full accent-blue-600"
+                  />
+                </div>
+
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1">
+                  <div className="flex justify-between text-xs font-bold">
+                    <span>👀 수업 태도/집중도</span>
+                    <span className="text-blue-600 font-black">{attitudeScore}점</span>
+                  </div>
+                  <input
+                    type="range" min="1" max="10" value={attitudeScore}
+                    onChange={(e) => setAttitudeScore(e.target.value)} className="w-full accent-blue-600"
+                  />
+                </div>
+
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1">
+                  <div className="flex justify-between text-xs font-bold">
+                    <span>📚 과제 완성도</span>
+                    <span className="text-blue-600 font-black">{homeworkScore}점</span>
+                  </div>
+                  <input
+                    type="range" min="1" max="10" value={homeworkScore}
+                    onChange={(e) => setHomeworkScore(e.target.value)} className="w-full accent-blue-600"
+                  />
+                </div>
+
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1">
+                  <div className="flex justify-between text-xs font-bold">
+                    <span>🔥 오답 복습 및 끈기</span>
+                    <span className="text-blue-600 font-black">{perseveranceScore}점</span>
+                  </div>
+                  <input
+                    type="range" min="1" max="10" value={perseveranceScore}
+                    onChange={(e) => setPerseveranceScore(e.target.value)} className="w-full accent-blue-600"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 총평 메모 */}
+            <div className="space-y-1">
+              <label className="block text-xs font-bold text-slate-700">✍️ 선생님 총평 코멘트</label>
+              <textarea
+                value={teacherComment}
+                onChange={(e) => setTeacherComment(e.target.value)}
+                placeholder="오늘 수업 성취 및 칭찬/보완할 점을 적어주세요."
+                className="w-full p-3 border rounded-xl text-xs h-24 font-medium"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow transition text-sm"
+            >
+              일일 피드백 등록하기
+            </button>
+          </form>
         </div>
       </main>
     </div>

@@ -37,7 +37,9 @@ function BoardContent() {
 
   const [allStudents, setAllStudents] = useState([]);
   const [myStudents, setMyStudents] = useState([]);
-  const [submissions, setSubmissions] = useState({});
+  
+  // 🎯 학생 숙제 공지 확인 상태 저장 (post_id -> Set of student_id)
+  const [postConfirmations, setPostConfirmations] = useState({});
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -92,7 +94,6 @@ function BoardContent() {
         const mySt = allSt.filter((s) => s.teacher_id === currentUser.id);
         setMyStudents(mySt);
       } else {
-        // 🎯 학생 계정일 경우 소속된 반 정보 및 목록 가져오기
         const { data: csData } = await supabase
           .from('class_students')
           .select('class_id')
@@ -121,18 +122,60 @@ function BoardContent() {
 
     if (!error) {
       setPosts(data || []);
-      fetchSubmissions();
+      fetchConfirmations();
     }
   };
 
-  const fetchSubmissions = async () => {
-    const { data } = await supabase.from('homework_submissions').select('*');
-    if (data) {
-      const subMap = {};
-      data.forEach((sub) => {
-        subMap[`${sub.post_id}_${sub.student_id}_${sub.book_title}`] = sub.is_completed;
+  // 🎯 학생들의 공지 확인 내역 가져오기
+  const fetchConfirmations = async () => {
+    const { data, error } = await supabase.from('post_confirmations').select('*');
+    if (!error && data) {
+      const confirmMap = {};
+      data.forEach((item) => {
+        if (!confirmMap[item.post_id]) {
+          confirmMap[item.post_id] = new Set();
+        }
+        confirmMap[item.post_id].add(item.student_id);
       });
-      setSubmissions(subMap);
+      setPostConfirmations(confirmMap);
+    }
+  };
+
+  // 🎯 학생이 직접 [공지 및 숙제 확인 완료] 버튼 클릭 시 토글 처리
+  const togglePostConfirmation = async (postId) => {
+    if (!user || user.role !== 'STUDENT') return;
+
+    const isConfirmed = postConfirmations[postId]?.has(user.id);
+
+    if (isConfirmed) {
+      const { error } = await supabase
+        .from('post_confirmations')
+        .delete()
+        .eq('post_id', postId)
+        .eq('student_id', user.id);
+
+      if (!error) {
+        setPostConfirmations((prev) => {
+          const updated = { ...prev };
+          if (updated[postId]) {
+            updated[postId].delete(user.id);
+          }
+          return { ...updated };
+        });
+      }
+    } else {
+      const { error } = await supabase
+        .from('post_confirmations')
+        .insert([{ post_id: postId, student_id: user.id }]);
+
+      if (!error) {
+        setPostConfirmations((prev) => {
+          const updated = { ...prev };
+          if (!updated[postId]) updated[postId] = new Set();
+          updated[postId].add(user.id);
+          return { ...updated };
+        });
+      }
     }
   };
 
@@ -273,23 +316,6 @@ function BoardContent() {
     }
   };
 
-  const toggleHomeworkStatus = async (postId, studentId, bookTitle) => {
-    const key = `${postId}_${studentId}_${bookTitle}`;
-    const currentStatus = submissions[key] || false;
-    const nextStatus = !currentStatus;
-
-    const { error } = await supabase
-      .from('homework_submissions')
-      .upsert(
-        { post_id: postId, student_id: studentId, book_title: bookTitle, is_completed: nextStatus },
-        { onConflict: 'post_id,student_id,book_title' }
-      );
-
-    if (!error) {
-      setSubmissions((prev) => ({ ...prev, [key]: nextStatus }));
-    }
-  };
-
   const activeStudents = studentScope === 'MY_STUDENTS' ? myStudents : allStudents;
   const myClassIdList = myClasses.map((c) => c.id);
 
@@ -329,6 +355,7 @@ function BoardContent() {
 
       <main className="max-w-4xl mx-auto px-4 mt-6 space-y-6">
         
+        {/* 선생님/원장님용 공지 작성 */}
         {user?.role !== 'STUDENT' && (
           <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
             <h2 className="font-bold text-lg text-gray-800">✍️ 반별 공지 및 숙제 작성 ({user?.name || ''} 선생님)</h2>
@@ -456,9 +483,10 @@ function BoardContent() {
           </div>
         )}
 
+        {/* 선생님 전용: 확인 학생 범위 옵션 */}
         {user?.role !== 'STUDENT' && (
           <div className="flex items-center justify-between bg-white p-3 px-4 rounded-xl border border-slate-200">
-            <span className="text-xs font-bold text-slate-700">👥 숙제 검사 학생 범위:</span>
+            <span className="text-xs font-bold text-slate-700">👥 학생 확인 상태 표시 범위:</span>
             <div className="flex gap-1.5">
               <button
                 onClick={() => setStudentScope('MY_STUDENTS')}
@@ -484,7 +512,7 @@ function BoardContent() {
           </div>
         )}
 
-        {/* 🎯 [개편] 학생/선생님 전용 내 반 필터링 탭 */}
+        {/* 반별 필터 버튼 */}
         <div className="space-y-2">
           <div className="flex gap-2 overflow-x-auto pb-1">
             <button
@@ -513,20 +541,18 @@ function BoardContent() {
           </div>
         </div>
 
+        {/* 게시글 목록 */}
         <div className="space-y-4">
           {visiblePosts.length === 0 ? (
             <p className="text-center py-8 text-gray-500 text-xs font-bold">등록된 공지글이 없습니다.</p>
           ) : (
             visiblePosts.map((post) => {
               const postContent = post.content || '';
-              const bookLines = postContent
-                .split('\n')
-                .filter((line) => line.startsWith('📘 ['));
-
               const formMatch = postContent.match(/🔗 구글 폼 링크: (https?:\/\/[^\s]+)/);
               const formUrl = formMatch ? formMatch[1] : null;
 
               const isMyPost = user?.id === post.author_id;
+              const isConfirmedByMe = postConfirmations[post.id]?.has(user?.id);
 
               return (
                 <div key={post.id} className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm space-y-3">
@@ -592,48 +618,56 @@ function BoardContent() {
                     </div>
                   )}
 
-                  {user?.role !== 'STUDENT' && post.category === 'HOMEWORK' && bookLines.length > 0 && (
+                  {/* 🎯 [학생 전용] 숙제/공지 확인 완료 버튼 */}
+                  {user?.role === 'STUDENT' && (
+                    <div className="pt-3 border-t border-slate-100 flex justify-end">
+                      <button
+                        onClick={() => togglePostConfirmation(post.id)}
+                        className={`px-4 py-2 rounded-xl text-xs font-extrabold transition shadow-sm flex items-center gap-1.5 ${
+                          isConfirmedByMe
+                            ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200'
+                        }`}
+                      >
+                        <span>{isConfirmedByMe ? '✓ 숙제 및 공지 확인 완료' : '☐ 공지 확인하기'}</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* 🎯 [선생님 전용] 학생 공지/숙제 확인 현황 표 */}
+                  {user?.role !== 'STUDENT' && (
                     <div className="mt-4 pt-3 border-t border-gray-100 bg-slate-50 p-4 rounded-xl space-y-3">
                       <div className="flex justify-between items-center">
-                        <p className="text-xs font-bold text-slate-700">✅ 교재별 숙제 제출 검사표</p>
+                        <p className="text-xs font-bold text-slate-700">👀 학생 공지/숙제 확인 현황</p>
                         <span className="text-[10px] font-bold text-blue-600">
                           {studentScope === 'MY_STUDENTS' ? '👤 내 담당 학생만 보기' : '🌐 학원 전체 학생 보기'}
                         </span>
                       </div>
 
-                      {bookLines.map((line, idx) => {
-                        const bookTitle = line.match(/\[(.*?)\]/)?.[1] || `교재${idx + 1}`;
-                        return (
-                          <div key={idx} className="bg-white p-3 rounded-xl border border-slate-200 space-y-2">
-                            <span className="text-xs font-bold text-blue-700 block">📘 {bookTitle}</span>
-                            <div className="flex flex-wrap gap-2">
-                              {activeStudents.length === 0 ? (
-                                <span className="text-xs text-slate-400">해당 범위의 학생이 없습니다.</span>
-                              ) : (
-                                activeStudents.map((st) => {
-                                  const key = `${post.id}_${st.id}_${bookTitle}`;
-                                  const isDone = submissions[key];
-                                  return (
-                                    <button
-                                      key={st.id}
-                                      onClick={() => toggleHomeworkStatus(post.id, st.id, bookTitle)}
-                                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                                        isDone
-                                          ? 'bg-emerald-600 text-white shadow'
-                                          : 'bg-slate-100 border text-slate-500 hover:bg-slate-200'
-                                      }`}
-                                    >
-                                      {st.name} {isDone ? '✓ 완료' : '미제출'}
-                                    </button>
-                                  );
-                                })
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+                      <div className="flex flex-wrap gap-2">
+                        {activeStudents.length === 0 ? (
+                          <span className="text-xs text-slate-400">해당 범위의 학생이 없습니다.</span>
+                        ) : (
+                          activeStudents.map((st) => {
+                            const isConfirmed = postConfirmations[post.id]?.has(st.id);
+                            return (
+                              <span
+                                key={st.id}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${
+                                  isConfirmed
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                    : 'bg-white text-slate-400 border-slate-200'
+                                }`}
+                              >
+                                {st.name} {isConfirmed ? '✓ 확인완료' : '미확인'}
+                              </span>
+                            );
+                          })
+                        )}
+                      </div>
                     </div>
                   )}
+
                 </div>
               );
             })
@@ -641,6 +675,7 @@ function BoardContent() {
         </div>
       </main>
 
+      {/* 글 수정 모달 */}
       {editingPost && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white rounded-2xl p-6 w-full max-w-lg space-y-4 shadow-2xl my-8">

@@ -14,7 +14,7 @@ export default function TeacherEvalPage() {
   // 평가 항목 상태
   const [evalDate, setEvalDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendanceStatus, setAttendanceStatus] = useState('ATTEND'); // ATTEND, LATE, ABSENT
-  const [latenessMinutes, setLatenessMinutes] = useState(5); // 지각 분 기본값 5분
+  const [latenessMinutes, setLatenessMinutes] = useState(5);
 
   const [conceptScore, setConceptScore] = useState(8);
   const [calcScore, setCalcScore] = useState(8);
@@ -97,11 +97,25 @@ export default function TeacherEvalPage() {
     fetchClassStudents(cId);
   };
 
+  // 🎯 피드백 제출 및 중복 확인 덮어쓰기 로직
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!selectedStudentId) return alert('학생을 선택해 주세요.');
 
+    const selectedStudent = students.find((s) => s.id === selectedStudentId);
+    const studentName = selectedStudent ? selectedStudent.name : '해당';
+
     try {
+      // 1. 해당 학생 및 날짜에 이미 피드백이 존재하는지 확인
+      const { data: existingEval, error: checkError } = await supabase
+        .from('daily_evaluations')
+        .select('id')
+        .eq('student_id', selectedStudentId)
+        .eq('eval_date', evalDate)
+        .maybeSingle();
+
+      if (checkError) throw checkError;
+
       const payload = {
         teacher_id: user.id,
         student_id: selectedStudentId,
@@ -117,13 +131,38 @@ export default function TeacherEvalPage() {
         teacher_comment: teacherComment,
       };
 
-      const { error } = await supabase.from('daily_evaluations').insert([payload]);
-      if (error) throw error;
+      if (existingEval) {
+        // 이미 해당 날짜 피드백이 존재하는 경우
+        const confirmOverwrite = confirm(
+          `⚠️ [${studentName}] 학생의 ${evalDate} 날짜 피드백이 이미 작성되어 있습니다.\n\n새로 작성한 내용으로 수정(덮어쓰기)하시겠습니까?\n'취소'를 누르면 기존 피드백이 유지됩니다.`
+        );
 
-      alert('일일 피드백이 등록되었습니다!');
+        if (!confirmOverwrite) {
+          alert('기존 피드백이 유지되었습니다.');
+          return;
+        }
+
+        // 기존 데이터 수정 (Update)
+        const { error: updateError } = await supabase
+          .from('daily_evaluations')
+          .update(payload)
+          .eq('id', existingEval.id);
+
+        if (updateError) throw updateError;
+        alert(`[${studentName}] 학생의 ${evalDate} 피드백이 성공적으로 수정(덮어쓰기)되었습니다!`);
+      } else {
+        // 신규 작성 (Insert)
+        const { error: insertError } = await supabase
+          .from('daily_evaluations')
+          .insert([payload]);
+
+        if (insertError) throw insertError;
+        alert(`[${studentName}] 학생의 일일 피드백이 등록되었습니다!`);
+      }
+
       setTeacherComment('');
     } catch (err) {
-      alert(`등록 실패: ${err.message}`);
+      alert(`저장 실패: ${err.message}`);
     }
   };
 
@@ -238,7 +277,6 @@ export default function TeacherEvalPage() {
                   🔴 결석
                 </button>
 
-                {/* 🎯 문구 수정: ~분 이내 지각 */}
                 {attendanceStatus === 'LATE' && (
                   <div className="flex items-center gap-1.5 ml-2 bg-white px-3 py-1.5 rounded-xl border border-amber-300">
                     <span className="text-xs font-bold text-amber-800">지각 범위:</span>

@@ -98,7 +98,7 @@ export default function StudentDashboard() {
 
           {/* 2. 숙제 및 공지사항 확인게시판 */}
           <div
-            onClick={() => router.push('/board')}
+            onClick={() => router.push('/board?category=HOMEWORK')}
             className="group relative bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white p-6 rounded-3xl shadow-lg cursor-pointer overflow-hidden transition-all duration-300 hover:scale-[1.01]"
           >
             <div className="flex justify-between items-start">
@@ -115,7 +115,7 @@ export default function StudentDashboard() {
 
           {/* 3. 복습영상게시판 */}
           <div
-            onClick={() => router.push('/board/video')}
+            onClick={() => router.push('/board?category=VIDEO')}
             className="group relative bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs cursor-pointer hover:border-red-300 transition-all duration-300"
           >
             <div className="flex justify-between items-start">
@@ -132,7 +132,7 @@ export default function StudentDashboard() {
 
           {/* 4. 수업자료게시판 */}
           <div
-            onClick={() => router.push('/board/material')}
+            onClick={() => router.push('/board?category=MATERIAL')}
             className="group relative bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs cursor-pointer hover:border-emerald-300 transition-all duration-300"
           >
             <div className="flex justify-between items-start">
@@ -149,7 +149,7 @@ export default function StudentDashboard() {
 
           {/* 5. Q&A게시판 */}
           <div
-            onClick={() => router.push('/board/qna')}
+            onClick={() => router.push('/board')}
             className="group relative bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs cursor-pointer hover:border-amber-300 transition-all duration-300 col-span-1 md:col-span-2"
           >
             <div className="flex justify-between items-start">

@@ -52,7 +52,7 @@ function BoardContent() {
 
   const initData = async (currentUser) => {
     try {
-      // 1. 전체 반 목록 가져오기 (필터링용) 및 내 담당 반 독립 추출
+      // 1. 전체 반 목록 및 내 반 목록 분류
       const { data: cData } = await supabase.from('classes').select('*');
       const allC = cData || [];
       const myC = allC.filter((c) => c.teacher_id === currentUser.id);
@@ -60,24 +60,22 @@ function BoardContent() {
       setClasses(allC);
       setMyClasses(myC);
 
-      // 공지 작성 초기 기본 선택값을 '내 반'으로 설정
+      // 공지 작성 초기 선택값
       if (myC.length > 0) {
         setTargetClassId(myC[0].id.toString());
       } else {
         setTargetClassId('ALL_STUDENTS');
       }
 
-      // 2. 학생 목록 분류 (전체 학생 vs 내 담당 학생)
+      // 2. 학생/선생님별 소속 정보 로드
       if (currentUser.role !== 'STUDENT') {
         const { data: stData } = await supabase.from('users').select('*').eq('role', 'STUDENT');
         const allSt = stData || [];
         setAllStudents(allSt);
 
-        // 내 담당 학생만 필터링
         const mySt = allSt.filter((s) => s.teacher_id === currentUser.id);
         setMyStudents(mySt);
       } else {
-        // 학생인 경우 소속 반
         const { data: csData } = await supabase
           .from('class_students')
           .select('class_id')
@@ -96,7 +94,7 @@ function BoardContent() {
   const fetchPosts = async () => {
     const { data, error } = await supabase
       .from('posts')
-      .select('*, users(name), classes(name)')
+      .select('*, users(name), classes(name, teacher_id)')
       .order('created_at', { ascending: false });
 
     if (!error) {
@@ -139,7 +137,7 @@ function BoardContent() {
       if (newCategory === 'HOMEWORK') {
         const bookDetails = homeworkList
           .filter((item) => item.bookTitle.trim() !== '')
-          .map((item) => `📘 [${item.bookTitle}] ${item.range}`)
+          .map((item) => `📘 [${item.bookTitle}]${item.range}`)
           .join('\n');
         
         const formLinkText = googleFormUrl.trim() ? `\n\n🔗 구글 폼 링크: ${googleFormUrl.trim()}` : '';
@@ -187,15 +185,22 @@ function BoardContent() {
     }
   };
 
-  // 학생 필터링
   const activeStudents = studentScope === 'MY_STUDENTS' ? myStudents : allStudents;
+  const myClassIdList = myClasses.map((c) => c.id);
 
+  // 🎯 [핵심 개편] 내 담당 반 공지 + 학원 전체 공지만 필터링
   const visiblePosts = posts.filter((post) => {
     if (user?.role === 'STUDENT') {
       if (post.class_id !== null && !myClassIds.includes(post.class_id)) {
         return false;
       }
+    } else {
+      // 선생님/원장님의 경우: 학원 전체 공지(class_id === null)이거나 내가 담당하는 반의 공지만 노출
+      if (post.class_id !== null && !myClassIdList.includes(post.class_id)) {
+        return false;
+      }
     }
+
     if (selectedClassId !== 'ALL') {
       if (selectedClassId === 'PUBLIC') return post.class_id === null;
       return post.class_id === parseInt(selectedClassId);
@@ -228,7 +233,6 @@ function BoardContent() {
             <form onSubmit={handleCreatePost} className="space-y-4">
               
               <div className="flex flex-col sm:flex-row gap-2">
-                {/* 🎯 [개편] 오직 본인의 담당 반과 학원 전체 학생 공지만 드롭다운에 표시 */}
                 <select
                   value={targetClassId}
                   onChange={(e) => setTargetClassId(e.target.value)}
@@ -350,7 +354,7 @@ function BoardContent() {
           </div>
         )}
 
-        {/* 숙제 검사 대상 범위 설정 (내 담당 학생 vs 학원 전체 학생) */}
+        {/* 숙제 검사 대상 범위 설정 */}
         {user?.role !== 'STUDENT' && (
           <div className="flex items-center justify-between bg-white p-3 px-4 rounded-xl border border-slate-200">
             <span className="text-xs font-bold text-slate-700">👥 숙제 검사 학생 범위:</span>
@@ -379,7 +383,7 @@ function BoardContent() {
           </div>
         )}
 
-        {/* 반 필터 버튼 (조회용) */}
+        {/* 🎯 [개편] 내 반 전용 필터 버튼만 상단에 표시 */}
         <div className="space-y-2">
           <div className="flex gap-2 overflow-x-auto pb-1">
             <button
@@ -389,7 +393,7 @@ function BoardContent() {
               전체 보기
             </button>
 
-            {classes.map((c) => (
+            {myClasses.map((c) => (
               <button
                 key={c.id}
                 onClick={() => setSelectedClassId(c.id.toString())}
@@ -411,7 +415,7 @@ function BoardContent() {
         {/* 게시글 목록 */}
         <div className="space-y-4">
           {visiblePosts.length === 0 ? (
-            <p className="text-center py-8 text-gray-500 text-xs font-bold">등록된 게시글이 없습니다.</p>
+            <p className="text-center py-8 text-gray-500 text-xs font-bold">등록된 내 반 공지글이 없습니다.</p>
           ) : (
             visiblePosts.map((post) => {
               const bookLines = post.content

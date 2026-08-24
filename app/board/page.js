@@ -6,10 +6,15 @@ import { useRouter, useSearchParams } from 'next/navigation';
 
 function BoardContent() {
   const [posts, setPosts] = useState([]);
+  const [classes, setClasses] = useState([]);
+  const [myClassIds, setMyClassIds] = useState([]);
+  const [selectedClassId, setSelectedClassId] = useState('ALL'); // 필터용
+
   const [category, setCategory] = useState('ALL');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [newCategory, setNewCategory] = useState('NOTICE');
+  const [targetClassId, setTargetClassId] = useState(''); // 글 작성용 타겟 반
   const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
   const [googleFormUrl, setGoogleFormUrl] = useState('');
   
@@ -37,29 +42,45 @@ function BoardContent() {
     const parsedUser = JSON.parse(userData);
     setUser(parsedUser);
 
-    if (parsedUser.role === 'TEACHER') fetchStudents();
-    fetchPosts();
+    initData(parsedUser);
   }, [searchParams]);
 
-  const fetchStudents = async () => {
-    const { data } = await supabase.from('users').select('id, name').eq('role', 'STUDENT');
-    setStudents(data || []);
-  };
-
-  const fetchPosts = async () => {
+  const initData = async (currentUser) => {
     try {
-      const { data, error } = await supabase
-        .from('posts')
-        .select('*, users(name)')
-        .order('created_at', { ascending: false });
+      // 1. 전체 반 정보 불러오기
+      const { data: cData } = await supabase.from('classes').select('*');
+      setClasses(cData || []);
 
-      if (error) throw error;
-      setPosts(data || []);
-      fetchSubmissions();
+      // 2. 학생일 경우 본인이 속한 반 ID 목록 불러오기
+      if (currentUser.role === 'STUDENT') {
+        const { data: csData } = await supabase
+          .from('class_students')
+          .select('class_id')
+          .eq('student_id', currentUser.id);
+        const myIds = csData ? csData.map((cs) => cs.class_id) : [];
+        setMyClassIds(myIds);
+      } else {
+        const { data: stData } = await supabase.from('users').select('id, name').eq('role', 'STUDENT');
+        setStudents(stData || []);
+      }
+
+      fetchPosts();
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchPosts = async () => {
+    const { data, error } = await supabase
+      .from('posts')
+      .select('*, users(name), classes(name)')
+      .order('created_at', { ascending: false });
+
+    if (!error) {
+      setPosts(data || []);
+      fetchSubmissions();
     }
   };
 
@@ -109,6 +130,7 @@ function BoardContent() {
         content: finalContent,
         category: newCategory,
         author_id: user.id,
+        class_id: targetClassId ? parseInt(targetClassId) : null,
         due_date: newCategory === 'HOMEWORK' ? dueDate : null,
       };
 
@@ -119,6 +141,7 @@ function BoardContent() {
       setContent('');
       setGoogleFormUrl('');
       setHomeworkList([{ bookTitle: '', range: '' }]);
+      setTargetClassId('');
       fetchPosts();
       alert('성공적으로 등록되었습니다.');
     } catch (err) {
@@ -144,7 +167,22 @@ function BoardContent() {
     }
   };
 
-  const filteredPosts = category === 'ALL' ? posts : posts.filter((p) => p.category === category);
+  // 학생일 경우 자신의 반 + 전체 공지만 필터링
+  const visiblePosts = posts.filter((post) => {
+    if (user?.role === 'STUDENT') {
+      if (post.class_id !== null && !myClassIds.includes(post.class_id)) {
+        return false;
+      }
+    }
+    if (selectedClassId !== 'ALL') {
+      if (selectedClassId === 'PUBLIC') return post.class_id === null;
+      return post.class_id === parseInt(selectedClassId);
+    }
+    if (category !== 'ALL') {
+      return post.category === category;
+    }
+    return true;
+  });
 
   if (loading) return <div className="p-8 text-center font-bold">로딩 중...</div>;
 
@@ -160,11 +198,25 @@ function BoardContent() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 mt-6 space-y-6">
-        {user?.role === 'TEACHER' && (
+        
+        {/* 선생님용 글 작성 */}
+        {user?.role !== 'STUDENT' && (
           <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-4">
-            <h2 className="font-bold text-lg text-gray-800">✍️ 게시글 / 숙제 작성</h2>
+            <h2 className="font-bold text-lg text-gray-800">✍️ 게시글 / 반별 숙제 작성</h2>
             <form onSubmit={handleCreatePost} className="space-y-4">
+              
               <div className="flex flex-col sm:flex-row gap-2">
+                <select
+                  value={targetClassId}
+                  onChange={(e) => setTargetClassId(e.target.value)}
+                  className="p-2.5 border rounded-xl text-sm bg-indigo-50 border-indigo-200 font-bold text-indigo-800"
+                >
+                  <option value="">📢 전체 학생 공지</option>
+                  {classes.map((c) => (
+                    <option key={c.id} value={c.id}>🎯 [{c.name}] 전용</option>
+                  ))}
+                </select>
+
                 <select
                   value={newCategory}
                   onChange={(e) => setNewCategory(e.target.value)}
@@ -184,17 +236,16 @@ function BoardContent() {
                     className="p-2.5 border rounded-xl text-sm bg-blue-50 border-blue-200 font-bold text-blue-700"
                   />
                 )}
-
-                <input
-                  type="text"
-                  placeholder="제목 (예: 8/21(금) 수학I 과제 안내)"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="flex-1 p-2.5 border rounded-xl text-sm"
-                />
               </div>
 
-              {/* 숙제 선택 시 교재 및 구글 폼 입력 UI */}
+              <input
+                type="text"
+                placeholder="제목을 입력하세요"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="w-full p-2.5 border rounded-xl text-sm"
+              />
+
               {newCategory === 'HOMEWORK' && (
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
                   <div className="flex justify-between items-center">
@@ -219,7 +270,7 @@ function BoardContent() {
                       />
                       <input
                         type="text"
-                        placeholder="범위 (예: p.45 ~ p.50 및 채점)"
+                        placeholder="범위 (예: p.45 ~ p.50)"
                         value={item.range}
                         onChange={(e) => handleBookChange(index, 'range', e.target.value)}
                         className="flex-1 p-2 border rounded-lg text-sm bg-white"
@@ -236,7 +287,6 @@ function BoardContent() {
                     </div>
                   ))}
 
-                  {/* 구글 폼 URL 입력창 */}
                   <div className="pt-2 border-t border-slate-200">
                     <label className="block text-xs font-bold text-slate-600 mb-1">
                       📋 구글 설문지 제출 링크 (선택)
@@ -253,7 +303,7 @@ function BoardContent() {
               )}
 
               <textarea
-                placeholder="추가 안내사항이나 전달사항을 적어주세요."
+                placeholder="내용을 적어주세요."
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 className="w-full p-3 border rounded-xl text-sm h-20"
@@ -268,36 +318,43 @@ function BoardContent() {
           </div>
         )}
 
-        {/* 카테고리 필터 */}
-        <div className="flex gap-2 overflow-x-auto pb-2">
-          {['ALL', 'NOTICE', 'HOMEWORK', 'VIDEO', 'MATERIAL'].map((cat) => (
+        {/* 반 필터 및 카테고리 필터 */}
+        <div className="space-y-2">
+          <div className="flex gap-2 overflow-x-auto pb-1">
             <button
-              key={cat}
-              onClick={() => setCategory(cat)}
-              className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition ${
-                category === cat ? 'bg-blue-600 text-white' : 'bg-white border text-gray-600 hover:bg-gray-50'
-              }`}
+              onClick={() => setSelectedClassId('ALL')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${selectedClassId === 'ALL' ? 'bg-slate-800 text-white' : 'bg-white border text-slate-600'}`}
             >
-              {cat === 'ALL' && '전체'}
-              {cat === 'NOTICE' && '📢 공지사항'}
-              {cat === 'HOMEWORK' && '📝 숙제 알림'}
-              {cat === 'VIDEO' && '🎬 복습 영상'}
-              {cat === 'MATERIAL' && '📄 강의 자료'}
+              전체 보기
             </button>
-          ))}
+            <button
+              onClick={() => setSelectedClassId('PUBLIC')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${selectedClassId === 'PUBLIC' ? 'bg-slate-800 text-white' : 'bg-white border text-slate-600'}`}
+            >
+              🌐 학원 전체 공지
+            </button>
+            {classes.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => setSelectedClassId(c.id.toString())}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${selectedClassId === c.id.toString() ? 'bg-indigo-600 text-white' : 'bg-white border text-indigo-700'}`}
+              >
+                🎯 {c.name}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* 게시글 목록 */}
         <div className="space-y-4">
-          {filteredPosts.length === 0 ? (
+          {visiblePosts.length === 0 ? (
             <p className="text-center py-8 text-gray-500">등록된 게시글이 없습니다.</p>
           ) : (
-            filteredPosts.map((post) => {
+            visiblePosts.map((post) => {
               const bookLines = post.content
                 .split('\n')
                 .filter((line) => line.startsWith('📘 ['));
 
-              // 구글 폼 링크 추출
               const formMatch = post.content.match(/🔗 구글 폼 링크: (https?:\/\/[^\s]+)/);
               const formUrl = formMatch ? formMatch[1] : null;
 
@@ -311,6 +368,15 @@ function BoardContent() {
                         {post.category === 'VIDEO' && '🎬 복습 영상'}
                         {post.category === 'MATERIAL' && '📄 강의 자료'}
                       </span>
+                      {post.classes ? (
+                        <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-bold">
+                          🎯 {post.classes.name}
+                        </span>
+                      ) : (
+                        <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-bold">
+                          🌐 전체 대상
+                        </span>
+                      )}
                       {post.due_date && (
                         <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded font-bold">
                           📅 마감일: {post.due_date}
@@ -323,7 +389,6 @@ function BoardContent() {
                   <h3 className="font-bold text-base text-gray-800">{post.title}</h3>
                   <p className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">{post.content}</p>
 
-                  {/* 구글 폼 이동 버튼 */}
                   {formUrl && (
                     <div className="pt-2">
                       <a
@@ -338,8 +403,8 @@ function BoardContent() {
                     </div>
                   )}
 
-                  {/* 선생님용 교재별/학생별 숙제 검사표 */}
-                  {user?.role === 'TEACHER' && post.category === 'HOMEWORK' && bookLines.length > 0 && (
+                  {/* 숙제 검사표 */}
+                  {user?.role !== 'STUDENT' && post.category === 'HOMEWORK' && bookLines.length > 0 && (
                     <div className="mt-4 pt-3 border-t border-gray-100 bg-slate-50 p-4 rounded-xl space-y-3">
                       <p className="text-xs font-bold text-slate-700">✅ 교재별 숙제 제출 검사표</p>
                       {bookLines.map((line, idx) => {

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 
-function HexagonRadarChart({ scores, classAvgScores }) {
+function HexagonRadarChart({ scores, twoWeekAvgScores }) {
   const { concept = 8, calc = 8, app = 8, attitude = 8, homework = 8, perseverance = 8 } = scores;
   const labels = ['개념이해', '연산정확', '응용해결', '수업집중', '과제완성', '오답끈기'];
   const values = [concept, calc, app, attitude, homework, perseverance];
@@ -45,23 +45,25 @@ function HexagonRadarChart({ scores, classAvgScores }) {
           return <line key={i} x1={center} y1={center} x2={x2} y2={y2} stroke="#cbd5e1" strokeWidth="1" />;
         })}
 
-        {classAvgScores && (
+        {/* 🎯 [변경] 학생 본인의 최근 2주 평균 오버랩 (오렌지 점선) */}
+        {twoWeekAvgScores && (
           <polygon
             points={getCoordinates([
-              classAvgScores.concept,
-              classAvgScores.calc,
-              classAvgScores.app,
-              classAvgScores.attitude,
-              classAvgScores.homework,
-              classAvgScores.perseverance,
+              twoWeekAvgScores.concept,
+              twoWeekAvgScores.calc,
+              twoWeekAvgScores.app,
+              twoWeekAvgScores.attitude,
+              twoWeekAvgScores.homework,
+              twoWeekAvgScores.perseverance,
             ])}
-            fill="rgba(249, 115, 22, 0.2)"
+            fill="rgba(249, 115, 22, 0.15)"
             stroke="#f97316"
             strokeWidth="2"
             strokeDasharray="4 2"
           />
         )}
 
+        {/* 선택한 날짜의 피드백 (파란 면적) */}
         <polygon
           points={getCoordinates(values)}
           fill="rgba(37, 99, 235, 0.3)"
@@ -97,12 +99,12 @@ function HexagonRadarChart({ scores, classAvgScores }) {
       <div className="flex items-center justify-center gap-4 text-[11px] font-bold pt-1">
         <div className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-full bg-blue-600 inline-block"></span>
-          <span className="text-blue-900">학생 본인</span>
+          <span className="text-blue-900">당일 성취도</span>
         </div>
-        {classAvgScores && (
+        {twoWeekAvgScores && (
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-full bg-orange-500 inline-block border border-dashed"></span>
-            <span className="text-orange-900">반 평균</span>
+            <span className="text-orange-900">본인 최근 2주 평균</span>
           </div>
         )}
       </div>
@@ -117,7 +119,7 @@ export default function EvalHistoryPage() {
   const [classes, setClasses] = useState([]);
   const [classStudents, setClassStudents] = useState([]);
 
-  // 필터 상태 (반, 학생, 날짜)
+  // 필터 상태
   const [selectedClassId, setSelectedClassId] = useState('ALL');
   const [selectedStudentId, setSelectedStudentId] = useState('ALL');
   const [selectedDate, setSelectedDate] = useState('');
@@ -143,7 +145,6 @@ export default function EvalHistoryPage() {
 
   const fetchData = async (currentUser) => {
     try {
-      // 🎯 [핵심] 피드백 조회 및 필터용 학생/반 데이터는 내 담당 내역을 기본으로 조회
       const { data: stData } = await supabase
         .from('users')
         .select('id, name, email')
@@ -160,7 +161,6 @@ export default function EvalHistoryPage() {
       const { data: csData } = await supabase.from('class_students').select('*');
       setClassStudents(csData || []);
 
-      // 🎯 [핵심] 로그인한 원장님 본인이 등록한 피드백 내역만 깔끔하게 조회
       const { data: evalData, error } = await supabase
         .from('daily_evaluations')
         .select('*, users!daily_evaluations_student_id_fkey(name, email)')
@@ -190,19 +190,24 @@ export default function EvalHistoryPage() {
     }
   };
 
-  const getClassAvgScores = (studentId) => {
-    const studentClassRelation = classStudents.find((cs) => cs.student_id === studentId);
-    if (!studentClassRelation) return null;
+  // 🎯 [핵심] 해당 학생의 기준 날짜 대비 최근 2주(14일) 동안의 성취도 평균 계산
+  const getTwoWeekAvgScores = (studentId, currentEvalDate) => {
+    if (!currentEvalDate) return null;
 
-    const classId = studentClassRelation.class_id;
-    const sameClassStudentIds = classStudents
-      .filter((cs) => cs.class_id === classId)
-      .map((cs) => cs.student_id);
+    const targetDate = new Date(currentEvalDate);
+    const twoWeeksAgo = new Date(targetDate);
+    twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
 
-    const classEvals = evaluations.filter((e) => sameClassStudentIds.includes(e.student_id));
-    if (classEvals.length === 0) return null;
+    // 해당 학생의 최근 14일간 작성된 피드백 데이터 필터링
+    const studentTwoWeekEvals = evaluations.filter((e) => {
+      if (e.student_id !== studentId) return false;
+      const evalDateObj = new Date(e.eval_date);
+      return evalDateObj >= twoWeeksAgo && evalDateObj <= targetDate;
+    });
 
-    const total = classEvals.reduce(
+    if (studentTwoWeekEvals.length === 0) return null;
+
+    const total = studentTwoWeekEvals.reduce(
       (acc, curr) => ({
         concept: acc.concept + (curr.concept_score || 0),
         calc: acc.calc + (curr.calc_score || 0),
@@ -214,7 +219,7 @@ export default function EvalHistoryPage() {
       { concept: 0, calc: 0, app: 0, attitude: 0, homework: 0, perseverance: 0 }
     );
 
-    const count = classEvals.length;
+    const count = studentTwoWeekEvals.length;
     return {
       concept: Number((total.concept / count).toFixed(1)),
       calc: Number((total.calc / count).toFixed(1)),
@@ -271,9 +276,7 @@ export default function EvalHistoryPage() {
             </button>
           </div>
 
-          {/* 3가지 필터 영역 (반 / 학생 / 날짜) */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
-            
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1">🏫 내 반 선택</label>
               <select
@@ -321,16 +324,15 @@ export default function EvalHistoryPage() {
                 className="w-full p-2 border rounded-xl text-xs bg-white font-bold text-slate-700"
               />
             </div>
-
           </div>
 
-          {/* 피드백 리스트 */}
           <div className="space-y-6">
             {filteredEvals.length === 0 ? (
               <p className="text-center py-12 text-slate-400 text-xs font-bold">작성하신 학습 피드백 내역이 없습니다.</p>
             ) : (
               filteredEvals.map((item) => {
-                const classAvgScores = getClassAvgScores(item.student_id);
+                // 🎯 기준 수업일로부터 최근 2주간 학생 본인의 평균점수 추출
+                const twoWeekAvgScores = getTwoWeekAvgScores(item.student_id, item.eval_date);
 
                 return (
                   <div key={item.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
@@ -361,7 +363,7 @@ export default function EvalHistoryPage() {
                             homework: item.homework_score,
                             perseverance: item.perseverance_score,
                           }}
-                          classAvgScores={classAvgScores}
+                          twoWeekAvgScores={twoWeekAvgScores}
                         />
                       </div>
 

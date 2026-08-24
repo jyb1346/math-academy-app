@@ -14,7 +14,7 @@ export default function TeacherEvalPage() {
   const [selectedClassId, setSelectedClassId] = useState('ALL');
   const [selectedStudent, setSelectedStudent] = useState(null);
 
-  // 평가 폼 상태 (육각형 6개 항목: 1~10점)
+  // 평가 폼 상태 (1~10점 선택)
   const [evalDate, setEvalDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendance, setAttendance] = useState('ATTEND');
   const [concept, setConcept] = useState(8);      // 개념 이해도
@@ -98,7 +98,7 @@ export default function TeacherEvalPage() {
       const { error } = await supabase.from('daily_evaluations').insert([evalData]);
       if (error) throw error;
 
-      alert(`[${selectedStudent.name}] 학생의 육각형 종합 피드백이 저장되었습니다.`);
+      alert(`[${selectedStudent.name}] 학생의 일일 학습 피드백이 저장되었습니다.`);
       setTeacherComment('');
     } catch (err) {
       alert(`등록 실패: ${err.message}`);
@@ -123,7 +123,7 @@ export default function TeacherEvalPage() {
       <main className="max-w-4xl mx-auto px-4 mt-6 space-y-6">
         <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
           <h2 className="text-lg font-bold text-slate-800 border-b pb-3 flex items-center gap-2">
-            <span>🔷</span> 육각형 역량 일일 피드백 작성
+            <span>📊</span> 일일 학습 피드백 작성
           </h2>
 
           {/* 1. 반(Class) 필터 탭 */}
@@ -192,7 +192,7 @@ export default function TeacherEvalPage() {
             )}
           </div>
 
-          {/* 3. 육각형 역량 평가 입력 폼 (1~10점 선택) */}
+          {/* 3. 영역 평가 입력 폼 (1~10점 선택) */}
           {selectedStudent ? (
             <form onSubmit={handleSubmit} className="space-y-5 pt-4 border-t border-slate-100">
               <div className="bg-blue-50/70 p-3 rounded-xl border border-blue-200 text-xs font-bold text-blue-900 flex justify-between items-center">
@@ -208,7 +208,7 @@ export default function TeacherEvalPage() {
                 </div>
               </div>
 
-              {/* 육각형 6대 역량 점수 슬라이더 / 라디오 */}
+              {/* 6대 영역 점수 슬라이더 */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
                 
                 {/* 1. 개념 이해도 */}
@@ -307,12 +307,12 @@ export default function TeacherEvalPage() {
                 disabled={loading}
                 className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold text-sm hover:bg-blue-700 shadow transition disabled:bg-slate-300"
               >
-                {loading ? '저장 중...' : '🔷 육각형 피드백 저장하기'}
+                {loading ? '저장 중...' : '피드백 저장하기'}
               </button>
             </form>
           ) : (
             <div className="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-400 text-xs font-bold">
-              위에서 학생을 선택하시면 육각형 6대 항목 평가 폼이 열립니다.
+              위에서 학생을 선택하시면 피드백 입력 창이 나타납니다.
             </div>
           )}
         </div>

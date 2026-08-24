@@ -27,9 +27,10 @@ export default function TeacherDashboard() {
   // 학생 수정 모달
   const [editingStudent, setEditingStudent] = useState(null);
 
-  // 일괄 학생 등록 모달
+  // 🎯 엑셀 복사/붙여넣기 전용 2박스 일괄 등록 모달 상태
   const [showBatchModal, setShowBatchModal] = useState(false);
-  const [batchInputText, setBatchInputText] = useState('');
+  const [batchNamesText, setBatchNamesText] = useState('');   // 이름 세로 박스
+  const [batchPhonesText, setBatchPhonesText] = useState(''); // 전화번호 세로 박스
 
   // 특정 반에 학생 일괄 배정 모달
   const [assignTargetClass, setAssignTargetClass] = useState(null);
@@ -139,24 +140,26 @@ export default function TeacherDashboard() {
     }
   };
 
+  // 🎯 엑셀 2박스(이름 박스 / 학부모 번호 박스) 일괄 파싱 및 등록
   const handleBatchCreateStudents = async (e) => {
     e.preventDefault();
-    if (!batchInputText.trim()) return alert('학생 명단을 입력해주세요.');
+    if (!batchNamesText.trim()) return alert('이름 입력란에 학생 이름을 붙여넣어 주세요.');
 
-    const lines = batchInputText
+    const nameList = batchNamesText
       .split('\n')
       .map((line) => line.trim())
       .filter((line) => line.length > 0);
 
-    if (lines.length === 0) return alert('유효한 학생 데이터가 없습니다.');
+    const phoneList = batchPhonesText
+      .split('\n')
+      .map((line) => line.trim());
+
+    if (nameList.length === 0) return alert('유효한 학생 이름이 없습니다.');
 
     try {
-      const payloads = lines.map((line) => {
-        const parts = line.split(/[, \t]+/).filter(Boolean);
-        const name = parts[0];
-        const rawPhone = parts[1] || '';
+      const payloads = nameList.map((name, index) => {
+        const rawPhone = phoneList[index] || '';
         const cleanPhone = rawPhone.replace(/[^0-9]/g, '');
-
         const randomNum = Math.floor(1000 + Math.random() * 9000);
 
         return {
@@ -172,8 +175,9 @@ export default function TeacherDashboard() {
       const { error } = await supabase.from('users').insert(payloads);
       if (error) throw error;
 
-      alert(`${payloads.length}명의 학생 계정이 생성되었습니다.`);
-      setBatchInputText('');
+      alert(`${payloads.length}명의 학생 계정이 일괄 생성되었습니다.`);
+      setBatchNamesText('');
+      setBatchPhonesText('');
       setShowBatchModal(false);
       fetchTeacherData(user.id);
     } catch (err) {
@@ -319,7 +323,6 @@ export default function TeacherDashboard() {
             </button>
           )}
 
-          {/* 🔒 비밀번호 변경 버튼 */}
           <button
             onClick={() => setShowPasswordModal(true)}
             className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-xl transition border border-slate-200"
@@ -475,14 +478,14 @@ export default function TeacherDashboard() {
               <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
                 <span>👤</span> 내 담당 학생 신규 등록
               </h2>
-              <p className="text-xs text-slate-400 mt-0.5">개별 등록 및 학부모 번호 포함 명단 일괄 등록을 지원합니다.</p>
+              <p className="text-xs text-slate-400 mt-0.5">개별 등록 및 엑셀 복사/붙여넣기 전용 일괄 등록을 지원합니다.</p>
             </div>
 
             <button
               onClick={() => setShowBatchModal(true)}
               className="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80 font-bold px-4 py-2.5 rounded-2xl text-xs transition shadow-xs flex items-center gap-1.5"
             >
-              <span>⚡ 학부모 번호 포함 일괄 등록 모달</span>
+              <span>📊 엑셀 2열 복붙 일괄 등록</span>
             </button>
           </div>
 
@@ -710,31 +713,61 @@ export default function TeacherDashboard() {
         </div>
       )}
 
-      {/* 🎯 모달 2: 일괄 학생 등록 */}
+      {/* 📊 🎯 모달 2: 엑셀 2박스(이름 세로열 / 전화번호 세로열) 일괄 등록 모달 */}
       {showBatchModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-lg space-y-4 shadow-2xl animate-in fade-in zoom-in-95 my-8">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-2xl space-y-4 shadow-2xl animate-in fade-in zoom-in-95 my-8">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h4 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
-                <span>⚡</span> 학생 명단 일괄 등록 (학부모 번호 포함)
-              </h4>
+              <div>
+                <h4 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
+                  <span>📊</span> 엑셀 2열 복사/붙여넣기 학생 일괄 등록
+                </h4>
+                <p className="text-xs text-slate-400 mt-0.5">엑셀 표의 각 열을 그대로 복사해서 각각의 세로 박스에 붙여넣으세요.</p>
+              </div>
               <button onClick={() => setShowBatchModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xs">✕</button>
             </div>
 
             <form onSubmit={handleBatchCreateStudents} className="space-y-4">
               <div className="bg-amber-50/80 p-3.5 rounded-2xl border border-amber-200/80 text-xs text-slate-700 space-y-1">
-                <p className="font-bold text-amber-900">💡 입력 형식 안내 (한 줄에 한 명씩):</p>
-                <p>• <span className="font-bold text-slate-900">홍길동, 01012345678</span> (이름, 전화번호)</p>
-                <p>• <span className="font-bold text-slate-900">김철수 010-9876-5432</span> (공백 구분도 가능)</p>
-                <p>• <span className="font-bold text-slate-900">이영희</span> (전화번호 생략 가능)</p>
+                <p className="font-bold text-amber-900">💡 엑셀 복사/붙여넣기 사용법:</p>
+                <p>1. 엑셀의 <span className="font-bold text-slate-900">[학생 이름 열]</span> 영역을 드래그해 복사(Ctrl+C)한 뒤, 왼쪽 박스에 붙여넣으세요.</p>
+                <p>2. 엑셀의 <span className="font-bold text-slate-900">[학부모 연락처 열]</span> 영역을 드래그해 복사(Ctrl+C)한 뒤, 오른쪽 박스에 붙여넣으세요.</p>
               </div>
 
-              <textarea
-                placeholder="홍길동, 010-1234-5678&#10;김철수, 010-9876-5432&#10;이영희"
-                value={batchInputText}
-                onChange={(e) => setBatchInputText(e.target.value)}
-                className="w-full p-4 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs h-40 font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 transition leading-relaxed"
-              />
+              {/* 2개 세로 입력 박스 그리드 */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* 박스 1: 이름 전용 세로 입력란 */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1 flex justify-between">
+                    <span>👤 학생 이름 열 (필수)</span>
+                    <span className="text-[10px] text-indigo-600 font-extrabold">
+                      {batchNamesText.split('\n').filter((l) => l.trim()).length}명
+                    </span>
+                  </label>
+                  <textarea
+                    placeholder="홍길동&#10;김철수&#10;이영희"
+                    value={batchNamesText}
+                    onChange={(e) => setBatchNamesText(e.target.value)}
+                    className="w-full p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs h-52 font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 transition leading-relaxed"
+                  />
+                </div>
+
+                {/* 박스 2: 전화번호 전용 세로 입력란 */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1 flex justify-between">
+                    <span>📱 학부모 연락처 열 (선택)</span>
+                    <span className="text-[10px] text-amber-600 font-extrabold">
+                      {batchPhonesText.split('\n').filter((l) => l.trim()).length}건
+                    </span>
+                  </label>
+                  <textarea
+                    placeholder="010-1234-5678&#10;010-9876-5432&#10;010-1111-2222"
+                    value={batchPhonesText}
+                    onChange={(e) => setBatchPhonesText(e.target.value)}
+                    className="w-full p-3 bg-amber-50/30 border border-amber-200/80 rounded-2xl text-xs h-52 font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-amber-400 transition leading-relaxed"
+                  />
+                </div>
+              </div>
 
               <div className="flex gap-2 pt-2">
                 <button

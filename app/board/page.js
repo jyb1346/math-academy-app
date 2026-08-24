@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 function BoardContent() {
   const [posts, setPosts] = useState([]);
   const [classes, setClasses] = useState([]);
+  const [myClasses, setMyClasses] = useState([]);
   const [myClassIds, setMyClassIds] = useState([]);
   
   // 🎯 학생 필터링을 위한 탭 상태 ('MY_STUDENTS' = 내 담당 학생, 'ALL_STUDENTS' = 학원 전체 학생)
@@ -51,17 +52,17 @@ function BoardContent() {
 
   const initData = async (currentUser) => {
     try {
-      // 1. 반 목록 가져오기
+      // 1. 전체 반 목록 가져오기 (필터링용) 및 내 담당 반 독립 추출
       const { data: cData } = await supabase.from('classes').select('*');
-      const myClasses = (cData || []).filter((c) => c.teacher_id === currentUser.id);
-      const otherClasses = (cData || []).filter((c) => c.teacher_id !== currentUser.id);
-      const sortedClasses = [...myClasses, ...otherClasses];
-      setClasses(sortedClasses);
+      const allC = cData || [];
+      const myC = allC.filter((c) => c.teacher_id === currentUser.id);
+      
+      setClasses(allC);
+      setMyClasses(myC);
 
-      if (myClasses.length > 0) {
-        setTargetClassId(myClasses[0].id.toString());
-      } else if (sortedClasses.length > 0) {
-        setTargetClassId(sortedClasses[0].id.toString());
+      // 공지 작성 초기 기본 선택값을 '내 반'으로 설정
+      if (myC.length > 0) {
+        setTargetClassId(myC[0].id.toString());
       } else {
         setTargetClassId('ALL_STUDENTS');
       }
@@ -220,34 +221,31 @@ function BoardContent() {
 
       <main className="max-w-4xl mx-auto px-4 mt-6 space-y-6">
         
-        {/* 선생님용 공지 작성 */}
+        {/* 선생님/원장님용 공지 작성 */}
         {user?.role !== 'STUDENT' && (
           <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
-            <h2 className="font-bold text-lg text-gray-800">✍️ 반별 공지 및 숙제 작성</h2>
+            <h2 className="font-bold text-lg text-gray-800">✍️ 반별 공지 및 숙제 작성 ({user.name} 선생님)</h2>
             <form onSubmit={handleCreatePost} className="space-y-4">
               
               <div className="flex flex-col sm:flex-row gap-2">
+                {/* 🎯 [개편] 오직 본인의 담당 반과 학원 전체 학생 공지만 드롭다운에 표시 */}
                 <select
                   value={targetClassId}
                   onChange={(e) => setTargetClassId(e.target.value)}
                   className="p-2.5 border rounded-xl text-sm bg-indigo-50 border-indigo-200 font-bold text-indigo-900"
                 >
                   <optgroup label="📘 내 담당 반 목록">
-                    {classes.filter((c) => c.teacher_id === user.id).map((c) => (
-                      <option key={c.id} value={c.id}>🎯 [{c.name}] 전용 공지</option>
-                    ))}
+                    {myClasses.length === 0 ? (
+                      <option value="" disabled>개설된 내 반이 없습니다</option>
+                    ) : (
+                      myClasses.map((c) => (
+                        <option key={c.id} value={c.id}>🎯 [{c.name}] 전용 공지</option>
+                      ))
+                    )}
                   </optgroup>
 
-                  {user.role === 'HEAD_TEACHER' && classes.some((c) => c.teacher_id !== user.id) && (
-                    <optgroup label="👨‍🏫 타 선생님 반 목록">
-                      {classes.filter((c) => c.teacher_id !== user.id).map((c) => (
-                        <option key={c.id} value={c.id}>🎯 [{c.name}]</option>
-                      ))}
-                    </optgroup>
-                  )}
-
                   <optgroup label="──────────────────">
-                    <option value="ALL_STUDENTS">📢 학원 전체 학생 공지 (최하단 배치)</option>
+                    <option value="ALL_STUDENTS">📢 학원 전체 학생 공지</option>
                   </optgroup>
                 </select>
 
@@ -352,7 +350,7 @@ function BoardContent() {
           </div>
         )}
 
-        {/* 🎯 [핵심 개편] 숙제 검사 대상 범위 설정 (내 담당 학생 vs 학원 전체 학생) */}
+        {/* 숙제 검사 대상 범위 설정 (내 담당 학생 vs 학원 전체 학생) */}
         {user?.role !== 'STUDENT' && (
           <div className="flex items-center justify-between bg-white p-3 px-4 rounded-xl border border-slate-200">
             <span className="text-xs font-bold text-slate-700">👥 숙제 검사 학생 범위:</span>
@@ -381,7 +379,7 @@ function BoardContent() {
           </div>
         )}
 
-        {/* 반 필터 버튼 */}
+        {/* 반 필터 버튼 (조회용) */}
         <div className="space-y-2">
           <div className="flex gap-2 overflow-x-auto pb-1">
             <button
@@ -468,7 +466,6 @@ function BoardContent() {
                     </div>
                   )}
 
-                  {/* 🎯 [핵심 개편] 지정된 범위(내 담당 학생 vs 학원 전체 학생) 학생 명단만 출력 */}
                   {user?.role !== 'STUDENT' && post.category === 'HOMEWORK' && bookLines.length > 0 && (
                     <div className="mt-4 pt-3 border-t border-gray-100 bg-slate-50 p-4 rounded-xl space-y-3">
                       <div className="flex justify-between items-center">

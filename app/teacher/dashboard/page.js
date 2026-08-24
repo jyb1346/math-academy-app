@@ -23,11 +23,15 @@ export default function TeacherDashboard() {
   // 학생 수정 모달 상태
   const [editingStudent, setEditingStudent] = useState(null);
 
-  // 🎯 일괄 학생 등록 모달 및 상태
+  // 일괄 학생 등록 모달 상태
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [batchInputText, setBatchInputText] = useState('');
 
-  // 학생-반 배정 선택 상태 (studentId -> classId)
+  // 🎯 특정 반에 학생 일괄 배정 모달 상태
+  const [assignTargetClass, setAssignTargetClass] = useState(null); // { id, name }
+  const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+
+  // 학생-반 배정 드롭다운 선택 상태 (studentId -> classId)
   const [selectedClassMap, setSelectedClassMap] = useState({});
 
   const router = useRouter();
@@ -142,7 +146,7 @@ export default function TeacherDashboard() {
     }
   };
 
-  // 3️⃣ 🎯 일괄 학생 등록 (학부모 번호 파싱 포함)
+  // 3️⃣ 일괄 학생 등록 (학부모 번호 포함)
   const handleBatchCreateStudents = async (e) => {
     e.preventDefault();
     if (!batchInputText.trim()) return alert('학생 명단을 입력해주세요.');
@@ -156,7 +160,6 @@ export default function TeacherDashboard() {
 
     try {
       const payloads = lines.map((line) => {
-        // 이름과 학부모 연락처 분리 (쉼표나 공백, 탭 구분 허용)
         const parts = line.split(/[, \t]+/).filter(Boolean);
         const name = parts[0];
         const rawPhone = parts[1] || '';
@@ -177,7 +180,7 @@ export default function TeacherDashboard() {
       const { error } = await supabase.from('users').insert(payloads);
       if (error) throw error;
 
-      alert(`${payloads.length}명의 학생 계정이 학부모 연락처와 함께 생성되었습니다.`);
+      alert(`${payloads.length}명의 학생 계정이 생성되었습니다.`);
       setBatchInputText('');
       setShowBatchModal(false);
       fetchDashboardData(user.id);
@@ -213,7 +216,7 @@ export default function TeacherDashboard() {
 
   // 학생 삭제
   const handleDeleteStudent = async (studentId, studentName) => {
-    if (!confirm(`[${studentName}] 학생을 계정 목록에서 삭제하시겠습니까?`)) return;
+    if (!confirm(`[${studentName}] 학생을 삭제하시겠습니까?`)) return;
     try {
       const { error } = await supabase.from('users').delete().eq('id', studentId);
       if (error) throw error;
@@ -223,7 +226,7 @@ export default function TeacherDashboard() {
     }
   };
 
-  // 5️⃣ 학생을 반에 배정/변경
+  // 5️⃣ 학생 개별 반 배정
   const handleAssignClass = async (studentId) => {
     const classId = selectedClassMap[studentId];
     if (!classId) return alert('배정할 반을 선택해 주세요.');
@@ -243,49 +246,100 @@ export default function TeacherDashboard() {
     }
   };
 
+  // 🎯 6️⃣ 특정 반 선택 후 여러 학생을 한꺼번에 반에 배정 모달 오픈
+  const openClassAssignModal = (cls) => {
+    setAssignTargetClass(cls);
+
+    // 해당 반에 이미 소속되어 있는 학생들의 ID를 기본 체크
+    const currentStudentIds = classStudents
+      .filter((cs) => cs.class_id === cls.id)
+      .map((cs) => cs.student_id);
+
+    setSelectedStudentIds(currentStudentIds);
+  };
+
+  // 체크박스 토글
+  const toggleStudentSelection = (stId) => {
+    if (selectedStudentIds.includes(stId)) {
+      setSelectedStudentIds(selectedStudentIds.filter((id) => id !== stId));
+    } else {
+      setSelectedStudentIds([...selectedStudentIds, stId]);
+    }
+  };
+
+  // 반 일괄 배정 저장 실행
+  const handleSaveBatchClassAssign = async () => {
+    if (!assignTargetClass) return;
+
+    try {
+      // 1. 해당 반에 매핑되어 있던 기존 배정 데이터 삭제
+      await supabase
+        .from('class_students')
+        .delete()
+        .eq('class_id', assignTargetClass.id);
+
+      // 2. 체크된 학생들 배정 데이터 새로 추가
+      if (selectedStudentIds.length > 0) {
+        const insertPayloads = selectedStudentIds.map((stId) => ({
+          student_id: stId,
+          class_id: assignTargetClass.id,
+        }));
+
+        const { error } = await supabase.from('class_students').insert(insertPayloads);
+        if (error) throw error;
+      }
+
+      alert(`[${assignTargetClass.name}] 반에 ${selectedStudentIds.length}명의 학생 배정이 완료되었습니다.`);
+      setAssignTargetClass(null);
+      fetchDashboardData(user.id);
+    } catch (err) {
+      alert(`배정 실패: ${err.message}`);
+    }
+  };
+
   if (loading) return (
-    <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center font-bold">
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center font-bold text-slate-600">
       품수학 교무실 로딩 중...
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 pb-20 font-sans">
+    <div className="min-h-screen bg-slate-100/70 pb-20 font-sans text-slate-800">
       
-      {/* 헤더 */}
-      <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30 px-6 py-4 flex justify-between items-center">
+      {/* 🌟 헤더 (라이트 모드) */}
+      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-30 px-6 py-4 flex justify-between items-center shadow-xs">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-black text-lg shadow-lg shadow-blue-500/20 cursor-pointer" onClick={() => router.push('/')}>
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-black text-lg shadow-md shadow-blue-500/20 cursor-pointer" onClick={() => router.push('/')}>
             품
           </div>
           <div>
-            <h1 onClick={() => router.push('/')} className="text-base font-extrabold text-white cursor-pointer leading-tight">
+            <h1 onClick={() => router.push('/')} className="text-base font-extrabold text-slate-800 cursor-pointer leading-tight">
               품수학 학원 교무실
             </h1>
             <p className="text-[11px] text-slate-400 font-semibold">
-              <span className="text-indigo-400 font-bold">{user?.name} 선생님</span> 대시보드
+              <span className="text-indigo-600 font-bold">{user?.name} 선생님</span> 대시보드
             </p>
           </div>
         </div>
 
         <button
           onClick={() => { localStorage.removeItem('user'); router.push('/login'); }}
-          className="text-xs bg-slate-800/80 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-700/60 font-bold px-3.5 py-2 rounded-xl transition"
+          className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3.5 py-2 rounded-xl transition"
         >
           로그아웃
         </button>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 mt-8 space-y-8">
+      <main className="max-w-5xl mx-auto px-4 mt-8 space-y-8">
 
-        {/* 🎯 1. 메인 액션 카드의 비중 강화 (일일피드백 & 반별게시판) */}
+        {/* 🎯 1. 메인 대형 메뉴 (일일피드백 & 반별게시판 동등 비중) */}
         <section className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             
-            {/* 카드 A: 일일 학습 피드백 작성 */}
+            {/* 카드 A: 일일 피드백 작성 */}
             <div
               onClick={() => router.push('/teacher/eval')}
-              className="group relative bg-gradient-to-br from-blue-600 via-indigo-600 to-indigo-800 p-7 rounded-3xl shadow-xl shadow-indigo-950/30 cursor-pointer overflow-hidden transition-all duration-300 hover:scale-[1.01] hover:shadow-2xl border border-indigo-500/20"
+              className="group relative bg-gradient-to-br from-blue-600 via-indigo-600 to-indigo-800 p-7 rounded-3xl shadow-xl shadow-indigo-950/10 cursor-pointer overflow-hidden transition-all duration-300 hover:scale-[1.01]"
             >
               <div className="absolute top-0 right-0 -mt-8 -mr-8 w-40 h-40 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
               
@@ -298,21 +352,21 @@ export default function TeacherDashboard() {
 
               <div className="mt-8 space-y-1">
                 <h2 className="text-2xl font-black text-white">일일 학습 피드백 작성</h2>
-                <p className="text-xs text-blue-100/80 font-normal leading-relaxed">
+                <p className="text-xs text-blue-100/90 font-normal leading-relaxed">
                   오늘 수업 성취도(6대 영역) 및 출결/지각 상태를 기록합니다.
                 </p>
               </div>
             </div>
 
-            {/* 카드 B: 반별 게시판 관리 (일일 피드백과 대등한 비중) */}
+            {/* 카드 B: 반별 게시판 관리 */}
             <div
               onClick={() => router.push('/board')}
-              className="group relative bg-gradient-to-br from-slate-800 via-slate-800 to-indigo-950/80 border border-indigo-500/40 p-7 rounded-3xl shadow-xl cursor-pointer overflow-hidden transition-all duration-300 hover:scale-[1.01] hover:shadow-2xl"
+              className="group relative bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white p-7 rounded-3xl shadow-xl shadow-indigo-950/10 cursor-pointer overflow-hidden transition-all duration-300 hover:scale-[1.01]"
             >
               <div className="absolute top-0 right-0 -mt-8 -mr-8 w-40 h-40 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none"></div>
 
               <div className="flex justify-between items-start">
-                <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs px-3.5 py-1 rounded-full font-bold">
+                <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 text-xs px-3.5 py-1 rounded-full font-bold">
                   📢 Notice Board
                 </span>
                 <span className="text-3xl text-slate-500 group-hover:text-indigo-400 group-hover:translate-x-1 transition-all">→</span>
@@ -328,11 +382,11 @@ export default function TeacherDashboard() {
 
           </div>
 
-          {/* 서브 링크: 피드백 리포트 내역 */}
+          {/* 서브 버튼: 피드백 리포트 내역 */}
           <div className="flex justify-end">
             <button
               onClick={() => router.push('/teacher/eval/history')}
-              className="text-xs bg-slate-800/80 hover:bg-slate-800 text-slate-300 border border-slate-700/80 px-4 py-2.5 rounded-2xl font-bold transition flex items-center gap-2"
+              className="text-xs bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/80 px-4 py-2.5 rounded-2xl font-bold transition shadow-xs flex items-center gap-2"
             >
               <span>📋 작성된 일일 피드백 리포트 내역 및 학부모 답장 보기</span>
               <span>→</span>
@@ -340,17 +394,16 @@ export default function TeacherDashboard() {
           </div>
         </section>
 
-        {/* 🏫 반 개설 및 목록 관리 */}
-        <section className="bg-slate-800/60 border border-slate-700/70 p-6 rounded-3xl space-y-5 shadow-lg backdrop-blur-xs">
-          <div className="flex justify-between items-center border-b border-slate-700/60 pb-4">
-            <div className="flex items-center gap-2">
-              <span className="p-2 bg-indigo-500/10 text-indigo-400 rounded-xl text-base font-bold">🏫</span>
-              <div>
-                <h2 className="text-base font-extrabold text-white">내 개설 반 관리</h2>
-                <p className="text-xs text-slate-400">현재 담당하고 있는 반 목록입니다.</p>
-              </div>
+        {/* 🏫 2. 내 개설 반 관리 (학생 일괄 선택 배정 기능 포함) */}
+        <section className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-5">
+          <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+            <div>
+              <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
+                <span>🏫</span> 내 담당 반 관리 및 학생 배정
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">반을 클릭하거나 버튼을 눌러 학생들을 한꺼번에 쉽게 배정하세요.</p>
             </div>
-            <span className="bg-slate-700/80 text-slate-300 text-xs font-bold px-3 py-1 rounded-full border border-slate-600">
+            <span className="bg-indigo-50 text-indigo-700 text-xs font-bold px-3 py-1 rounded-full border border-indigo-100">
               총 {classes.length}개 반
             </span>
           </div>
@@ -358,53 +411,73 @@ export default function TeacherDashboard() {
           <form onSubmit={handleCreateClass} className="flex gap-2">
             <input
               type="text"
-              placeholder="신규 반 이름 (예: 중3 심화A반)"
+              placeholder="신규 반 이름 입력 (예: 중3 심화A반)"
               value={newClassName}
               onChange={(e) => setNewClassName(e.target.value)}
-              className="flex-1 p-3 bg-slate-900/90 border border-slate-700/80 rounded-2xl text-xs font-semibold text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
+              className="flex-1 p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 transition"
             />
             <button
               type="submit"
-              className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-6 py-3 rounded-2xl text-xs shadow-md shadow-indigo-600/20 transition whitespace-nowrap"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 py-3 rounded-2xl text-xs shadow-sm transition whitespace-nowrap"
             >
               + 반 개설
             </button>
           </form>
 
-          <div className="flex flex-wrap gap-2 pt-1">
+          {/* 반 목록 카드 리스트 */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-1">
             {classes.length === 0 ? (
-              <p className="text-xs text-slate-500 font-medium py-2">개설된 반이 없습니다. 반을 추가해 주세요.</p>
+              <p className="text-xs text-slate-400 py-2 col-span-full">개설된 반이 없습니다. 반을 추가해 주세요.</p>
             ) : (
-              classes.map((cls) => (
-                <div key={cls.id} className="bg-slate-900/80 border border-indigo-500/30 px-4 py-2.5 rounded-2xl flex items-center gap-2.5 shadow-xs">
-                  <span className="text-xs font-extrabold text-indigo-300">📘 {cls.name}</span>
-                  <button
-                    onClick={() => handleDeleteClass(cls.id, cls.name)}
-                    className="text-xs text-rose-400 hover:text-rose-300 font-bold hover:bg-rose-950/50 w-5 h-5 rounded-full flex items-center justify-center transition"
+              classes.map((cls) => {
+                const count = classStudents.filter((cs) => cs.class_id === cls.id).length;
+
+                return (
+                  <div
+                    key={cls.id}
+                    className="bg-slate-50/80 hover:bg-slate-50 border border-slate-200/80 p-4 rounded-2xl flex flex-col justify-between space-y-3 transition"
                   >
-                    ✕
-                  </button>
-                </div>
-              ))
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-extrabold text-slate-800">📘 {cls.name}</span>
+                      <button
+                        onClick={() => handleDeleteClass(cls.id, cls.name)}
+                        className="text-xs text-rose-500 font-bold hover:underline"
+                      >
+                        삭제
+                      </button>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-slate-500 font-bold">소속 학생: <span className="text-indigo-600 font-extrabold">{count}명</span></span>
+                      
+                      {/* 🎯 한꺼번에 학생 지정하기 버튼 */}
+                      <button
+                        onClick={() => openClassAssignModal(cls)}
+                        className="bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold text-xs px-3 py-1.5 rounded-xl transition shadow-xs"
+                      >
+                        + 학생 지정 배정
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
         </section>
 
-        {/* 🎯 2. 컴팩트 학생 추가 & 일괄 등록 모달 버튼 */}
-        <section className="bg-slate-800/60 border border-slate-700/70 p-6 rounded-3xl space-y-5 shadow-lg backdrop-blur-xs">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-700/60 pb-4">
-            <div className="flex items-center gap-2">
-              <span className="p-2 bg-blue-500/10 text-blue-400 rounded-xl text-base font-bold">👤</span>
-              <div>
-                <h2 className="text-base font-extrabold text-white">신규 학생 등록</h2>
-                <p className="text-xs text-slate-400">학생 추가 및 일괄 명단 등록을 수행합니다.</p>
-              </div>
+        {/* 👤 3. 학생 신규 등록 (개별 + 일괄 모달 버튼) */}
+        <section className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-5">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-4">
+            <div>
+              <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
+                <span>👤</span> 신규 학생 등록
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">개별 등록 및 학부모 번호 포함 명단 일괄 등록을 지원합니다.</p>
             </div>
 
-            {/* ⚡ 일괄 등록 전용 모달 오픈 버튼 */}
             <button
               onClick={() => setShowBatchModal(true)}
-              className="bg-slate-700 hover:bg-slate-600 text-amber-300 border border-amber-500/30 font-bold px-4 py-2.5 rounded-2xl text-xs transition shadow-sm flex items-center gap-1.5"
+              className="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80 font-bold px-4 py-2.5 rounded-2xl text-xs transition shadow-xs flex items-center gap-1.5"
             >
               <span>⚡ 학부모 번호 포함 일괄 등록 모달</span>
             </button>
@@ -412,42 +485,42 @@ export default function TeacherDashboard() {
 
           <form onSubmit={handleCreateSingleStudent} className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             <div>
-              <label className="block text-[11px] font-bold text-slate-400 mb-1">학생 이름</label>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">학생 이름</label>
               <input
                 type="text"
                 placeholder="홍길동"
                 value={studentName}
                 onChange={(e) => setStudentName(e.target.value)}
-                className="w-full p-2.5 bg-slate-900/90 border border-slate-700/80 rounded-xl text-xs font-semibold text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition"
+                className="w-full p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500 transition"
               />
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-slate-400 mb-1">아이디 / 이메일</label>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">아이디 / 이메일</label>
               <input
                 type="text"
                 placeholder="hong123"
                 value={studentEmail}
                 onChange={(e) => setStudentEmail(e.target.value)}
-                className="w-full p-2.5 bg-slate-900/90 border border-slate-700/80 rounded-xl text-xs font-semibold text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition"
+                className="w-full p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500 transition"
               />
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-amber-400 mb-1">📱 학부모 연락처</label>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">📱 학부모 연락처</label>
               <input
                 type="tel"
                 placeholder="010-1234-5678"
                 value={parentPhone}
                 onChange={(e) => setParentPhone(e.target.value)}
-                className="w-full p-2.5 bg-amber-950/20 border border-amber-500/30 rounded-xl text-xs font-semibold text-amber-200 placeholder-slate-600 focus:outline-none focus:border-amber-400 transition"
+                className="w-full p-2.5 bg-amber-50/50 border border-amber-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-amber-400 transition"
               />
             </div>
 
             <div className="flex items-end">
               <button
                 type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-xl text-xs transition shadow-md shadow-blue-600/20"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-xs transition shadow-sm"
               >
                 + 학생 등록
               </button>
@@ -455,24 +528,20 @@ export default function TeacherDashboard() {
           </form>
         </section>
 
-        {/* 👥 담당 학생 목록 및 반 배정 */}
-        <section className="bg-slate-800/60 border border-slate-700/70 p-6 rounded-3xl space-y-5 shadow-lg backdrop-blur-xs">
-          <div className="flex justify-between items-center border-b border-slate-700/60 pb-4">
-            <div className="flex items-center gap-2">
-              <span className="p-2 bg-indigo-500/10 text-indigo-400 rounded-xl text-base font-bold">👥</span>
-              <div>
-                <h2 className="text-base font-extrabold text-white">담당 학생 목록 및 반 배정</h2>
-                <p className="text-xs text-slate-400">학생 정보 수정 및 소속 반을 배정합니다.</p>
-              </div>
+        {/* 👥 4. 담당 학생 목록 */}
+        <section className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-5">
+          <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+            <div>
+              <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
+                <span>👥</span> 담당 학생 목록 ({students.length}명)
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">학생 개별 수정 및 개별 반 변경이 가능합니다.</p>
             </div>
-            <span className="bg-slate-700/80 text-slate-300 text-xs font-bold px-3 py-1 rounded-full border border-slate-600">
-              총 {students.length}명
-            </span>
           </div>
 
           <div className="space-y-3">
             {students.length === 0 ? (
-              <p className="text-center py-12 text-slate-500 text-xs font-bold">등록된 학생이 없습니다.</p>
+              <p className="text-center py-12 text-slate-400 text-xs font-bold">등록된 학생이 없습니다.</p>
             ) : (
               students.map((st) => {
                 const assignedClassInfo = classStudents.find((cs) => cs.student_id === st.id);
@@ -481,32 +550,32 @@ export default function TeacherDashboard() {
                 return (
                   <div
                     key={st.id}
-                    className="bg-slate-900/80 border border-slate-700/70 p-4.5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition hover:border-slate-600"
+                    className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition"
                   >
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-black text-sm text-white">{st.name}</span>
+                        <span className="font-extrabold text-sm text-slate-800">{st.name}</span>
                         <span className="text-slate-400 text-xs font-semibold">({st.email})</span>
                         
                         {st.parent_phone ? (
-                          <span className="bg-amber-500/15 text-amber-300 border border-amber-500/30 px-2.5 py-0.5 rounded-lg font-bold text-[11px]">
+                          <span className="bg-amber-100 text-amber-900 border border-amber-200 px-2.5 py-0.5 rounded-full font-bold text-[11px]">
                             📱 학부모: {st.parent_phone}
                           </span>
                         ) : (
-                          <span className="bg-slate-800 text-slate-500 border border-slate-700 px-2 py-0.5 rounded-lg font-semibold text-[10px]">
+                          <span className="bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full font-semibold text-[10px]">
                             연락처 미등록
                           </span>
                         )}
                       </div>
 
                       <div className="flex items-center gap-2 text-xs">
-                        <span className="text-slate-400 font-bold">소속 반:</span>
+                        <span className="text-slate-500 font-bold">소속 반:</span>
                         {assignedClass ? (
-                          <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2.5 py-0.5 rounded-lg font-bold">
+                          <span className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-0.5 rounded-full font-bold">
                             📘 {assignedClass.name}
                           </span>
                         ) : (
-                          <span className="bg-rose-500/15 text-rose-400 border border-rose-500/30 px-2.5 py-0.5 rounded-lg font-bold">
+                          <span className="bg-rose-50 text-rose-600 border border-rose-100 px-2.5 py-0.5 rounded-full font-bold">
                             미배정
                           </span>
                         )}
@@ -517,7 +586,7 @@ export default function TeacherDashboard() {
                       <select
                         value={selectedClassMap[st.id] || (assignedClass ? assignedClass.id.toString() : '')}
                         onChange={(e) => setSelectedClassMap({ ...selectedClassMap, [st.id]: e.target.value })}
-                        className="p-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-slate-200 focus:outline-none"
+                        className="p-2 border rounded-xl text-xs font-bold text-slate-700 bg-white"
                       >
                         <option value="">-- 반 선택 --</option>
                         {classes.map((cls) => (
@@ -527,21 +596,21 @@ export default function TeacherDashboard() {
 
                       <button
                         onClick={() => handleAssignClass(st.id)}
-                        className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-3.5 py-2 rounded-xl text-xs transition whitespace-nowrap shadow-xs"
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3.5 py-2 rounded-xl text-xs transition whitespace-nowrap shadow-xs"
                       >
                         배정
                       </button>
 
                       <button
                         onClick={() => setEditingStudent(st)}
-                        className="bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-bold px-3.5 py-2 rounded-xl text-xs transition whitespace-nowrap"
+                        className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold px-3 py-2 rounded-xl text-xs transition whitespace-nowrap"
                       >
                         수정
                       </button>
 
                       <button
                         onClick={() => handleDeleteStudent(st.id, st.name)}
-                        className="text-rose-400 hover:text-rose-300 font-bold px-2 text-xs"
+                        className="text-rose-500 hover:underline font-bold px-1 text-xs"
                       >
                         삭제
                       </button>
@@ -555,43 +624,117 @@ export default function TeacherDashboard() {
 
       </main>
 
-      {/* 🎯 [모달 1] 학부모 연락처 포함 일괄 등록 모달 */}
+      {/* 🎯 [모달 1] 반 선택 후 여러 학생을 체크박스로 한꺼번에 배정하는 모달 */}
+      {assignTargetClass && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-lg space-y-5 shadow-2xl animate-in fade-in zoom-in-95 my-8">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-800">
+                  📘 [{assignTargetClass.name}] 반 학생 일괄 배정
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">배정할 학생들을 체크박스로 선택해 주세요.</p>
+              </div>
+              <button onClick={() => setAssignTargetClass(null)} className="text-slate-400 hover:text-slate-600 font-bold text-xs">✕</button>
+            </div>
+
+            <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+              {students.length === 0 ? (
+                <p className="text-xs text-slate-400 py-4 text-center">등록된 학생이 없습니다.</p>
+              ) : (
+                students.map((st) => {
+                  const isChecked = selectedStudentIds.includes(st.id);
+                  return (
+                    <label
+                      key={st.id}
+                      className={`flex items-center justify-between p-3 rounded-2xl border transition cursor-pointer ${
+                        isChecked ? 'bg-indigo-50/80 border-indigo-300' : 'bg-slate-50 border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleStudentSelection(st.id)}
+                          className="w-4 h-4 text-indigo-600 accent-indigo-600 rounded"
+                        />
+                        <div>
+                          <span className="text-xs font-bold text-slate-800 block">{st.name}</span>
+                          <span className="text-[10px] text-slate-400">{st.email}</span>
+                        </div>
+                      </div>
+
+                      {isChecked && (
+                        <span className="text-xs font-bold text-indigo-600">선택됨 ✓</span>
+                      )}
+                    </label>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl text-xs font-bold">
+              <span className="text-slate-600">선택된 학생:</span>
+              <span className="text-indigo-600 font-extrabold">{selectedStudentIds.length}명</span>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setAssignTargetClass(null)}
+                className="w-1/2 bg-slate-100 text-slate-600 py-3 rounded-2xl text-xs font-bold"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveBatchClassAssign}
+                className="w-1/2 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-2xl text-xs font-bold shadow-md transition"
+              >
+                배정 완료 저장
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🎯 [모달 2] 학부모 연락처 포함 일괄 등록 모달 */}
       {showBatchModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl w-full max-w-lg space-y-4 shadow-2xl animate-in fade-in zoom-in-95">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <h4 className="text-base font-extrabold text-white flex items-center gap-2">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-lg space-y-4 shadow-2xl animate-in fade-in zoom-in-95 my-8">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h4 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
                 <span>⚡</span> 학생 명단 일괄 등록 (학부모 번호 포함)
               </h4>
-              <button onClick={() => setShowBatchModal(false)} className="text-slate-500 hover:text-white font-bold text-xs">✕</button>
+              <button onClick={() => setShowBatchModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xs">✕</button>
             </div>
 
             <form onSubmit={handleBatchCreateStudents} className="space-y-4">
-              <div className="bg-slate-800/80 p-3.5 rounded-2xl border border-slate-700/80 text-xs text-slate-300 space-y-1">
-                <p className="font-bold text-amber-300">💡 입력 형식 안내 (한 줄에 한 명씩):</p>
-                <p>• <span className="font-bold text-white">홍길동, 01012345678</span> (이름, 전화번호)</p>
-                <p>• <span className="font-bold text-white">김철수 010-9876-5432</span> (띄어쓰기 구분도 가능)</p>
-                <p>• <span className="font-bold text-white">이영희</span> (전화번호 생략 가능)</p>
+              <div className="bg-amber-50/80 p-3.5 rounded-2xl border border-amber-200/80 text-xs text-slate-700 space-y-1">
+                <p className="font-bold text-amber-900">💡 입력 형식 안내 (한 줄에 한 명씩):</p>
+                <p>• <span className="font-bold text-slate-900">홍길동, 01012345678</span> (이름, 전화번호)</p>
+                <p>• <span className="font-bold text-slate-900">김철수 010-9876-5432</span> (공백 구분도 가능)</p>
+                <p>• <span className="font-bold text-slate-900">이영희</span> (전화번호 생략 가능)</p>
               </div>
 
               <textarea
                 placeholder="홍길동, 010-1234-5678&#10;김철수, 010-9876-5432&#10;이영희"
                 value={batchInputText}
                 onChange={(e) => setBatchInputText(e.target.value)}
-                className="w-full p-4 bg-slate-800 border border-slate-700 rounded-2xl text-xs h-40 font-medium text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition leading-relaxed"
+                className="w-full p-4 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs h-40 font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 transition leading-relaxed"
               />
 
               <div className="flex gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowBatchModal(false)}
-                  className="w-1/2 bg-slate-800 text-slate-400 py-3 rounded-2xl text-xs font-bold border border-slate-700"
+                  className="w-1/2 bg-slate-100 text-slate-600 py-3 rounded-2xl text-xs font-bold"
                 >
                   취소
                 </button>
                 <button
                   type="submit"
-                  className="w-1/2 bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded-2xl text-xs font-bold shadow-md shadow-indigo-600/20"
+                  className="w-1/2 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-2xl text-xs font-bold shadow-md transition"
                 >
                   일괄 등록 실행
                 </button>
@@ -601,41 +744,41 @@ export default function TeacherDashboard() {
         </div>
       )}
 
-      {/* ✏️ [모달 2] 학생 정보 수정 모달 */}
+      {/* ✏️ [모달 3] 학생 정보 수정 모달 */}
       {editingStudent && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl w-full max-w-md space-y-4 shadow-2xl animate-in fade-in zoom-in-95">
-            <h4 className="text-base font-extrabold text-white">✏️ 학생 정보 수정</h4>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-md space-y-4 shadow-2xl animate-in fade-in zoom-in-95 my-8">
+            <h4 className="text-base font-extrabold text-slate-800">✏️ 학생 정보 수정</h4>
             
             <form onSubmit={handleUpdateStudent} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-400 mb-1">학생 이름</label>
+                <label className="block text-xs font-bold text-slate-600 mb-1">학생 이름</label>
                 <input
                   type="text"
                   value={editingStudent.name || ''}
                   onChange={(e) => setEditingStudent({ ...editingStudent, name: e.target.value })}
-                  className="w-full p-3 bg-slate-800 border border-slate-700 rounded-2xl text-xs font-semibold text-white focus:outline-none focus:border-blue-500"
+                  className="w-full p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-400 mb-1">아이디 / 이메일</label>
+                <label className="block text-xs font-bold text-slate-600 mb-1">아이디 / 이메일</label>
                 <input
                   type="text"
                   value={editingStudent.email || ''}
                   onChange={(e) => setEditingStudent({ ...editingStudent, email: e.target.value })}
-                  className="w-full p-3 bg-slate-800 border border-slate-700 rounded-2xl text-xs font-semibold text-white focus:outline-none focus:border-blue-500"
+                  className="w-full p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-amber-400 mb-1">📱 학부모 연락처 (알림톡 수신용)</label>
+                <label className="block text-xs font-bold text-slate-600 mb-1">📱 학부모 연락처 (알림톡 수신용)</label>
                 <input
                   type="tel"
                   placeholder="010-1234-5678"
                   value={editingStudent.parent_phone || ''}
                   onChange={(e) => setEditingStudent({ ...editingStudent, parent_phone: e.target.value })}
-                  className="w-full p-3 bg-amber-950/20 border border-amber-500/30 rounded-2xl text-xs font-semibold text-amber-200 focus:outline-none focus:border-amber-400"
+                  className="w-full p-3 bg-amber-50/50 border border-amber-200 rounded-2xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-amber-400"
                 />
               </div>
 
@@ -643,13 +786,13 @@ export default function TeacherDashboard() {
                 <button
                   type="button"
                   onClick={() => setEditingStudent(null)}
-                  className="w-1/2 bg-slate-800 text-slate-400 py-3 rounded-2xl text-xs font-bold border border-slate-700"
+                  className="w-1/2 bg-slate-100 text-slate-600 py-3 rounded-2xl text-xs font-bold"
                 >
                   취소
                 </button>
                 <button
                   type="submit"
-                  className="w-1/2 bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-2xl text-xs font-bold shadow-md shadow-blue-600/20"
+                  className="w-1/2 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-2xl text-xs font-bold shadow-md transition"
                 >
                   저장하기
                 </button>

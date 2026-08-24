@@ -68,11 +68,11 @@ export default function TeacherDashboard() {
         }
       }
 
-      let classQuery = supabase.from('classes').select('*');
-      if (currentUser.role !== 'HEAD_TEACHER') {
-        classQuery = classQuery.eq('teacher_id', currentUser.id);
-      }
-      const { data: classData } = await classQuery;
+      // 🎯 [핵심 수정] 원장님이라도 본인이 직접 만든 반만 독립 조회하도록 설정
+      const { data: classData } = await supabase
+        .from('classes')
+        .select('*')
+        .eq('teacher_id', currentUser.id);
       setClasses(classData || []);
 
       const { data: csData } = await supabase.from('class_students').select('*');
@@ -267,7 +267,7 @@ export default function TeacherDashboard() {
           </div>
         </section>
 
-        {/* 2. ⚡ 최상단 핵심 바로가기 배너 (위치 이동) */}
+        {/* 2. 최상단 핵심 바로가기 배너 */}
         <section className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
           <h2 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-1.5">
             <span>⚡</span> 자주 쓰는 핵심 바로가기
@@ -308,14 +308,14 @@ export default function TeacherDashboard() {
           </div>
         </section>
 
-        {/* 3. 반 관리 섹션 */}
+        {/* 3. 내 담당 반 목록 섹션 */}
         <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
           <div className="flex justify-between items-center">
             <div>
               <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                <span>🏫</span> 담당 반 목록 및 학생 배정
+                <span>🏫</span> 내 담당 반 목록 및 학생 배정
               </h2>
-              <p className="text-xs text-slate-400 mt-0.5">반별로 학생을 배치하여 반 전용 공지와 숙제를 지정할 수 있습니다.</p>
+              <p className="text-xs text-slate-400 mt-0.5">내가 직접 생성하고 담당하는 반 목록입니다.</p>
             </div>
             <button
               onClick={() => setShowClassModal(true)}
@@ -327,7 +327,7 @@ export default function TeacherDashboard() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {classes.length === 0 ? (
-              <p className="text-sm text-slate-400 py-6 col-span-3 text-center">생성된 반이 없습니다. 새 반을 개설해 보세요!</p>
+              <p className="text-sm text-slate-400 py-6 col-span-3 text-center">내가 생성한 반이 없습니다. 새 반을 개설해 보세요!</p>
             ) : (
               classes.map((cls) => {
                 const assignedStudentIds = classStudents
@@ -469,7 +469,7 @@ export default function TeacherDashboard() {
 
       </main>
 
-      {/* 일괄 계정 생성 모달 */}
+      {/* 모달 영역 생략 없이 유지 */}
       {showBulkModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-lg space-y-4 shadow-2xl">
@@ -537,7 +537,6 @@ export default function TeacherDashboard() {
         </div>
       )}
 
-      {/* 일괄 생성 결과 팝업 */}
       {bulkCreatedList && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-lg space-y-4 shadow-2xl text-center">
@@ -578,7 +577,6 @@ export default function TeacherDashboard() {
         </div>
       )}
 
-      {/* 단일 계정 추가 모달 */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md space-y-4 shadow-xl">
@@ -618,7 +616,6 @@ export default function TeacherDashboard() {
         </div>
       )}
 
-      {/* 반 생성 모달 */}
       {showClassModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm space-y-4 shadow-xl">
@@ -642,7 +639,6 @@ export default function TeacherDashboard() {
         </div>
       )}
 
-      {/* 반에 학생 배정 모달 */}
       {activeClass && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md space-y-4 shadow-xl">
@@ -677,7 +673,6 @@ export default function TeacherDashboard() {
         </div>
       )}
 
-      {/* 1명 계정 생성 완료 팝업 */}
       {createdInfo && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md space-y-4 shadow-2xl text-center">

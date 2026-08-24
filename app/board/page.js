@@ -10,7 +10,6 @@ function BoardContent() {
   const [myClasses, setMyClasses] = useState([]);
   const [myClassIds, setMyClassIds] = useState([]);
   
-  // 학생 필터링 탭 상태 ('MY_STUDENTS' = 내 담당 학생, 'ALL_STUDENTS' = 학원 전체 학생)
   const [studentScope, setStudentScope] = useState('MY_STUDENTS');
   const [selectedClassId, setSelectedClassId] = useState('ALL');
 
@@ -25,7 +24,7 @@ function BoardContent() {
     { bookTitle: '', range: '' },
   ]);
 
-  // 🎯 글 수정 모달 상태
+  // 글 수정 모달 상태
   const [editingPost, setEditingPost] = useState(null);
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
@@ -50,11 +49,15 @@ function BoardContent() {
       router.push('/login');
       return;
     }
-    const parsedUser = JSON.parse(userData);
-    setUser(parsedUser);
-
-    initData(parsedUser);
-  }, [searchParams]);
+    try {
+      const parsedUser = JSON.parse(userData);
+      setUser(parsedUser);
+      initData(parsedUser);
+    } catch (e) {
+      console.error(e);
+      router.push('/login');
+    }
+  }, []);
 
   const initData = async (currentUser) => {
     try {
@@ -117,7 +120,6 @@ function BoardContent() {
     }
   };
 
-  // 교재 항목 추가/삭제 (신규)
   const handleAddBook = () => setHomeworkList([...homeworkList, { bookTitle: '', range: '' }]);
   const handleRemoveBook = (index) => setHomeworkList(homeworkList.filter((_, i) => i !== index));
   const handleBookChange = (index, field, value) => {
@@ -126,7 +128,6 @@ function BoardContent() {
     setHomeworkList(updated);
   };
 
-  // 교재 항목 추가/삭제 (수정용)
   const handleEditAddBook = () => setEditHomeworkList([...editHomeworkList, { bookTitle: '', range: '' }]);
   const handleEditRemoveBook = (index) => setEditHomeworkList(editHomeworkList.filter((_, i) => i !== index));
   const handleEditBookChange = (index, field, value) => {
@@ -135,7 +136,6 @@ function BoardContent() {
     setEditHomeworkList(updated);
   };
 
-  // 신규 글 등록
   const handleCreatePost = async (e) => {
     e.preventDefault();
     if (!title.trim()) return alert('제목을 입력해주세요.');
@@ -176,19 +176,18 @@ function BoardContent() {
     }
   };
 
-  // 🎯 글 수정 열기 모달 세팅
   const handleOpenEdit = (post) => {
     setEditingPost(post);
-    setEditTitle(post.title);
-    setEditCategory(post.category);
+    setEditTitle(post.title || '');
+    setEditCategory(post.category || 'NOTICE');
     setEditTargetClassId(post.class_id ? post.class_id.toString() : 'ALL_STUDENTS');
     setEditDueDate(post.due_date || new Date().toISOString().split('T')[0]);
 
-    // 기존 본문 파싱 (교재, 구글 폼 링크, 메모 파싱)
-    const formMatch = post.content.match(/🔗 구글 폼 링크: (https?:\/\/[^\s]+)/);
+    const postContent = post.content || '';
+    const formMatch = postContent.match(/🔗 구글 폼 링크: (https?:\/\/[^\s]+)/);
     setEditGoogleFormUrl(formMatch ? formMatch[1] : '');
 
-    const lines = post.content.split('\n');
+    const lines = postContent.split('\n');
     const parsedBooks = [];
     lines.forEach((line) => {
       if (line.startsWith('📘 [')) {
@@ -201,18 +200,16 @@ function BoardContent() {
 
     setEditHomeworkList(parsedBooks.length > 0 ? parsedBooks : [{ bookTitle: '', range: '' }]);
 
-    // 메모 추출
-    const memoIndex = post.content.indexOf('📝 메모:\n');
+    const memoIndex = postContent.indexOf('📝 메모:\n');
     if (memoIndex !== -1) {
-      setEditContent(post.content.substring(memoIndex + 7));
+      setEditContent(postContent.substring(memoIndex + 7));
     } else if (parsedBooks.length > 0) {
       setEditContent('');
     } else {
-      setEditContent(post.content);
+      setEditContent(postContent);
     }
   };
 
-  // 🎯 수정사항 저장 처리
   const handleUpdatePost = async (e) => {
     e.preventDefault();
     if (!editTitle.trim()) return alert('제목을 입력해주세요.');
@@ -248,7 +245,6 @@ function BoardContent() {
     }
   };
 
-  // 글 삭제
   const handleDeletePost = async (postId, postTitle) => {
     if (!confirm(`[${postTitle}] 게시글을 삭제하시겠습니까?`)) return;
     try {
@@ -317,10 +313,9 @@ function BoardContent() {
 
       <main className="max-w-4xl mx-auto px-4 mt-6 space-y-6">
         
-        {/* 선생님/원장님용 공지 작성 */}
         {user?.role !== 'STUDENT' && (
           <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
-            <h2 className="font-bold text-lg text-gray-800">✍️ 반별 공지 및 숙제 작성 ({user.name} 선생님)</h2>
+            <h2 className="font-bold text-lg text-gray-800">✍️ 반별 공지 및 숙제 작성 ({user?.name || ''} 선생님)</h2>
             <form onSubmit={handleCreatePost} className="space-y-4">
               
               <div className="flex flex-col sm:flex-row gap-2">
@@ -445,7 +440,6 @@ function BoardContent() {
           </div>
         )}
 
-        {/* 숙제 검사 대상 범위 설정 */}
         {user?.role !== 'STUDENT' && (
           <div className="flex items-center justify-between bg-white p-3 px-4 rounded-xl border border-slate-200">
             <span className="text-xs font-bold text-slate-700">👥 숙제 검사 학생 범위:</span>
@@ -474,7 +468,6 @@ function BoardContent() {
           </div>
         )}
 
-        {/* 내 반 전용 필터 버튼 상단 표시 */}
         <div className="space-y-2">
           <div className="flex gap-2 overflow-x-auto pb-1">
             <button
@@ -503,17 +496,17 @@ function BoardContent() {
           </div>
         </div>
 
-        {/* 게시글 목록 */}
         <div className="space-y-4">
           {visiblePosts.length === 0 ? (
             <p className="text-center py-8 text-gray-500 text-xs font-bold">등록된 공지글이 없습니다.</p>
           ) : (
             visiblePosts.map((post) => {
-              const bookLines = post.content
+              const postContent = post.content || '';
+              const bookLines = postContent
                 .split('\n')
                 .filter((line) => line.startsWith('📘 ['));
 
-              const formMatch = post.content.match(/🔗 구글 폼 링크: (https?:\/\/[^\s]+)/);
+              const formMatch = postContent.match(/🔗 구글 폼 링크: (https?:\/\/[^\s]+)/);
               const formUrl = formMatch ? formMatch[1] : null;
 
               const isMyPost = user?.id === post.author_id;
@@ -544,7 +537,6 @@ function BoardContent() {
                       )}
                     </div>
                     
-                    {/* 🎯 [추가] 내가 작성한 글일 때만 수정/삭제 버튼 표시 */}
                     <div className="flex items-center gap-2">
                       {isMyPost && (
                         <>
@@ -632,7 +624,6 @@ function BoardContent() {
         </div>
       </main>
 
-      {/* 🎯 [추가] 글 수정 모달 팝업 */}
       {editingPost && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white rounded-2xl p-6 w-full max-w-lg space-y-4 shadow-2xl my-8">

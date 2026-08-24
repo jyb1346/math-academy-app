@@ -14,11 +14,12 @@ function BoardContent() {
   const [selectedClassId, setSelectedClassId] = useState('ALL');
 
   // 신규 작성 폼 상태
+  const [category, setCategory] = useState('ALL');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [newCategory, setNewCategory] = useState('NOTICE');
   const [targetClassId, setTargetClassId] = useState('');
-  const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
+  const [dueDate, setDueDate] = useState('');
   const [googleFormUrl, setGoogleFormUrl] = useState('');
   const [homeworkList, setHomeworkList] = useState([
     { bookTitle: '', range: '' },
@@ -44,11 +45,20 @@ function BoardContent() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
+    // 오늘 날짜 안전 초기화
+    setDueDate(new Date().toISOString().split('T')[0]);
+
+    if (searchParams) {
+      const paramCategory = searchParams.get('category');
+      if (paramCategory) setCategory(paramCategory);
+    }
+
     const userData = localStorage.getItem('user');
     if (!userData) {
       router.push('/login');
       return;
     }
+
     try {
       const parsedUser = JSON.parse(userData);
       setUser(parsedUser);
@@ -89,7 +99,7 @@ function BoardContent() {
         setMyClassIds(csData ? csData.map((cs) => cs.class_id) : []);
       }
 
-      fetchPosts();
+      await fetchPosts();
     } catch (err) {
       console.error(err);
     } finally {

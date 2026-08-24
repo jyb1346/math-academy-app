@@ -38,7 +38,7 @@ function BoardContent() {
   const [allStudents, setAllStudents] = useState([]);
   const [myStudents, setMyStudents] = useState([]);
   
-  // 🎯 학생 숙제 공지 확인 상태 저장 (post_id -> Set of student_id)
+  // 학생 숙제 공지 확인 상태 저장 (post_id -> Set of student_id)
   const [postConfirmations, setPostConfirmations] = useState({});
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -132,50 +132,56 @@ function BoardContent() {
     if (!error && data) {
       const confirmMap = {};
       data.forEach((item) => {
-        if (!confirmMap[item.post_id]) {
-          confirmMap[item.post_id] = new Set();
+        const pIdStr = item.post_id.toString();
+        if (!confirmMap[pIdStr]) {
+          confirmMap[pIdStr] = new Set();
         }
-        confirmMap[item.post_id].add(item.student_id);
+        confirmMap[pIdStr].add(item.student_id);
       });
       setPostConfirmations(confirmMap);
     }
   };
 
-  // 🎯 학생이 직접 [공지 및 숙제 확인 완료] 버튼 클릭 시 토글 처리
+  // 🎯 [수정] 공지 확인 완료 토글 함수 (문자열 호환 파싱)
   const togglePostConfirmation = async (postId) => {
     if (!user || user.role !== 'STUDENT') return;
 
-    const isConfirmed = postConfirmations[postId]?.has(user.id);
+    const postIdStr = postId.toString();
+    const isConfirmed = postConfirmations[postIdStr]?.has(user.id);
 
-    if (isConfirmed) {
-      const { error } = await supabase
-        .from('post_confirmations')
-        .delete()
-        .eq('post_id', postId)
-        .eq('student_id', user.id);
+    try {
+      if (isConfirmed) {
+        const { error } = await supabase
+          .from('post_confirmations')
+          .delete()
+          .eq('post_id', postId)
+          .eq('student_id', user.id);
 
-      if (!error) {
+        if (error) throw error;
+
         setPostConfirmations((prev) => {
           const updated = { ...prev };
-          if (updated[postId]) {
-            updated[postId].delete(user.id);
+          if (updated[postIdStr]) {
+            updated[postIdStr].delete(user.id);
           }
           return { ...updated };
         });
-      }
-    } else {
-      const { error } = await supabase
-        .from('post_confirmations')
-        .insert([{ post_id: postId, student_id: user.id }]);
+      } else {
+        const { error } = await supabase
+          .from('post_confirmations')
+          .insert([{ post_id: postId, student_id: user.id }]);
 
-      if (!error) {
+        if (error) throw error;
+
         setPostConfirmations((prev) => {
           const updated = { ...prev };
-          if (!updated[postId]) updated[postId] = new Set();
-          updated[postId].add(user.id);
+          if (!updated[postIdStr]) updated[postIdStr] = new Set();
+          updated[postIdStr].add(user.id);
           return { ...updated };
         });
       }
+    } catch (err) {
+      alert(`확인 상태 변경 실패: ${err.message}`);
     }
   };
 
@@ -355,7 +361,6 @@ function BoardContent() {
 
       <main className="max-w-4xl mx-auto px-4 mt-6 space-y-6">
         
-        {/* 선생님/원장님용 공지 작성 */}
         {user?.role !== 'STUDENT' && (
           <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
             <h2 className="font-bold text-lg text-gray-800">✍️ 반별 공지 및 숙제 작성 ({user?.name || ''} 선생님)</h2>
@@ -483,7 +488,6 @@ function BoardContent() {
           </div>
         )}
 
-        {/* 선생님 전용: 확인 학생 범위 옵션 */}
         {user?.role !== 'STUDENT' && (
           <div className="flex items-center justify-between bg-white p-3 px-4 rounded-xl border border-slate-200">
             <span className="text-xs font-bold text-slate-700">👥 학생 확인 상태 표시 범위:</span>
@@ -512,7 +516,6 @@ function BoardContent() {
           </div>
         )}
 
-        {/* 반별 필터 버튼 */}
         <div className="space-y-2">
           <div className="flex gap-2 overflow-x-auto pb-1">
             <button
@@ -541,7 +544,6 @@ function BoardContent() {
           </div>
         </div>
 
-        {/* 게시글 목록 */}
         <div className="space-y-4">
           {visiblePosts.length === 0 ? (
             <p className="text-center py-8 text-gray-500 text-xs font-bold">등록된 공지글이 없습니다.</p>
@@ -552,7 +554,10 @@ function BoardContent() {
               const formUrl = formMatch ? formMatch[1] : null;
 
               const isMyPost = user?.id === post.author_id;
-              const isConfirmedByMe = postConfirmations[post.id]?.has(user?.id);
+              
+              // 🎯 공지 확인 여부 체크 (문자열 변환 파싱)
+              const postIdStr = post.id.toString();
+              const isConfirmedByMe = postConfirmations[postIdStr]?.has(user?.id);
 
               return (
                 <div key={post.id} className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm space-y-3">
@@ -649,7 +654,7 @@ function BoardContent() {
                           <span className="text-xs text-slate-400">해당 범위의 학생이 없습니다.</span>
                         ) : (
                           activeStudents.map((st) => {
-                            const isConfirmed = postConfirmations[post.id]?.has(st.id);
+                            const isConfirmed = postConfirmations[postIdStr]?.has(st.id);
                             return (
                               <span
                                 key={st.id}

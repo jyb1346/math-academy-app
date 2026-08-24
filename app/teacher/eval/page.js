@@ -14,13 +14,15 @@ export default function TeacherEvalPage() {
   const [selectedClassId, setSelectedClassId] = useState('ALL');
   const [selectedStudent, setSelectedStudent] = useState(null);
 
-  // 평가 폼 상태
+  // 평가 폼 상태 (육각형 6개 항목: 1~10점)
   const [evalDate, setEvalDate] = useState(new Date().toISOString().split('T')[0]);
-  const [attendance, setAttendance] = useState('ATTEND'); // ATTEND, LATE, ABSENT
-  const [testScore, setTestScore] = useState('');
-  const [testMaxScore, setTestMaxScore] = useState('100');
-  const [attitude, setAttitude] = useState('EXCELLENT'); // EXCELLENT, GOOD, NEED_IMPROVEMENT
-  const [homeworkStatus, setHomeworkStatus] = useState('COMPLETE'); // COMPLETE, INCOMPLETE, NONE
+  const [attendance, setAttendance] = useState('ATTEND');
+  const [concept, setConcept] = useState(8);      // 개념 이해도
+  const [calculation, setCalculation] = useState(8);  // 계산 정확도
+  const [application, setApplication] = useState(7);  // 응용/유형 해결력
+  const [attitude, setAttitude] = useState(8);     // 수업 집중도
+  const [homework, fontHomework] = useState(9);    // 과제 완성도
+  const [perseverance, setPerseverance] = useState(7); // 오답/끈기
   const [teacherComment, setTeacherComment] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -44,7 +46,6 @@ export default function TeacherEvalPage() {
 
   const fetchInitialData = async (currentUser) => {
     try {
-      // 1. 학생 목록 가져오기
       let studentQuery = supabase.from('users').select('*').eq('role', 'STUDENT');
       if (currentUser.role !== 'HEAD_TEACHER') {
         studentQuery = studentQuery.eq('teacher_id', currentUser.id);
@@ -52,7 +53,6 @@ export default function TeacherEvalPage() {
       const { data: stData } = await studentQuery;
       setStudents(stData || []);
 
-      // 2. 반(Class) 목록 가져오기
       let classQuery = supabase.from('classes').select('*');
       if (currentUser.role !== 'HEAD_TEACHER') {
         classQuery = classQuery.eq('teacher_id', currentUser.id);
@@ -60,7 +60,6 @@ export default function TeacherEvalPage() {
       const { data: cData } = await classQuery;
       setClasses(cData || []);
 
-      // 3. 반-학생 매핑 정보 가져오기
       const { data: csData } = await supabase.from('class_students').select('*');
       setClassStudents(csData || []);
 
@@ -69,7 +68,6 @@ export default function TeacherEvalPage() {
     }
   };
 
-  // 선택된 반에 맞춰 학생 필터링
   const filteredStudents = students.filter((st) => {
     if (selectedClassId === 'ALL') return true;
     return classStudents.some(
@@ -88,18 +86,19 @@ export default function TeacherEvalPage() {
         teacher_id: user.id,
         eval_date: evalDate,
         attendance,
-        test_score: testScore ? parseInt(testScore) : null,
-        test_max_score: testMaxScore ? parseInt(testMaxScore) : 100,
-        attitude,
-        homework_status: homeworkStatus,
+        concept_score: parseInt(concept),
+        calc_score: parseInt(calculation),
+        app_score: parseInt(application),
+        attitude_score: parseInt(attitude),
+        homework_score: parseInt(homework),
+        perseverance_score: parseInt(perseverance),
         teacher_comment: teacherComment,
       };
 
       const { error } = await supabase.from('daily_evaluations').insert([evalData]);
       if (error) throw error;
 
-      alert(`[${selectedStudent.name}] 학생의 학습 피드백이 등록되었습니다.`);
-      setTestScore('');
+      alert(`[${selectedStudent.name}] 학생의 육각형 종합 피드백이 저장되었습니다.`);
       setTeacherComment('');
     } catch (err) {
       alert(`등록 실패: ${err.message}`);
@@ -124,10 +123,10 @@ export default function TeacherEvalPage() {
       <main className="max-w-4xl mx-auto px-4 mt-6 space-y-6">
         <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
           <h2 className="text-lg font-bold text-slate-800 border-b pb-3 flex items-center gap-2">
-            <span>📊</span> 일일 학습 피드백 작성
+            <span>🔷</span> 육각형 역량 일일 피드백 작성
           </h2>
 
-          {/* 1. 반(Class) 선택 필터 탭 */}
+          {/* 1. 반(Class) 필터 탭 */}
           <div className="space-y-2">
             <label className="block text-xs font-bold text-slate-600">🏫 반 선택 필터</label>
             <div className="flex gap-2 overflow-x-auto pb-1">
@@ -162,7 +161,7 @@ export default function TeacherEvalPage() {
             </div>
           </div>
 
-          {/* 2. 필터링된 학생 선택 버블 */}
+          {/* 2. 학생 선택 버블 */}
           <div className="space-y-2">
             <label className="block text-xs font-bold text-slate-600">👤 피드백 작성할 학생 선택</label>
             {filteredStudents.length === 0 ? (
@@ -193,92 +192,110 @@ export default function TeacherEvalPage() {
             )}
           </div>
 
-          {/* 3. 피드백 입력 폼 */}
+          {/* 3. 육각형 역량 평가 입력 폼 (1~10점 선택) */}
           {selectedStudent ? (
-            <form onSubmit={handleSubmit} className="space-y-4 pt-4 border-t border-slate-100">
-              <div className="bg-blue-50/70 p-3 rounded-xl border border-blue-200 text-xs font-bold text-blue-900">
-                🎯 선택된 학생: {selectedStudent.name} ({selectedStudent.email})
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">수업 날짜</label>
+            <form onSubmit={handleSubmit} className="space-y-5 pt-4 border-t border-slate-100">
+              <div className="bg-blue-50/70 p-3 rounded-xl border border-blue-200 text-xs font-bold text-blue-900 flex justify-between items-center">
+                <span>🎯 평가 학생: {selectedStudent.name} ({selectedStudent.email})</span>
+                <div className="flex items-center gap-2">
+                  <span>수업일:</span>
                   <input
                     type="date"
-                    required
                     value={evalDate}
                     onChange={(e) => setEvalDate(e.target.value)}
-                    className="w-full p-2.5 border rounded-xl text-sm bg-slate-50 font-bold text-slate-800"
+                    className="p-1 px-2 border rounded-lg text-xs bg-white font-bold"
+                  />
+                </div>
+              </div>
+
+              {/* 육각형 6대 역량 점수 슬라이더 / 라디오 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                
+                {/* 1. 개념 이해도 */}
+                <div className="bg-white p-3 rounded-xl border border-slate-100 space-y-1">
+                  <div className="flex justify-between items-center text-xs font-bold">
+                    <span>📐 개념 이해도</span>
+                    <span className="text-blue-600 font-black text-sm">{concept}점</span>
+                  </div>
+                  <input
+                    type="range" min="1" max="10" value={concept}
+                    onChange={(e) => setConcept(e.target.value)}
+                    className="w-full accent-blue-600"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">출결 상태</label>
-                  <select
-                    value={attendance}
-                    onChange={(e) => setAttendance(e.target.value)}
-                    className="w-full p-2.5 border rounded-xl text-sm bg-slate-50 font-semibold"
-                  >
-                    <option value="ATTEND">✅ 출석</option>
-                    <option value="LATE">⏰ 지각</option>
-                    <option value="ABSENT">❌ 결석</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">일일 테스트 점수</label>
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="number"
-                      placeholder="점수"
-                      value={testScore}
-                      onChange={(e) => setTestScore(e.target.value)}
-                      className="w-full p-2.5 border rounded-xl text-sm bg-slate-50"
-                    />
-                    <span className="text-xs text-slate-400 font-bold">/</span>
-                    <input
-                      type="number"
-                      value={testMaxScore}
-                      onChange={(e) => setTestMaxScore(e.target.value)}
-                      className="w-20 p-2.5 border rounded-xl text-sm bg-slate-50 text-center font-bold text-slate-500"
-                    />
+                {/* 2. 계산 정확도 */}
+                <div className="bg-white p-3 rounded-xl border border-slate-100 space-y-1">
+                  <div className="flex justify-between items-center text-xs font-bold">
+                    <span>✏️ 연산/계산 정확도</span>
+                    <span className="text-blue-600 font-black text-sm">{calculation}점</span>
                   </div>
+                  <input
+                    type="range" min="1" max="10" value={calculation}
+                    onChange={(e) => setCalculation(e.target.value)}
+                    className="w-full accent-blue-600"
+                  />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">수업 태도</label>
-                  <select
-                    value={attitude}
+                {/* 3. 응용/유형 해결력 */}
+                <div className="bg-white p-3 rounded-xl border border-slate-100 space-y-1">
+                  <div className="flex justify-between items-center text-xs font-bold">
+                    <span>💡 응용/심화 해결력</span>
+                    <span className="text-blue-600 font-black text-sm">{application}점</span>
+                  </div>
+                  <input
+                    type="range" min="1" max="10" value={application}
+                    onChange={(e) => setApplication(e.target.value)}
+                    className="w-full accent-blue-600"
+                  />
+                </div>
+
+                {/* 4. 수업 집중도 */}
+                <div className="bg-white p-3 rounded-xl border border-slate-100 space-y-1">
+                  <div className="flex justify-between items-center text-xs font-bold">
+                    <span>🔥 수업 태도/집중도</span>
+                    <span className="text-blue-600 font-black text-sm">{attitude}점</span>
+                  </div>
+                  <input
+                    type="range" min="1" max="10" value={attitude}
                     onChange={(e) => setAttitude(e.target.value)}
-                    className="w-full p-2.5 border rounded-xl text-sm bg-slate-50 font-semibold"
-                  >
-                    <option value="EXCELLENT">🌟 매우 우수</option>
-                    <option value="GOOD">👍 양호</option>
-                    <option value="NEED_IMPROVEMENT">⚠️ 노력 필요</option>
-                  </select>
+                    className="w-full accent-blue-600"
+                  />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">과제 이행도</label>
-                  <select
-                    value={homeworkStatus}
-                    onChange={(e) => setHomeworkStatus(e.target.value)}
-                    className="w-full p-2.5 border rounded-xl text-sm bg-slate-50 font-semibold"
-                  >
-                    <option value="COMPLETE">💯 완료</option>
-                    <option value="INCOMPLETE">🔺 미흡/부분 완료</option>
-                    <option value="NONE">❌ 안함</option>
-                  </select>
+                {/* 5. 과제 완성도 */}
+                <div className="bg-white p-3 rounded-xl border border-slate-100 space-y-1">
+                  <div className="flex justify-between items-center text-xs font-bold">
+                    <span>📚 과제 이행 및 완성도</span>
+                    <span className="text-blue-600 font-black text-sm">{homework}점</span>
+                  </div>
+                  <input
+                    type="range" min="1" max="10" value={homework}
+                    onChange={(e) => fontHomework(e.target.value)}
+                    className="w-full accent-blue-600"
+                  />
                 </div>
+
+                {/* 6. 오답노트/끈기 */}
+                <div className="bg-white p-3 rounded-xl border border-slate-100 space-y-1">
+                  <div className="flex justify-between items-center text-xs font-bold">
+                    <span>🧩 오답 복습 및 끈기</span>
+                    <span className="text-blue-600 font-black text-sm">{perseverance}점</span>
+                  </div>
+                  <input
+                    type="range" min="1" max="10" value={perseverance}
+                    onChange={(e) => setPerseverance(e.target.value)}
+                    className="w-full accent-blue-600"
+                  />
+                </div>
+
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">선생님 한줄 코멘트 / 피드백</label>
+                <label className="block text-xs font-bold text-slate-600 mb-1">선생님 총평 코멘트</label>
                 <textarea
                   required
-                  placeholder="오늘 수업에서 잘했던 점이나 보완할 점을 간단히 적어주세요."
+                  placeholder="오늘 수업 성취도 및 보완할 점을 자유롭게 기록해 주세요."
                   value={teacherComment}
                   onChange={(e) => setTeacherComment(e.target.value)}
                   className="w-full p-3 border rounded-xl text-sm h-24"
@@ -290,12 +307,12 @@ export default function TeacherEvalPage() {
                 disabled={loading}
                 className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold text-sm hover:bg-blue-700 shadow transition disabled:bg-slate-300"
               >
-                {loading ? '등록 중...' : '학습 피드백 저장하기'}
+                {loading ? '저장 중...' : '🔷 육각형 피드백 저장하기'}
               </button>
             </form>
           ) : (
             <div className="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-400 text-xs font-bold">
-              위에서 학생을 선택하시면 피드백 입력 창이 나타납니다.
+              위에서 학생을 선택하시면 육각형 6대 항목 평가 폼이 열립니다.
             </div>
           )}
         </div>

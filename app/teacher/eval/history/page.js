@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 
-// SVG 기반 오버랩(학생 vs 반 평균) 육각형 레이더 차트
 function HexagonRadarChart({ scores, classAvgScores }) {
   const { concept = 8, calc = 8, app = 8, attitude = 8, homework = 8, perseverance = 8 } = scores;
   const labels = ['개념이해', '연산정확', '응용해결', '수업집중', '과제완성', '오답끈기'];
@@ -28,7 +27,6 @@ function HexagonRadarChart({ scores, classAvgScores }) {
   return (
     <div className="flex flex-col items-center justify-center p-3 bg-slate-50 rounded-2xl border border-slate-100 space-y-2">
       <svg width="220" height="220" viewBox="0 0 200 200" className="overflow-visible">
-        {/* 격자망 */}
         {gridLevels.map((level, idx) => (
           <polygon
             key={idx}
@@ -40,7 +38,6 @@ function HexagonRadarChart({ scores, classAvgScores }) {
           />
         ))}
 
-        {/* 방사형 축 */}
         {labels.map((_, i) => {
           const angle = (Math.PI / 3) * i - Math.PI / 2;
           const x2 = center + radius * Math.cos(angle);
@@ -48,7 +45,6 @@ function HexagonRadarChart({ scores, classAvgScores }) {
           return <line key={i} x1={center} y1={center} x2={x2} y2={y2} stroke="#cbd5e1" strokeWidth="1" />;
         })}
 
-        {/* 1. 같은 반 평균 영역 (주황색) */}
         {classAvgScores && (
           <polygon
             points={getCoordinates([
@@ -66,7 +62,6 @@ function HexagonRadarChart({ scores, classAvgScores }) {
           />
         )}
 
-        {/* 2. 학생 본인 영역 (파란색) */}
         <polygon
           points={getCoordinates(values)}
           fill="rgba(37, 99, 235, 0.3)"
@@ -74,7 +69,6 @@ function HexagonRadarChart({ scores, classAvgScores }) {
           strokeWidth="2.5"
         />
 
-        {/* 학생 꼭짓점 포인트 */}
         {values.map((val, i) => {
           const angle = (Math.PI / 3) * i - Math.PI / 2;
           const r = (val / 10) * radius;
@@ -83,7 +77,6 @@ function HexagonRadarChart({ scores, classAvgScores }) {
           return <circle key={i} cx={cx} cy={cy} r="3.5" fill="#2563eb" />;
         })}
 
-        {/* 라벨 */}
         {labels.map((label, i) => {
           const angle = (Math.PI / 3) * i - Math.PI / 2;
           const labelRadius = radius + 18;
@@ -101,7 +94,6 @@ function HexagonRadarChart({ scores, classAvgScores }) {
         })}
       </svg>
 
-      {/* 범례 (Legend) */}
       <div className="flex items-center justify-center gap-4 text-[11px] font-bold pt-1">
         <div className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-full bg-blue-600 inline-block"></span>
@@ -128,7 +120,7 @@ export default function EvalHistoryPage() {
   // 필터 상태 (반, 학생, 날짜)
   const [selectedClassId, setSelectedClassId] = useState('ALL');
   const [selectedStudentId, setSelectedStudentId] = useState('ALL');
-  const [selectedDate, setSelectedDate] = useState(''); // 특정 날짜 검색
+  const [selectedDate, setSelectedDate] = useState('');
   const [loading, setLoading] = useState(true);
 
   const router = useRouter();
@@ -151,33 +143,30 @@ export default function EvalHistoryPage() {
 
   const fetchData = async (currentUser) => {
     try {
-      let stQuery = supabase.from('users').select('id, name, email').eq('role', 'STUDENT');
-      if (currentUser.role !== 'HEAD_TEACHER') {
-        stQuery = stQuery.eq('teacher_id', currentUser.id);
-      }
-      const { data: stData } = await stQuery;
+      // 🎯 [핵심] 피드백 조회 및 필터용 학생/반 데이터는 내 담당 내역을 기본으로 조회
+      const { data: stData } = await supabase
+        .from('users')
+        .select('id, name, email')
+        .eq('role', 'STUDENT')
+        .eq('teacher_id', currentUser.id);
       setStudents(stData || []);
 
-      let cQuery = supabase.from('classes').select('*');
-      if (currentUser.role !== 'HEAD_TEACHER') {
-        cQuery = cQuery.eq('teacher_id', currentUser.id);
-      }
-      const { data: cData } = await cQuery;
+      const { data: cData } = await supabase
+        .from('classes')
+        .select('*')
+        .eq('teacher_id', currentUser.id);
       setClasses(cData || []);
 
       const { data: csData } = await supabase.from('class_students').select('*');
       setClassStudents(csData || []);
 
-      let evalQuery = supabase
+      // 🎯 [핵심] 로그인한 원장님 본인이 등록한 피드백 내역만 깔끔하게 조회
+      const { data: evalData, error } = await supabase
         .from('daily_evaluations')
         .select('*, users!daily_evaluations_student_id_fkey(name, email)')
+        .eq('teacher_id', currentUser.id)
         .order('eval_date', { ascending: false });
 
-      if (currentUser.role !== 'HEAD_TEACHER') {
-        evalQuery = evalQuery.eq('teacher_id', currentUser.id);
-      }
-
-      const { data: evalData, error } = await evalQuery;
       if (error) throw error;
       setEvaluations(evalData || []);
 
@@ -201,9 +190,7 @@ export default function EvalHistoryPage() {
     }
   };
 
-  // 특정 학생이 속한 반의 전체 학생 ID 추출 및 반 평균 점수 계산
   const getClassAvgScores = (studentId) => {
-    // 해당 학생이 속한 첫 번째 반 찾기
     const studentClassRelation = classStudents.find((cs) => cs.student_id === studentId);
     if (!studentClassRelation) return null;
 
@@ -212,7 +199,6 @@ export default function EvalHistoryPage() {
       .filter((cs) => cs.class_id === classId)
       .map((cs) => cs.student_id);
 
-    // 반 전체 학생들의 피드백 집계
     const classEvals = evaluations.filter((e) => sameClassStudentIds.includes(e.student_id));
     if (classEvals.length === 0) return null;
 
@@ -239,7 +225,6 @@ export default function EvalHistoryPage() {
     };
   };
 
-  // 필터링 적용 (반, 학생, 날짜)
   const filteredEvals = evaluations.filter((item) => {
     if (selectedStudentId !== 'ALL' && item.student_id !== selectedStudentId) {
       return false;
@@ -274,9 +259,9 @@ export default function EvalHistoryPage() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b pb-4">
             <div>
               <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <span>🔷</span> 육각형 피드백 리포트 ({filteredEvals.length}건)
+                <span>🔷</span> 내 작성 피드백 리포트 ({filteredEvals.length}건)
               </h2>
-              <p className="text-xs text-slate-400 mt-0.5">날짜별 피드백 검색 및 같은 반 학생 평균 오랩 비교 기능</p>
+              <p className="text-xs text-slate-400 mt-0.5">{user.name} 선생님이 작성하신 학습 피드백 전체 기록입니다.</p>
             </div>
             <button
               onClick={() => router.push('/teacher/eval')}
@@ -289,9 +274,8 @@ export default function EvalHistoryPage() {
           {/* 3가지 필터 영역 (반 / 학생 / 날짜) */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
             
-            {/* 1. 반 필터 */}
             <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1">🏫 반 선택</label>
+              <label className="block text-xs font-bold text-slate-600 mb-1">🏫 내 반 선택</label>
               <select
                 value={selectedClassId}
                 onChange={(e) => { setSelectedClassId(e.target.value); setSelectedStudentId('ALL'); }}
@@ -304,9 +288,8 @@ export default function EvalHistoryPage() {
               </select>
             </div>
 
-            {/* 2. 학생 필터 */}
             <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1">👤 학생 선택</label>
+              <label className="block text-xs font-bold text-slate-600 mb-1">👤 내 담당 학생 선택</label>
               <select
                 value={selectedStudentId}
                 onChange={(e) => setSelectedStudentId(e.target.value)}
@@ -319,7 +302,6 @@ export default function EvalHistoryPage() {
               </select>
             </div>
 
-            {/* 3. 날짜 지정 검색 필터 */}
             <div>
               <div className="flex justify-between items-center mb-1">
                 <label className="block text-xs font-bold text-slate-600">📅 날짜 지정</label>
@@ -328,7 +310,7 @@ export default function EvalHistoryPage() {
                     onClick={() => setSelectedDate('')}
                     className="text-[10px] text-rose-500 font-bold hover:underline"
                   >
-                    날짜 초기화 ✕
+                    초기화 ✕
                   </button>
                 )}
               </div>
@@ -342,10 +324,10 @@ export default function EvalHistoryPage() {
 
           </div>
 
-          {/* 피드백 리스트 (반 평균 오버랩 포함) */}
+          {/* 피드백 리스트 */}
           <div className="space-y-6">
             {filteredEvals.length === 0 ? (
-              <p className="text-center py-12 text-slate-400 text-xs font-bold">조건에 해당하는 학습 피드백이 없습니다.</p>
+              <p className="text-center py-12 text-slate-400 text-xs font-bold">작성하신 학습 피드백 내역이 없습니다.</p>
             ) : (
               filteredEvals.map((item) => {
                 const classAvgScores = getClassAvgScores(item.student_id);
@@ -353,7 +335,6 @@ export default function EvalHistoryPage() {
                 return (
                   <div key={item.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
                     
-                    {/* 상단 프로필 및 날짜 */}
                     <div className="flex justify-between items-center border-b pb-3 text-xs">
                       <div className="flex items-center gap-2">
                         <span className="font-extrabold text-base text-slate-800">{item.users?.name} 학생</span>
@@ -369,10 +350,7 @@ export default function EvalHistoryPage() {
                       </button>
                     </div>
 
-                    {/* 2컬럼: 오버랩 육각형 차트 / 코멘트 */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
-                      
-                      {/* 오버랩 육각형 그래프 */}
                       <div className="md:col-span-1 flex justify-center">
                         <HexagonRadarChart
                           scores={{
@@ -387,7 +365,6 @@ export default function EvalHistoryPage() {
                         />
                       </div>
 
-                      {/* 총평 및 분석 */}
                       <div className="md:col-span-2 space-y-3">
                         <div className="bg-blue-50/60 p-4 rounded-xl border border-blue-100 space-y-1">
                           <span className="text-xs font-bold text-blue-800 block">✍️ 선생님 학습 총평</span>

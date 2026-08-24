@@ -6,7 +6,9 @@ import { useRouter } from 'next/navigation';
 
 export default function TeacherDashboard() {
   const [user, setUser] = useState(null);
-  const [students, setStudents] = useState([]);
+  const [myStudents, setMyStudents] = useState([]); // 내 담당 학생
+  const [allStudents, setAllStudents] = useState([]); // 학원 전체 학생
+  const [showAllStudentsTab, setShowAllStudentsTab] = useState(false); // 전체 학생 보기 토글
   const [teachers, setTeachers] = useState([]);
   const [classes, setClasses] = useState([]);
   const [classStudents, setClassStudents] = useState([]);
@@ -56,19 +58,21 @@ export default function TeacherDashboard() {
 
   const fetchDashboardData = async (currentUser) => {
     try {
+      // 1. 전체 사용자 불러와서 선생님 목록 및 학생 목록 독립 분류
       const { data: userData } = await supabase.from('users').select('*');
       if (userData) {
-        const allTeachers = userData.filter((u) => u.role === 'TEACHER' || u.role === 'HEAD_TEACHER');
-        setTeachers(allTeachers);
+        const allTcs = userData.filter((u) => u.role === 'TEACHER' || u.role === 'HEAD_TEACHER');
+        setTeachers(allTcs);
 
-        if (currentUser.role === 'HEAD_TEACHER') {
-          setStudents(userData.filter((u) => u.role === 'STUDENT'));
-        } else {
-          setStudents(userData.filter((u) => u.role === 'STUDENT' && u.teacher_id === currentUser.id));
-        }
+        const allSts = userData.filter((u) => u.role === 'STUDENT');
+        setAllStudents(allSts);
+
+        // 🎯 원장님이라도 [내 담당 학생]을 기본 구분
+        const mySts = allSts.filter((u) => u.teacher_id === currentUser.id);
+        setMyStudents(mySts);
       }
 
-      // 🎯 [핵심 수정] 원장님이라도 본인이 직접 만든 반만 독립 조회하도록 설정
+      // 2. 🎯 내가 직접 생성한 독립된 반만 조회
       const { data: classData } = await supabase
         .from('classes')
         .select('*')
@@ -78,16 +82,14 @@ export default function TeacherDashboard() {
       const { data: csData } = await supabase.from('class_students').select('*');
       setClassStudents(csData || []);
 
-      let replyQuery = supabase
+      // 3. 🎯 내가 담당한 피드백 답장만 독립 조회
+      const { data: replyData } = await supabase
         .from('daily_evaluations')
         .select('*, users!daily_evaluations_student_id_fkey(name)')
+        .eq('teacher_id', currentUser.id)
         .not('parent_reply', 'is', null)
         .order('parent_reply_at', { ascending: false });
 
-      if (currentUser.role !== 'HEAD_TEACHER') {
-        replyQuery = replyQuery.eq('teacher_id', currentUser.id);
-      }
-      const { data: replyData } = await replyQuery;
       setParentReplies(replyData || []);
 
       const { data: qnaData } = await supabase.from('qna').select('id').eq('status', 'PENDING');
@@ -117,7 +119,7 @@ export default function TeacherDashboard() {
           email: `st_${Date.now().toString().slice(-4)}_${idx + 1}_${randomCode}@poommath.com`,
           password: bulkDefaultPw.trim() || '1234',
           role: 'STUDENT',
-          teacher_id: bulkTeacherId || user.id,
+          teacher_id: bulkTeacherId || user.id, // 지정하지 않으면 본인 학생으로
         };
       });
 
@@ -162,7 +164,7 @@ export default function TeacherDashboard() {
     }
   };
 
-  const handleDeleteUser = async (userId, userName, userRole) => {
+  const handleDeleteUser = async (userId, userName) => {
     if (!confirm(`정말로 [${userName}] 계정을 삭제하시겠습니까?`)) return;
     try {
       const { error } = await supabase.from('users').delete().eq('id', userId);
@@ -224,6 +226,8 @@ export default function TeacherDashboard() {
 
   if (!user) return <div className="p-10 text-center font-bold">로딩 중...</div>;
 
+  const currentDisplayStudents = showAllStudentsTab ? allStudents : myStudents;
+
   return (
     <div className="min-h-screen bg-slate-100 pb-16">
       
@@ -231,7 +235,7 @@ export default function TeacherDashboard() {
         <div>
           <div className="flex items-center gap-2">
             <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${user.role === 'HEAD_TEACHER' ? 'bg-amber-500 text-slate-950' : 'bg-blue-600'}`}>
-              {user.role === 'HEAD_TEACHER' ? '👑 메인 선생님(원장님)' : 'POOM MATH'}
+              {user.role === 'HEAD_TEACHER' ? '👑 원장님' : 'POOM MATH'}
             </span>
             <h1 className="text-2xl font-black">{user.name} 선생님 교무실</h1>
           </div>
@@ -250,15 +254,15 @@ export default function TeacherDashboard() {
         {/* 1. 현황 지표 카드 */}
         <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-            <p className="text-xs font-bold text-slate-400">내 담당 반 수</p>
+            <p className="text-xs font-bold text-slate-400">내 개설 반 수</p>
             <p className="text-2xl font-black text-blue-600 mt-1">{classes.length}개 반</p>
           </div>
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-            <p className="text-xs font-bold text-slate-400">관리 학생 수</p>
-            <p className="text-2xl font-black text-slate-800 mt-1">{students.length}명</p>
+            <p className="text-xs font-bold text-slate-400">내 담당 학생 수</p>
+            <p className="text-2xl font-black text-slate-800 mt-1">{myStudents.length}명</p>
           </div>
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-            <p className="text-xs font-bold text-slate-400">학부모 답장</p>
+            <p className="text-xs font-bold text-slate-400">내 피드백 답장</p>
             <p className="text-2xl font-black text-emerald-600 mt-1">{parentReplies.length}건</p>
           </div>
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
@@ -301,33 +305,33 @@ export default function TeacherDashboard() {
             >
               <div className="text-left">
                 <span className="block text-sm">📢 반별 공지 및 숙제 작성</span>
-                <span className="text-[10px] text-indigo-100 font-normal">특정 반 공지사항/숙제 등록</span>
+                <span className="text-[10px] text-indigo-100 font-normal">내 반 / 전체 공지사항 등록</span>
               </div>
               <span className="text-base">→</span>
             </button>
           </div>
         </section>
 
-        {/* 3. 내 담당 반 목록 섹션 */}
+        {/* 3. 내 개설 반 목록 섹션 */}
         <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
           <div className="flex justify-between items-center">
             <div>
               <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
                 <span>🏫</span> 내 담당 반 목록 및 학생 배정
               </h2>
-              <p className="text-xs text-slate-400 mt-0.5">내가 직접 생성하고 담당하는 반 목록입니다.</p>
+              <p className="text-xs text-slate-400 mt-0.5">{user.name} 선생님이 직접 개설하여 담당하는 반입니다.</p>
             </div>
             <button
               onClick={() => setShowClassModal(true)}
               className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow transition"
             >
-              + 새 반 생성
+              + 새 반 개설
             </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {classes.length === 0 ? (
-              <p className="text-sm text-slate-400 py-6 col-span-3 text-center">내가 생성한 반이 없습니다. 새 반을 개설해 보세요!</p>
+              <p className="text-sm text-slate-400 py-6 col-span-3 text-center">개설한 반이 없습니다. 새 반을 만들어보세요!</p>
             ) : (
               classes.map((cls) => {
                 const assignedStudentIds = classStudents
@@ -365,14 +369,31 @@ export default function TeacherDashboard() {
           </div>
         </section>
 
-        {/* 4. 학생 및 선생님 계정 관리 2컬럼 레이아웃 */}
+        {/* 4. 학생 관리 섹션 (독립 탭: 내 담당 학생 vs 학원 전체 학생) */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
-            <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-                <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                  <span>📱</span> {user.role === 'HEAD_TEACHER' ? '학원 전체 학생' : '내 담당 학생'} ({students.length}명)
-                </h2>
+            <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                
+                {/* 🎯 [핵심] 내 담당 학생 vs 학원 전체 학생 독립 전환 버튼 */}
+                <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+                  <button
+                    onClick={() => setShowAllStudentsTab(false)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      !showAllStudentsTab ? 'bg-blue-600 text-white shadow' : 'text-slate-600'
+                    }`}
+                  >
+                    👤 내 담당 학생 ({myStudents.length}명)
+                  </button>
+                  <button
+                    onClick={() => setShowAllStudentsTab(true)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      showAllStudentsTab ? 'bg-slate-800 text-white shadow' : 'text-slate-600'
+                    }`}
+                  >
+                    🌐 학원 전체 학생 ({allStudents.length}명)
+                  </button>
+                </div>
                 
                 <div className="flex items-center gap-2">
                   <button
@@ -391,17 +412,24 @@ export default function TeacherDashboard() {
               </div>
 
               <div className="space-y-3">
-                {students.map((student) => {
+                {currentDisplayStudents.map((student) => {
                   const studentClasses = classStudents
                     .filter((cs) => cs.student_id === student.id)
                     .map((cs) => classes.find((c) => c.id === cs.class_id)?.name)
                     .filter(Boolean);
+
+                  const teacherInfo = teachers.find((t) => t.id === student.teacher_id);
 
                   return (
                     <div key={student.id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-slate-50 p-4 rounded-xl border border-slate-100 gap-3">
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-slate-800 text-sm">{student.name} 학생</span>
+                          {teacherInfo && (
+                            <span className="text-[10px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-bold">
+                              담당: {teacherInfo.name}T
+                            </span>
+                          )}
                           {studentClasses.map((cName, idx) => (
                             <span key={idx} className="bg-indigo-100 text-indigo-700 text-[10px] px-2 py-0.5 rounded font-bold">
                               {cName}
@@ -418,7 +446,7 @@ export default function TeacherDashboard() {
                           📊 피드백 작성
                         </button>
                         <button
-                          onClick={() => handleDeleteUser(student.id, student.name, 'STUDENT')}
+                          onClick={() => handleDeleteUser(student.id, student.name)}
                           className="bg-rose-100 hover:bg-rose-200 text-rose-600 text-xs font-bold px-2.5 py-1.5 rounded-lg transition"
                         >
                           삭제
@@ -454,8 +482,8 @@ export default function TeacherDashboard() {
                         {tc.role === 'HEAD_TEACHER' && <span className="text-amber-600 font-bold ml-1">(원장)</span>}
                         <p className="text-[11px] text-slate-400">{tc.email}</p>
                       </div>
-                      {tc.role !== 'HEAD_TEACHER' && (
-                        <button onClick={() => handleDeleteUser(tc.id, tc.name, 'TEACHER')} className="text-rose-500 hover:underline font-bold">
+                      {tc.id !== user.id && (
+                        <button onClick={() => handleDeleteUser(tc.id, tc.name)} className="text-rose-500 hover:underline font-bold">
                           삭제
                         </button>
                       )}
@@ -469,7 +497,7 @@ export default function TeacherDashboard() {
 
       </main>
 
-      {/* 모달 영역 생략 없이 유지 */}
+      {/* 모달 창 영역 */}
       {showBulkModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-lg space-y-4 shadow-2xl">
@@ -479,14 +507,14 @@ export default function TeacherDashboard() {
             <form onSubmit={handleBulkCreateStudents} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1">
-                  학생 이름 목록 (엑셀에서 이름 열을 붙여넣거나, 엔터/쉼표로 구분)
+                  학생 이름 목록 (엑셀에서 이름을 붙여넣거나, 엔터/쉼표로 구분)
                 </label>
                 <textarea
                   required
                   rows={6}
                   value={bulkNames}
                   onChange={(e) => setBulkNames(e.target.value)}
-                  placeholder="김철수&#10;이영희&#10;박민수&#10;정수현"
+                  placeholder="김철수&#10;이영희&#10;박민수"
                   className="w-full p-3 border rounded-xl text-sm bg-slate-50 leading-relaxed font-medium"
                 />
               </div>
@@ -501,21 +529,19 @@ export default function TeacherDashboard() {
                   />
                 </div>
 
-                {user.role === 'HEAD_TEACHER' && (
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">담당 선생님 지정</label>
-                    <select
-                      value={bulkTeacherId}
-                      onChange={(e) => setBulkTeacherId(e.target.value)}
-                      className="w-full p-2.5 border rounded-xl text-xs bg-slate-50 font-semibold"
-                    >
-                      <option value="">본인({user.name} 선생님)</option>
-                      {teachers.filter((t) => t.id !== user.id).map((tc) => (
-                        <option key={tc.id} value={tc.id}>{tc.name} 선생님</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">담당 선생님 지정</label>
+                  <select
+                    value={bulkTeacherId}
+                    onChange={(e) => setBulkTeacherId(e.target.value)}
+                    className="w-full p-2.5 border rounded-xl text-xs bg-slate-50 font-semibold"
+                  >
+                    <option value="">본인({user.name} 선생님)</option>
+                    {teachers.filter((t) => t.id !== user.id).map((tc) => (
+                      <option key={tc.id} value={tc.id}>{tc.name} 선생님</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="flex gap-2 pt-2">
@@ -529,7 +555,7 @@ export default function TeacherDashboard() {
                   type="submit"
                   className="w-1/2 bg-emerald-600 text-white py-2.5 rounded-xl font-bold text-xs shadow hover:bg-emerald-700 transition"
                 >
-                  🚀 한 번에 전체 계정 발급하기
+                  🚀 계정 발급하기
                 </button>
               </div>
             </form>
@@ -557,14 +583,14 @@ export default function TeacherDashboard() {
 
             <button
               onClick={() => {
-                const text = `[품수학 학원 전체 학생 계정 안내]\n` +
+                const text = `[품수학 학원 학생 계정 안내]\n` +
                   bulkCreatedList.map((st) => `• ${st.name} | 아이디: ${st.email} | 비밀번호: ${st.password}`).join('\n');
                 navigator.clipboard.writeText(text);
-                alert('전체 학생 명단 및 계정 정보가 클립보드에 복사되었습니다!');
+                alert('전체 계정 정보가 복사되었습니다!');
               }}
               className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold text-xs shadow hover:bg-emerald-700 transition"
             >
-              📋 전체 계정 안내 문구 복사하기
+              📋 안내 문구 복사하기
             </button>
 
             <button
@@ -596,7 +622,7 @@ export default function TeacherDashboard() {
                 <label className="block text-xs font-bold text-slate-600 mb-1">초기 비밀번호</label>
                 <input type="text" required value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm bg-slate-50 font-bold" />
               </div>
-              {targetRole === 'STUDENT' && user.role === 'HEAD_TEACHER' && (
+              {targetRole === 'STUDENT' && (
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">담당 선생님 지정</label>
                   <select value={selectedTeacherId} onChange={(e) => setSelectedTeacherId(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm bg-slate-50 font-semibold">
@@ -609,7 +635,7 @@ export default function TeacherDashboard() {
               )}
               <div className="flex gap-2 pt-2">
                 <button type="button" onClick={() => setShowAddModal(false)} className="w-1/2 bg-slate-200 text-slate-700 py-2.5 rounded-xl font-bold text-xs">취소</button>
-                <button type="submit" className="w-1/2 bg-blue-600 text-white py-2.5 rounded-xl font-bold text-xs shadow">계정 발급하기</button>
+                <button type="submit" className="w-1/2 bg-blue-600 text-white py-2.5 rounded-xl font-bold text-xs shadow">발급하기</button>
               </div>
             </form>
           </div>
@@ -646,9 +672,9 @@ export default function TeacherDashboard() {
               <h3 className="text-base font-bold text-slate-800">📘 [{activeClass.name}] 학생 배정</h3>
               <button onClick={() => setActiveClass(null)} className="text-xs font-bold text-slate-400 hover:text-slate-600">닫기</button>
             </div>
-            <p className="text-xs text-slate-500">이 반에 소속될 학생들을 선택해 주세요 (클릭하여 체크/해제):</p>
+            <p className="text-xs text-slate-500">이 반에 소속될 학생을 클릭해 선택/해제하세요:</p>
             <div className="max-h-60 overflow-y-auto space-y-2">
-              {students.map((st) => {
+              {allStudents.map((st) => {
                 const isAssigned = classStudents.some(
                   (cs) => cs.class_id === activeClass.id && cs.student_id === st.id
                 );

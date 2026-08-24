@@ -21,7 +21,7 @@ export default function TeacherEvalPage() {
   const [calculation, setCalculation] = useState(8);  // 계산 정확도
   const [application, setApplication] = useState(7);  // 응용/유형 해결력
   const [attitude, setAttitude] = useState(8);     // 수업 집중도
-  const [homework, fontHomework] = useState(9);    // 과제 완성도
+  const [homework, setHomework] = useState(9);     // 과제 완성도 (오타 수정: fontHomework -> setHomework)
   const [perseverance, setPerseverance] = useState(7); // 오답/끈기
   const [teacherComment, setTeacherComment] = useState('');
   const [loading, setLoading] = useState(false);
@@ -46,18 +46,19 @@ export default function TeacherEvalPage() {
 
   const fetchInitialData = async (currentUser) => {
     try {
-      let studentQuery = supabase.from('users').select('*').eq('role', 'STUDENT');
-      if (currentUser.role !== 'HEAD_TEACHER') {
-        studentQuery = studentQuery.eq('teacher_id', currentUser.id);
-      }
-      const { data: stData } = await studentQuery;
+      // 🎯 [핵심] 원장님도 기본적으로 '내가 직접 담당하는 학생'만 피드백 작성에 가져옴
+      const { data: stData } = await supabase
+        .from('users')
+        .select('*')
+        .eq('role', 'STUDENT')
+        .eq('teacher_id', currentUser.id);
       setStudents(stData || []);
 
-      let classQuery = supabase.from('classes').select('*');
-      if (currentUser.role !== 'HEAD_TEACHER') {
-        classQuery = classQuery.eq('teacher_id', currentUser.id);
-      }
-      const { data: cData } = await classQuery;
+      // 🎯 [핵심] 내가 만든 반만 피드백 선택 필터에 가져옴
+      const { data: cData } = await supabase
+        .from('classes')
+        .select('*')
+        .eq('teacher_id', currentUser.id);
       setClasses(cData || []);
 
       const { data: csData } = await supabase.from('class_students').select('*');
@@ -83,7 +84,7 @@ export default function TeacherEvalPage() {
     try {
       const evalData = {
         student_id: selectedStudent.id,
-        teacher_id: user.id,
+        teacher_id: user.id, // 로그인한 원장님 본인의 ID로 저장
         eval_date: evalDate,
         attendance,
         concept_score: parseInt(concept),
@@ -123,12 +124,12 @@ export default function TeacherEvalPage() {
       <main className="max-w-4xl mx-auto px-4 mt-6 space-y-6">
         <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
           <h2 className="text-lg font-bold text-slate-800 border-b pb-3 flex items-center gap-2">
-            <span>📊</span> 일일 학습 피드백 작성
+            <span>📊</span> 일일 학습 피드백 작성 ({user.name} 선생님 전용)
           </h2>
 
           {/* 1. 반(Class) 필터 탭 */}
           <div className="space-y-2">
-            <label className="block text-xs font-bold text-slate-600">🏫 반 선택 필터</label>
+            <label className="block text-xs font-bold text-slate-600">🏫 내 개설 반 선택 필터</label>
             <div className="flex gap-2 overflow-x-auto pb-1">
               <button
                 type="button"
@@ -139,7 +140,7 @@ export default function TeacherEvalPage() {
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
               >
-                전체 보기 ({students.length}명)
+                전체 내 담당 학생 ({students.length}명)
               </button>
               {classes.map((cls) => {
                 const count = classStudents.filter((cs) => cs.class_id === cls.id).length;
@@ -166,7 +167,7 @@ export default function TeacherEvalPage() {
             <label className="block text-xs font-bold text-slate-600">👤 피드백 작성할 학생 선택</label>
             {filteredStudents.length === 0 ? (
               <p className="text-xs text-slate-400 py-4 text-center bg-slate-50 rounded-xl">
-                선택한 반에 소속된 학생이 없습니다.
+                선택한 반에 소속된 내 담당 학생이 없습니다.
               </p>
             ) : (
               <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-1">
@@ -192,7 +193,7 @@ export default function TeacherEvalPage() {
             )}
           </div>
 
-          {/* 3. 영역 평가 입력 폼 (1~10점 선택) */}
+          {/* 3. 영역 평가 입력 폼 */}
           {selectedStudent ? (
             <form onSubmit={handleSubmit} className="space-y-5 pt-4 border-t border-slate-100">
               <div className="bg-blue-50/70 p-3 rounded-xl border border-blue-200 text-xs font-bold text-blue-900 flex justify-between items-center">
@@ -211,7 +212,6 @@ export default function TeacherEvalPage() {
               {/* 6대 영역 점수 슬라이더 */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
                 
-                {/* 1. 개념 이해도 */}
                 <div className="bg-white p-3 rounded-xl border border-slate-100 space-y-1">
                   <div className="flex justify-between items-center text-xs font-bold">
                     <span>📐 개념 이해도</span>
@@ -224,7 +224,6 @@ export default function TeacherEvalPage() {
                   />
                 </div>
 
-                {/* 2. 계산 정확도 */}
                 <div className="bg-white p-3 rounded-xl border border-slate-100 space-y-1">
                   <div className="flex justify-between items-center text-xs font-bold">
                     <span>✏️ 연산/계산 정확도</span>
@@ -237,7 +236,6 @@ export default function TeacherEvalPage() {
                   />
                 </div>
 
-                {/* 3. 응용/유형 해결력 */}
                 <div className="bg-white p-3 rounded-xl border border-slate-100 space-y-1">
                   <div className="flex justify-between items-center text-xs font-bold">
                     <span>💡 응용/심화 해결력</span>
@@ -250,7 +248,6 @@ export default function TeacherEvalPage() {
                   />
                 </div>
 
-                {/* 4. 수업 집중도 */}
                 <div className="bg-white p-3 rounded-xl border border-slate-100 space-y-1">
                   <div className="flex justify-between items-center text-xs font-bold">
                     <span>🔥 수업 태도/집중도</span>
@@ -263,7 +260,6 @@ export default function TeacherEvalPage() {
                   />
                 </div>
 
-                {/* 5. 과제 완성도 */}
                 <div className="bg-white p-3 rounded-xl border border-slate-100 space-y-1">
                   <div className="flex justify-between items-center text-xs font-bold">
                     <span>📚 과제 이행 및 완성도</span>
@@ -271,12 +267,11 @@ export default function TeacherEvalPage() {
                   </div>
                   <input
                     type="range" min="1" max="10" value={homework}
-                    onChange={(e) => fontHomework(e.target.value)}
+                    onChange={(e) => setHomework(e.target.value)}
                     className="w-full accent-blue-600"
                   />
                 </div>
 
-                {/* 6. 오답노트/끈기 */}
                 <div className="bg-white p-3 rounded-xl border border-slate-100 space-y-1">
                   <div className="flex justify-between items-center text-xs font-bold">
                     <span>🧩 오답 복습 및 끈기</span>

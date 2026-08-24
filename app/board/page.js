@@ -8,13 +8,16 @@ function BoardContent() {
   const [posts, setPosts] = useState([]);
   const [classes, setClasses] = useState([]);
   const [myClassIds, setMyClassIds] = useState([]);
+  
+  // 🎯 학생 필터링을 위한 탭 상태 ('MY_STUDENTS' = 내 담당 학생, 'ALL_STUDENTS' = 학원 전체 학생)
+  const [studentScope, setStudentScope] = useState('MY_STUDENTS');
   const [selectedClassId, setSelectedClassId] = useState('ALL');
 
   const [category, setCategory] = useState('ALL');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [newCategory, setNewCategory] = useState('NOTICE');
-  const [targetClassId, setTargetClassId] = useState('MY_CLASSES_FIRST'); // 기본값을 내 반 선택으로 유도
+  const [targetClassId, setTargetClassId] = useState('');
   const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
   const [googleFormUrl, setGoogleFormUrl] = useState('');
   
@@ -22,7 +25,8 @@ function BoardContent() {
     { bookTitle: '', range: '' },
   ]);
 
-  const [students, setStudents] = useState([]);
+  const [allStudents, setAllStudents] = useState([]);
+  const [myStudents, setMyStudents] = useState([]);
   const [submissions, setSubmissions] = useState({});
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -47,37 +51,37 @@ function BoardContent() {
 
   const initData = async (currentUser) => {
     try {
-      // 1. 내 담당 반 정보 먼저 가져오기
-      let classQuery = supabase.from('classes').select('*');
-      if (currentUser.role !== 'HEAD_TEACHER') {
-        classQuery = classQuery.eq('teacher_id', currentUser.id);
-      } else {
-        // 원장님이라도 본인이 만든 반을 먼저 우선 정렬
-        classQuery = classQuery.order('teacher_id', { ascending: currentUser.id });
-      }
-      const { data: cData } = await classQuery;
-      
-      // 내 반을 상단으로 정렬
+      // 1. 반 목록 가져오기
+      const { data: cData } = await supabase.from('classes').select('*');
       const myClasses = (cData || []).filter((c) => c.teacher_id === currentUser.id);
       const otherClasses = (cData || []).filter((c) => c.teacher_id !== currentUser.id);
       const sortedClasses = [...myClasses, ...otherClasses];
-      
       setClasses(sortedClasses);
+
       if (myClasses.length > 0) {
         setTargetClassId(myClasses[0].id.toString());
+      } else if (sortedClasses.length > 0) {
+        setTargetClassId(sortedClasses[0].id.toString());
+      } else {
+        setTargetClassId('ALL_STUDENTS');
       }
 
-      // 2. 학생일 경우 본인이 속한 반 ID 목록
-      if (currentUser.role === 'STUDENT') {
+      // 2. 학생 목록 분류 (전체 학생 vs 내 담당 학생)
+      if (currentUser.role !== 'STUDENT') {
+        const { data: stData } = await supabase.from('users').select('*').eq('role', 'STUDENT');
+        const allSt = stData || [];
+        setAllStudents(allSt);
+
+        // 내 담당 학생만 필터링
+        const mySt = allSt.filter((s) => s.teacher_id === currentUser.id);
+        setMyStudents(mySt);
+      } else {
+        // 학생인 경우 소속 반
         const { data: csData } = await supabase
           .from('class_students')
           .select('class_id')
           .eq('student_id', currentUser.id);
-        const myIds = csData ? csData.map((cs) => cs.class_id) : [];
-        setMyClassIds(myIds);
-      } else {
-        const { data: stData } = await supabase.from('users').select('id, name').eq('role', 'STUDENT');
-        setStudents(stData || []);
+        setMyClassIds(csData ? csData.map((cs) => cs.class_id) : []);
       }
 
       fetchPosts();
@@ -158,7 +162,7 @@ function BoardContent() {
       setGoogleFormUrl('');
       setHomeworkList([{ bookTitle: '', range: '' }]);
       fetchPosts();
-      alert('공지/숙제가 성공적으로 등록되었습니다.');
+      alert('등록되었습니다.');
     } catch (err) {
       console.error(err);
       alert('등록 실패');
@@ -181,6 +185,9 @@ function BoardContent() {
       setSubmissions((prev) => ({ ...prev, [key]: nextStatus }));
     }
   };
+
+  // 학생 필터링
+  const activeStudents = studentScope === 'MY_STUDENTS' ? myStudents : allStudents;
 
   const visiblePosts = posts.filter((post) => {
     if (user?.role === 'STUDENT') {
@@ -220,7 +227,6 @@ function BoardContent() {
             <form onSubmit={handleCreatePost} className="space-y-4">
               
               <div className="flex flex-col sm:flex-row gap-2">
-                {/* 🎯 [핵심 개편] 내 반이 상단, 학원 전체 공지는 맨 아래로 배치 */}
                 <select
                   value={targetClassId}
                   onChange={(e) => setTargetClassId(e.target.value)}
@@ -232,7 +238,6 @@ function BoardContent() {
                     ))}
                   </optgroup>
 
-                  {/* 타 선생님 반 (원장님용) */}
                   {user.role === 'HEAD_TEACHER' && classes.some((c) => c.teacher_id !== user.id) && (
                     <optgroup label="👨‍🏫 타 선생님 반 목록">
                       {classes.filter((c) => c.teacher_id !== user.id).map((c) => (
@@ -242,7 +247,7 @@ function BoardContent() {
                   )}
 
                   <optgroup label="──────────────────">
-                    <option value="ALL_STUDENTS">📢 학원 전체 학생 공지 (맨 아래)</option>
+                    <option value="ALL_STUDENTS">📢 학원 전체 학생 공지 (최하단 배치)</option>
                   </optgroup>
                 </select>
 
@@ -347,7 +352,36 @@ function BoardContent() {
           </div>
         )}
 
-        {/* 🎯 반 필터 버튼 (내 반 위주 배치, 학원 전체 공지는 제일 우측으로 이동) */}
+        {/* 🎯 [핵심 개편] 숙제 검사 대상 범위 설정 (내 담당 학생 vs 학원 전체 학생) */}
+        {user?.role !== 'STUDENT' && (
+          <div className="flex items-center justify-between bg-white p-3 px-4 rounded-xl border border-slate-200">
+            <span className="text-xs font-bold text-slate-700">👥 숙제 검사 학생 범위:</span>
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => setStudentScope('MY_STUDENTS')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  studentScope === 'MY_STUDENTS'
+                    ? 'bg-blue-600 text-white shadow'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                👤 내 담당 학생만 ({myStudents.length}명)
+              </button>
+              <button
+                onClick={() => setStudentScope('ALL_STUDENTS')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  studentScope === 'ALL_STUDENTS'
+                    ? 'bg-slate-800 text-white shadow'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                🌐 학원 전체 학생 ({allStudents.length}명)
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 반 필터 버튼 */}
         <div className="space-y-2">
           <div className="flex gap-2 overflow-x-auto pb-1">
             <button
@@ -371,7 +405,7 @@ function BoardContent() {
               onClick={() => setSelectedClassId('PUBLIC')}
               className={`px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${selectedClassId === 'PUBLIC' ? 'bg-slate-700 text-white shadow' : 'bg-slate-100 border text-slate-500'}`}
             >
-              🌐 학원 전체 공지 (맨 우측)
+              🌐 학원 전체 공지
             </button>
           </div>
         </div>
@@ -434,32 +468,43 @@ function BoardContent() {
                     </div>
                   )}
 
+                  {/* 🎯 [핵심 개편] 지정된 범위(내 담당 학생 vs 학원 전체 학생) 학생 명단만 출력 */}
                   {user?.role !== 'STUDENT' && post.category === 'HOMEWORK' && bookLines.length > 0 && (
                     <div className="mt-4 pt-3 border-t border-gray-100 bg-slate-50 p-4 rounded-xl space-y-3">
-                      <p className="text-xs font-bold text-slate-700">✅ 교재별 숙제 제출 검사표</p>
+                      <div className="flex justify-between items-center">
+                        <p className="text-xs font-bold text-slate-700">✅ 교재별 숙제 제출 검사표</p>
+                        <span className="text-[10px] font-bold text-blue-600">
+                          {studentScope === 'MY_STUDENTS' ? '👤 내 담당 학생만 보기' : '🌐 학원 전체 학생 보기'}
+                        </span>
+                      </div>
+
                       {bookLines.map((line, idx) => {
                         const bookTitle = line.match(/\[(.*?)\]/)?.[1] || `교재${idx + 1}`;
                         return (
                           <div key={idx} className="bg-white p-3 rounded-xl border border-slate-200 space-y-2">
                             <span className="text-xs font-bold text-blue-700 block">📘 {bookTitle}</span>
                             <div className="flex flex-wrap gap-2">
-                              {students.map((st) => {
-                                const key = `${post.id}_${st.id}_${bookTitle}`;
-                                const isDone = submissions[key];
-                                return (
-                                  <button
-                                    key={st.id}
-                                    onClick={() => toggleHomeworkStatus(post.id, st.id, bookTitle)}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                                      isDone
-                                        ? 'bg-emerald-600 text-white shadow'
-                                        : 'bg-slate-100 border text-slate-500 hover:bg-slate-200'
-                                    }`}
-                                  >
-                                    {st.name} {isDone ? '✓ 완료' : '미제출'}
-                                  </button>
-                                );
-                              })}
+                              {activeStudents.length === 0 ? (
+                                <span className="text-xs text-slate-400">해당 범위의 학생이 없습니다.</span>
+                              ) : (
+                                activeStudents.map((st) => {
+                                  const key = `${post.id}_${st.id}_${bookTitle}`;
+                                  const isDone = submissions[key];
+                                  return (
+                                    <button
+                                      key={st.id}
+                                      onClick={() => toggleHomeworkStatus(post.id, st.id, bookTitle)}
+                                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                                        isDone
+                                          ? 'bg-emerald-600 text-white shadow'
+                                          : 'bg-slate-100 border text-slate-500 hover:bg-slate-200'
+                                      }`}
+                                    >
+                                      {st.name} {isDone ? '✓ 완료' : '미제출'}
+                                    </button>
+                                  );
+                                })
+                              )}
                             </div>
                           </div>
                         );

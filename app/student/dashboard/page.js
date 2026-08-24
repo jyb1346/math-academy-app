@@ -26,8 +26,8 @@ function StudentHexagonChart({ scores, twoWeekAvgScores }) {
   const gridLevels = [0.2, 0.4, 0.6, 0.8, 1.0];
 
   return (
-    <div className="flex flex-col items-center justify-center p-3 bg-slate-50 rounded-2xl border border-slate-100 space-y-2">
-      <svg width="220" height="220" viewBox="0 0 200 200" className="overflow-visible">
+    <div className="flex flex-col items-center justify-center p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-3">
+      <svg width="230" height="230" viewBox="0 0 200 200" className="overflow-visible">
         {gridLevels.map((level, idx) => (
           <polygon
             key={idx}
@@ -57,7 +57,7 @@ function StudentHexagonChart({ scores, twoWeekAvgScores }) {
               twoWeekAvgScores.homework,
               twoWeekAvgScores.perseverance,
             ])}
-            fill="rgba(249, 115, 22, 0.15)"
+            fill="rgba(249, 115, 22, 0.12)"
             stroke="#f97316"
             strokeWidth="2"
             strokeDasharray="4 2"
@@ -67,7 +67,7 @@ function StudentHexagonChart({ scores, twoWeekAvgScores }) {
         {/* 선택한 수업일 당일 성취도 (파란 영역) */}
         <polygon
           points={getCoordinates(values)}
-          fill="rgba(37, 99, 235, 0.3)"
+          fill="rgba(37, 99, 235, 0.28)"
           stroke="#2563eb"
           strokeWidth="2.5"
         />
@@ -82,7 +82,7 @@ function StudentHexagonChart({ scores, twoWeekAvgScores }) {
 
         {labels.map((label, i) => {
           const angle = (Math.PI / 3) * i - Math.PI / 2;
-          const labelRadius = radius + 18;
+          const labelRadius = radius + 19;
           const lx = center + labelRadius * Math.cos(angle);
           const ly = center + labelRadius * Math.sin(angle);
           return (
@@ -97,15 +97,15 @@ function StudentHexagonChart({ scores, twoWeekAvgScores }) {
         })}
       </svg>
 
-      <div className="flex items-center justify-center gap-4 text-[11px] font-bold pt-1">
+      <div className="flex items-center justify-center gap-4 text-xs font-bold pt-1">
         <div className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-blue-600 inline-block"></span>
+          <span className="w-3 h-3 rounded-full bg-blue-600 inline-block shadow-sm"></span>
           <span className="text-blue-900">당일 성취도</span>
         </div>
         {twoWeekAvgScores && (
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-full bg-orange-500 inline-block border border-dashed"></span>
-            <span className="text-orange-900">나의 최근 2주 평균</span>
+            <span className="text-orange-900">최근 2주 평균</span>
           </div>
         )}
       </div>
@@ -116,9 +116,12 @@ function StudentHexagonChart({ scores, twoWeekAvgScores }) {
 export default function StudentDashboard() {
   const [user, setUser] = useState(null);
   const [evaluations, setEvaluations] = useState([]);
-  const [selectedDate, setSelectedDate] = useState(''); // 🎯 날짜 선택 필터
+  const [selectedDate, setSelectedDate] = useState('');
   const [myTeacher, setMyTeacher] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // 🎯 성취도 그래프 및 상세 피드백 보기 모달 상태
+  const [activeEvalModal, setActiveEvalModal] = useState(null);
 
   const router = useRouter();
 
@@ -144,7 +147,6 @@ export default function StudentDashboard() {
 
   const fetchStudentData = async (studentUser) => {
     try {
-      // 1. 피드백 이력 가져오기
       const { data: evalData, error } = await supabase
         .from('daily_evaluations')
         .select('*')
@@ -155,7 +157,6 @@ export default function StudentDashboard() {
         setEvaluations(evalData || []);
       }
 
-      // 2. 담당 선생님 정보 가져오기
       if (studentUser.teacher_id) {
         const { data: tcData } = await supabase
           .from('users')
@@ -171,7 +172,6 @@ export default function StudentDashboard() {
     }
   };
 
-  // 🎯 최근 2주간 본인 평균 성취도 계산
   const getTwoWeekAvgScores = (currentEvalDate) => {
     if (!currentEvalDate || evaluations.length === 0) return null;
 
@@ -209,22 +209,28 @@ export default function StudentDashboard() {
     };
   };
 
-  // 🎯 날짜 필터링된 피드백 데이터
   const filteredEvals = evaluations.filter((item) => {
     if (!selectedDate) return true;
     return item.eval_date === selectedDate;
   });
 
-  if (loading) return <div className="p-8 text-center font-bold">로딩 중...</div>;
+  if (loading) return <div className="p-8 text-center font-bold text-slate-500">로딩 중...</div>;
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-16">
-      <header className="bg-white border-b py-4 px-6 shadow-sm flex justify-between items-center">
-        <div>
-          <h1 className="text-xl font-bold text-blue-600">품수학 학원 학생 강의실</h1>
-          <p className="text-xs text-slate-400 font-medium">
-            {user?.name} 학생 환영합니다! {myTeacher && `(담당: ${myTeacher.name} 선생님)`}
-          </p>
+    <div className="min-h-screen bg-slate-100/70 pb-20">
+      
+      {/* 1. 세련된 헤더 */}
+      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-30 px-6 py-4 flex justify-between items-center shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-extrabold text-base shadow-md shadow-blue-500/20">
+            품
+          </div>
+          <div>
+            <h1 className="text-base font-extrabold text-slate-800 leading-tight">품수학 스마트 스마트 강의실</h1>
+            <p className="text-[11px] text-slate-400 font-semibold">
+              {user?.name} 학생 {myTeacher && <span className="text-indigo-600 font-bold">• 담당: {myTeacher.name}T</span>}
+            </p>
+          </div>
         </div>
         <button
           onClick={() => { localStorage.removeItem('user'); router.push('/login'); }}
@@ -235,121 +241,139 @@ export default function StudentDashboard() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 mt-6 space-y-6">
-        
-        {/* 상단 핵심 메뉴 이동 */}
+
+        {/* 2. 상단 프로필 카드리뉴얼 배너 */}
+        <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white p-6 rounded-3xl shadow-xl shadow-indigo-950/10 space-y-3 relative overflow-hidden">
+          <div className="absolute top-0 right-0 -mt-6 -mr-6 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none"></div>
+          <div className="flex items-center justify-between">
+            <span className="bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 text-[11px] px-3 py-1 rounded-full font-bold">
+              🎓 POOM MATH STUDENT
+            </span>
+            <span className="text-xs text-slate-400 font-medium">총 {evaluations.length}회의 수업 기록</span>
+          </div>
+          <h2 className="text-xl font-black">
+            반갑습니다, <span className="text-blue-400">{user?.name}</span> 학생! 👋
+          </h2>
+          <p className="text-xs text-slate-300 leading-relaxed font-normal">
+            선생님이 남겨주신 일일 피드백과 반별 공지사항을 확인하고 오늘 학습을 준비하세요.
+          </p>
+        </div>
+
+        {/* 3. 메인 퀵 바로가기 메뉴 */}
         <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <button
             onClick={() => router.push('/board')}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white p-5 rounded-2xl font-bold text-left shadow transition flex justify-between items-center"
+            className="bg-white hover:border-indigo-300 border border-slate-200/80 p-5 rounded-2xl font-bold text-left shadow-sm hover:shadow-md transition-all duration-200 flex justify-between items-center group"
           >
-            <div>
-              <span className="block text-base">📢 반별 공지 및 숙제 확인</span>
-              <span className="text-xs text-indigo-100 font-normal">선생님이 올리신 공지사항과 숙제를 확인합니다.</span>
+            <div className="space-y-1">
+              <span className="inline-block bg-indigo-50 text-indigo-700 text-xs px-2.5 py-0.5 rounded-md font-bold mb-1">
+                📢 반별 게시판
+              </span>
+              <span className="block text-base font-extrabold text-slate-800 group-hover:text-indigo-600 transition">
+                공지사항 및 숙제 확인
+              </span>
+              <span className="text-xs text-slate-400 font-normal block">
+                선생님이 부여하신 과제와 알림을 확인합니다.
+              </span>
             </div>
-            <span className="text-xl">→</span>
+            <span className="text-xl text-slate-300 group-hover:text-indigo-600 group-hover:translate-x-1 transition-all">→</span>
           </button>
 
           <button
             onClick={() => router.push('/qna')}
-            className="bg-slate-800 hover:bg-slate-900 text-white p-5 rounded-2xl font-bold text-left shadow transition flex justify-between items-center"
+            className="bg-white hover:border-blue-300 border border-slate-200/80 p-5 rounded-2xl font-bold text-left shadow-sm hover:shadow-md transition-all duration-200 flex justify-between items-center group"
           >
-            <div>
-              <span className="block text-base">❓ 선생님께 질문하기 (Q&A)</span>
-              <span className="text-xs text-slate-300 font-normal">모르는 문제나 궁금한 점을 질문합니다.</span>
+            <div className="space-y-1">
+              <span className="inline-block bg-blue-50 text-blue-700 text-xs px-2.5 py-0.5 rounded-md font-bold mb-1">
+                ❓ 1:1 질문함
+              </span>
+              <span className="block text-base font-extrabold text-slate-800 group-hover:text-blue-600 transition">
+                선생님께 질문하기 (Q&A)
+              </span>
+              <span className="text-xs text-slate-400 font-normal block">
+                궁금하거나 모르는 문제를 직접 질문합니다.
+              </span>
             </div>
-              <span className="text-xl">→</span>
+            <span className="text-xl text-slate-300 group-hover:text-blue-600 group-hover:translate-x-1 transition-all">→</span>
           </button>
         </section>
 
-        {/* 학습 성취도 피드백 리포트 */}
-        <section className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b pb-4">
+        {/* 4. 일일 피드백 리포트 리스트 (메인에서는 요약 카드로 표시) */}
+        <section className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-5">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-4">
             <div>
-              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <span>📊</span> 나의 일일 학습 피드백 리포트
+              <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
+                <span>📋</span> 일일 학습 피드백 기록
               </h2>
-              <p className="text-xs text-slate-400 mt-0.5">선생님께서 기록해주신 일일 성취도 그래프와 총평입니다.</p>
+              <p className="text-xs text-slate-400 mt-0.5 font-medium">
+                날짜별 수업 피드백 카드를 클릭하여 성취도 그래프를 확인하세요.
+              </p>
             </div>
 
-            {/* 🎯 날짜 선택 필터 */}
-            <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
-              <span className="text-xs font-bold text-slate-600">📅 날짜 선택:</span>
+            {/* 날짜 선택 필터 */}
+            <div className="flex items-center gap-2 bg-slate-50 p-1.5 px-3 rounded-xl border border-slate-200/80">
+              <span className="text-xs font-bold text-slate-500">📅 날짜:</span>
               <input
                 type="date"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                className="p-1.5 border rounded-lg text-xs bg-white font-bold text-slate-800"
+                className="p-1 border rounded-lg text-xs bg-white font-bold text-slate-800"
               />
               {selectedDate && (
                 <button
                   onClick={() => setSelectedDate('')}
                   className="text-xs text-rose-500 font-bold hover:underline px-1"
                 >
-                  전체보기
+                  전체
                 </button>
               )}
             </div>
           </div>
 
-          <div className="space-y-6">
+          <div className="space-y-3">
             {filteredEvals.length === 0 ? (
               <p className="text-center py-12 text-slate-400 text-xs font-bold">
-                {selectedDate ? `${selectedDate}에 등록된 피드백이 없습니다.` : '아직 작성된 학습 피드백이 없습니다.'}
+                {selectedDate ? `${selectedDate}에 작성된 피드백이 없습니다.` : '아직 등록된 학습 피드백이 없습니다.'}
               </p>
             ) : (
               filteredEvals.map((item) => {
-                const twoWeekAvgScores = getTwoWeekAvgScores(item.eval_date);
+                // 평균 점수 계산 (6대 영역)
+                const avgScore = (
+                  ((item.concept_score || 0) +
+                    (item.calc_score || 0) +
+                    (item.app_score || 0) +
+                    (item.attitude_score || 0) +
+                    (item.homework_score || 0) +
+                    (item.perseverance_score || 0)) / 6
+                ).toFixed(1);
 
                 return (
-                  <div key={item.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                    
-                    <div className="flex justify-between items-center border-b pb-3 text-xs">
-                      <span className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full font-bold border border-blue-200">
-                        📅 수업일: {item.eval_date}
-                      </span>
+                  <div
+                    key={item.id}
+                    className="bg-slate-50/70 hover:bg-slate-50 p-4 rounded-2xl border border-slate-200/70 transition space-y-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="bg-blue-600 text-white text-xs font-black px-2.5 py-0.5 rounded-full">
+                          📅 {item.eval_date}
+                        </span>
+                        <span className="bg-indigo-50 text-indigo-700 text-xs font-bold px-2.5 py-0.5 rounded-full border border-indigo-100">
+                          평균 성취도: {avgScore}점 / 10점
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 font-medium line-clamp-1">
+                        ✍️ {item.teacher_comment ? item.teacher_comment : '작성된 요약 총평이 있습니다.'}
+                      </p>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
-                      
-                      {/* 육각형 그래프 연동 */}
-                      <div className="md:col-span-1 flex justify-center">
-                        <StudentHexagonChart
-                          scores={{
-                            concept: item.concept_score,
-                            calc: item.calc_score,
-                            app: item.app_score,
-                            attitude: item.attitude_score,
-                            homework: item.homework_score,
-                            perseverance: item.perseverance_score,
-                          }}
-                          twoWeekAvgScores={twoWeekAvgScores}
-                        />
-                      </div>
-
-                      {/* 코멘트 및 학부모 수신 답장 */}
-                      <div className="md:col-span-2 space-y-3">
-                        <div className="bg-blue-50/60 p-4 rounded-xl border border-blue-100 space-y-1">
-                          <span className="text-xs font-bold text-blue-800 block">✍️ 선생님 학습 총평</span>
-                          <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed font-medium">
-                            {item.teacher_comment || '작성된 코멘트가 없습니다.'}
-                          </p>
-                        </div>
-
-                        {item.parent_reply && (
-                          <div className="bg-emerald-50/70 p-4 rounded-xl border border-emerald-200 space-y-1">
-                            <div className="flex justify-between items-center text-xs font-bold text-emerald-800">
-                              <span>💌 학부모님 수신 답장</span>
-                              <span className="text-emerald-600 text-[10px]">
-                                {item.parent_reply_at ? new Date(item.parent_reply_at).toLocaleDateString() : ''}
-                              </span>
-                            </div>
-                            <p className="text-xs text-slate-800 font-bold">"{item.parent_reply}"</p>
-                          </div>
-                        )}
-                      </div>
-
-                    </div>
-
+                    {/* 🎯 육각 그래프 팝업 호출 버튼 */}
+                    <button
+                      onClick={() => setActiveEvalModal(item)}
+                      className="bg-white hover:bg-blue-600 text-blue-600 hover:text-white border border-blue-200 font-bold text-xs px-4 py-2.5 rounded-xl shadow-xs transition whitespace-nowrap self-start sm:self-center flex items-center gap-1.5"
+                    >
+                      <span>📊 성취도 그래프 및 상세 피드백</span>
+                      <span>→</span>
+                    </button>
                   </div>
                 );
               })
@@ -358,6 +382,74 @@ export default function StudentDashboard() {
         </section>
 
       </main>
+
+      {/* 🎯 [팝업 모달] 육각형 성취도 그래프 및 상세 코멘트 창 */}
+      {activeEvalModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-lg space-y-5 shadow-2xl my-8 animate-in fade-in zoom-in-95">
+            
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-base">📊</span>
+                <h3 className="text-base font-extrabold text-slate-800">
+                  {activeEvalModal.eval_date} 학습 성취도 리포트
+                </h3>
+              </div>
+              <button
+                onClick={() => setActiveEvalModal(null)}
+                className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold w-7 h-7 rounded-full flex items-center justify-center transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* 육각형 레이더 차트 */}
+            <div className="flex justify-center py-1">
+              <StudentHexagonChart
+                scores={{
+                  concept: activeEvalModal.concept_score,
+                  calc: activeEvalModal.calc_score,
+                  app: activeEvalModal.app_score,
+                  attitude: activeEvalModal.attitude_score,
+                  homework: activeEvalModal.homework_score,
+                  perseverance: activeEvalModal.perseverance_score,
+                }}
+                twoWeekAvgScores={getTwoWeekAvgScores(activeEvalModal.eval_date)}
+              />
+            </div>
+
+            {/* 선생님 총평 */}
+            <div className="bg-blue-50/70 p-4 rounded-2xl border border-blue-100 space-y-1">
+              <span className="text-xs font-extrabold text-blue-900 block">✍️ 선생님 총평 코멘트</span>
+              <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed font-medium">
+                {activeEvalModal.teacher_comment || '작성된 코멘트가 없습니다.'}
+              </p>
+            </div>
+
+            {/* 학부모 수신 답장 */}
+            {activeEvalModal.parent_reply && (
+              <div className="bg-emerald-50/80 p-4 rounded-2xl border border-emerald-200 space-y-1">
+                <div className="flex justify-between items-center text-xs font-bold text-emerald-800">
+                  <span>💌 학부모님 수신 답장</span>
+                  <span className="text-emerald-600 text-[10px]">
+                    {activeEvalModal.parent_reply_at ? new Date(activeEvalModal.parent_reply_at).toLocaleDateString() : ''}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-800 font-bold">"{activeEvalModal.parent_reply}"</p>
+              </div>
+            )}
+
+            <button
+              onClick={() => setActiveEvalModal(null)}
+              className="w-full bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-2xl font-bold text-xs shadow-md transition"
+            >
+              닫기
+            </button>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

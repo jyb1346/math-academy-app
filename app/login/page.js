@@ -16,22 +16,29 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // 이메일, 권한, 비밀번호 일치 여부 확인
-      const { data, error } = await supabase
+      // HEAD_TEACHER와 TEACHER는 선생님 로그인 구성을 함께 사용할 수 있도록 처리
+      let query = supabase
         .from('users')
         .select('*')
         .eq('email', email.trim())
-        .eq('role', role)
         .eq('password', password.trim());
 
+      if (role === 'STUDENT') {
+        query = query.eq('role', 'STUDENT');
+      } else {
+        query = query.in('role', ['TEACHER', 'HEAD_TEACHER']);
+      }
+
+      const { data, error } = await query;
+
       if (error) {
-        alert(`DB 에러 발생: ${error.message}`);
+        alert(`DB 에러: ${error.message}`);
         setLoading(false);
         return;
       }
 
       if (!data || data.length === 0) {
-        alert('일치하는 회원 정보가 없거나 비밀번호가 틀렸습니다.');
+        alert('일치하는 계정이 없거나 비밀번호가 틀렸습니다.');
         setLoading(false);
         return;
       }
@@ -41,7 +48,7 @@ export default function LoginPage() {
 
       alert(`${userData.name}님 환영합니다!`);
 
-      if (userData.role === 'TEACHER') {
+      if (userData.role === 'HEAD_TEACHER' || userData.role === 'TEACHER') {
         router.push('/teacher/dashboard');
       } else {
         router.push('/student/dashboard');
@@ -68,7 +75,7 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => setRole('STUDENT')}
-                className={`py-2 rounded-lg font-medium border transition ${
+                className={`py-2.5 rounded-xl font-bold border transition text-sm ${
                   role === 'STUDENT'
                     ? 'bg-blue-600 text-white border-blue-600'
                     : 'bg-white text-gray-600 border-gray-300'
@@ -79,26 +86,26 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => setRole('TEACHER')}
-                className={`py-2 rounded-lg font-medium border transition ${
+                className={`py-2.5 rounded-xl font-bold border transition text-sm ${
                   role === 'TEACHER'
                     ? 'bg-blue-600 text-white border-blue-600'
                     : 'bg-white text-gray-600 border-gray-300'
                 }`}
               >
-                선생님 로그인
+                선생님 / 원장님 로그인
               </button>
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">이메일 계정</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">이메일 계정 (아이디)</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="example@test.com"
               required
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-gray-50"
             />
           </div>
 
@@ -110,14 +117,14 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="비밀번호 입력"
               required
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-gray-50"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition disabled:bg-gray-400"
+            className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition disabled:bg-gray-400 text-sm shadow"
           >
             {loading ? '로그인 중...' : '로그인하기'}
           </button>

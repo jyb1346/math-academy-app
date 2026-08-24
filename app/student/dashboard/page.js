@@ -205,12 +205,13 @@ export default function StudentDashboard() {
     };
   };
 
-  // 🎯 출결/지각 뱃지 렌더링 함수
+  // 🎯 문구 수정: ~분 이내 지각
   const renderAttendanceBadge = (status, latenessMins) => {
     if (status === 'LATE') {
+      const minsText = latenessMins >= 30 ? '30분 이상 지각' : `${latenessMins || 5}분 이내 지각`;
       return (
         <span className="bg-amber-100 text-amber-800 border border-amber-300 text-xs font-black px-2.5 py-0.5 rounded-full">
-          ⏰ {latenessMins || 10}분 지각
+          ⏰ {minsText}
         </span>
       );
     }
@@ -372,7 +373,6 @@ export default function StudentDashboard() {
                           📅 {item.eval_date}
                         </span>
                         
-                        {/* 🎯 [추가] 출결/지각 뱃지 */}
                         {renderAttendanceBadge(item.attendance_status, item.lateness_minutes)}
 
                         <span className="bg-indigo-50 text-indigo-700 text-xs font-bold px-2.5 py-0.5 rounded-full border border-indigo-100">
@@ -400,7 +400,7 @@ export default function StudentDashboard() {
 
       </main>
 
-      {/* 🎯 [모달] 성취도 그래프 & 출결 상세 팝업 */}
+      {/* 모달 팝업 */}
       {activeEvalModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white rounded-3xl p-6 w-full max-w-lg space-y-5 shadow-2xl my-8 animate-in fade-in zoom-in-95">
@@ -413,7 +413,6 @@ export default function StudentDashboard() {
                 </h3>
               </div>
               
-              {/* 모달 상단 출결 뱃지 */}
               <div className="flex items-center gap-2">
                 {renderAttendanceBadge(activeEvalModal.attendance_status, activeEvalModal.lateness_minutes)}
                 <button
@@ -425,7 +424,6 @@ export default function StudentDashboard() {
               </div>
             </div>
 
-            {/* 육각형 레이더 차트 */}
             <div className="flex justify-center py-1">
               <StudentHexagonChart
                 scores={{
@@ -440,7 +438,6 @@ export default function StudentDashboard() {
               />
             </div>
 
-            {/* 선생님 총평 */}
             <div className="bg-blue-50/70 p-4 rounded-2xl border border-blue-100 space-y-1">
               <span className="text-xs font-extrabold text-blue-900 block">✍️ 선생님 총평 코멘트</span>
               <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed font-medium">
@@ -448,7 +445,6 @@ export default function StudentDashboard() {
               </p>
             </div>
 
-            {/* 학부모 수신 답장 */}
             {activeEvalModal.parent_reply && (
               <div className="bg-emerald-50/80 p-4 rounded-2xl border border-emerald-200 space-y-1">
                 <div className="flex justify-between items-center text-xs font-bold text-emerald-800">

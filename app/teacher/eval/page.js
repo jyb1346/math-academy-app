@@ -11,10 +11,10 @@ export default function TeacherEvalPage() {
   const [students, setStudents] = useState([]);
   const [selectedStudentId, setSelectedStudentId] = useState('');
 
-  // 🎯 평가 항목 상태 (6개 + 출결/지각)
+  // 평가 항목 상태
   const [evalDate, setEvalDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendanceStatus, setAttendanceStatus] = useState('ATTEND'); // ATTEND, LATE, ABSENT
-  const [latenessMinutes, setLatenessMinutes] = useState(10); // 지각 분
+  const [latenessMinutes, setLatenessMinutes] = useState(5); // 지각 분 기본값 5분
 
   const [conceptScore, setConceptScore] = useState(8);
   const [calcScore, setCalcScore] = useState(8);
@@ -200,7 +200,7 @@ export default function TeacherEvalPage() {
               </div>
             </div>
 
-            {/* 🎯 [추가] 출결 및 지각 정보 선택 폼 */}
+            {/* 출결 및 지각 정보 선택 폼 */}
             <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-200/80 space-y-3">
               <span className="text-xs font-extrabold text-amber-900 block">⏰ 출석 및 지각 상태 기록</span>
               <div className="flex flex-wrap gap-2 items-center">
@@ -238,19 +238,19 @@ export default function TeacherEvalPage() {
                   🔴 결석
                 </button>
 
-                {/* 지각 선택 시 분 입력 세부 옵션 */}
+                {/* 🎯 문구 수정: ~분 이내 지각 */}
                 {attendanceStatus === 'LATE' && (
                   <div className="flex items-center gap-1.5 ml-2 bg-white px-3 py-1.5 rounded-xl border border-amber-300">
-                    <span className="text-xs font-bold text-amber-800">지각 시간:</span>
+                    <span className="text-xs font-bold text-amber-800">지각 범위:</span>
                     <select
                       value={latenessMinutes}
                       onChange={(e) => setLatenessMinutes(e.target.value)}
                       className="text-xs font-extrabold text-amber-900 bg-transparent focus:outline-none"
                     >
-                      <option value={5}>5분 지각</option>
-                      <option value={10}>10분 지각</option>
-                      <option value={15}>15분 지각</option>
-                      <option value={20}>20분 지각</option>
+                      <option value={5}>5분 이내 지각</option>
+                      <option value={10}>10분 이내 지각</option>
+                      <option value={15}>15분 이내 지각</option>
+                      <option value={20}>20분 이내 지각</option>
                       <option value={30}>30분 이상 지각</option>
                     </select>
                   </div>

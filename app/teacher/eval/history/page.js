@@ -225,11 +225,13 @@ export default function EvalHistoryPage() {
     };
   };
 
+  // 🎯 문구 수정: ~분 이내 지각
   const renderAttendanceBadge = (status, latenessMins) => {
     if (status === 'LATE') {
+      const minsText = latenessMins >= 30 ? '30분 이상 지각' : `${latenessMins || 5}분 이내 지각`;
       return (
         <span className="bg-amber-100 text-amber-800 border border-amber-300 text-xs font-black px-2.5 py-0.5 rounded-full">
-          ⏰ {latenessMins || 10}분 지각
+          ⏰ {minsText}
         </span>
       );
     }
@@ -360,7 +362,6 @@ export default function EvalHistoryPage() {
                           📅 수업일: {item.eval_date}
                         </span>
                         
-                        {/* 🎯 [추가] 출결/지각 뱃지 */}
                         {renderAttendanceBadge(item.attendance_status, item.lateness_minutes)}
                       </div>
                       <button

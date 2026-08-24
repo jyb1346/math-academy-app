@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
+import ChangePasswordModal from '@/components/ChangePasswordModal';
 
 export default function TeacherDashboard() {
   const [user, setUser] = useState(null);
@@ -10,6 +11,9 @@ export default function TeacherDashboard() {
   const [students, setStudents] = useState([]);
   const [classStudents, setClassStudents] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // 비밀번호 변경 모달 상태
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
 
   // 반 생성 폼
   const [newClassName, setNewClassName] = useState('');
@@ -54,14 +58,12 @@ export default function TeacherDashboard() {
 
   const fetchTeacherData = async (teacherId) => {
     try {
-      // 1. 본인 담당 반만 조회
       const { data: cData } = await supabase
         .from('classes')
         .select('*')
         .eq('teacher_id', teacherId);
       setClasses(cData || []);
 
-      // 2. 본인 담당 학생만 조회
       const { data: stData } = await supabase
         .from('users')
         .select('*')
@@ -69,7 +71,6 @@ export default function TeacherDashboard() {
         .eq('teacher_id', teacherId);
       setStudents(stData || []);
 
-      // 3. 반-학생 배정 현황 조회
       const { data: csData } = await supabase.from('class_students').select('*');
       setClassStudents(csData || []);
 
@@ -80,7 +81,6 @@ export default function TeacherDashboard() {
     }
   };
 
-  // 반 생성
   const handleCreateClass = async (e) => {
     e.preventDefault();
     if (!newClassName.trim()) return alert('반 이름을 입력해주세요.');
@@ -99,7 +99,6 @@ export default function TeacherDashboard() {
     }
   };
 
-  // 반 삭제
   const handleDeleteClass = async (classId, className) => {
     if (!confirm(`[${className}] 반을 삭제하시겠습니까?`)) return;
     try {
@@ -111,7 +110,6 @@ export default function TeacherDashboard() {
     }
   };
 
-  // 개별 학생 등록
   const handleCreateSingleStudent = async (e) => {
     e.preventDefault();
     if (!studentName.trim() || !studentEmail.trim()) {
@@ -141,7 +139,6 @@ export default function TeacherDashboard() {
     }
   };
 
-  // 일괄 학생 등록
   const handleBatchCreateStudents = async (e) => {
     e.preventDefault();
     if (!batchInputText.trim()) return alert('학생 명단을 입력해주세요.');
@@ -184,7 +181,6 @@ export default function TeacherDashboard() {
     }
   };
 
-  // 학생 정보 수정
   const handleUpdateStudent = async (e) => {
     e.preventDefault();
     if (!editingStudent) return;
@@ -209,7 +205,6 @@ export default function TeacherDashboard() {
     }
   };
 
-  // 학생 삭제
   const handleDeleteStudent = async (studentId, studentName) => {
     if (!confirm(`[${studentName}] 학생을 삭제하시겠습니까?`)) return;
     try {
@@ -221,7 +216,6 @@ export default function TeacherDashboard() {
     }
   };
 
-  // 개별 반 배정
   const handleAssignClass = async (studentId) => {
     const classId = selectedClassMap[studentId];
     if (!classId) return alert('배정할 반을 선택해 주세요.');
@@ -241,7 +235,6 @@ export default function TeacherDashboard() {
     }
   };
 
-  // 특정 반에 여러 학생 일괄 지정 배정 모달
   const openClassAssignModal = (cls) => {
     setAssignTargetClass(cls);
     const currentStudentIds = classStudents
@@ -297,7 +290,7 @@ export default function TeacherDashboard() {
   return (
     <div className="min-h-screen bg-slate-100/70 pb-20 font-sans text-slate-800">
       
-      {/* 📘 선생님 헤더 */}
+      {/* 📘 헤더 */}
       <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-30 px-6 py-4 flex justify-between items-center shadow-xs">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-black text-lg shadow-md shadow-blue-500/20 cursor-pointer" onClick={() => router.push('/')}>
@@ -320,14 +313,23 @@ export default function TeacherDashboard() {
           {isHeadTeacher && (
             <button
               onClick={() => router.push('/admin/dashboard')}
-              className="text-xs bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-bold px-3.5 py-2 rounded-xl transition"
+              className="text-xs bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-bold px-3 py-2 rounded-xl transition"
             >
-              👑 학원 통합 관리 뷰로 이동
+              👑 원장 뷰
             </button>
           )}
+
+          {/* 🔒 비밀번호 변경 버튼 */}
+          <button
+            onClick={() => setShowPasswordModal(true)}
+            className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-xl transition border border-slate-200"
+          >
+            🔒 비밀번호 변경
+          </button>
+
           <button
             onClick={() => { localStorage.removeItem('user'); router.push('/login'); }}
-            className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3.5 py-2 rounded-xl transition"
+            className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3 py-2 rounded-xl transition"
           >
             로그아웃
           </button>
@@ -625,7 +627,16 @@ export default function TeacherDashboard() {
 
       </main>
 
-      {/* 🎯 [모달 1] 반 학생 일괄 배정 */}
+      {/* 🔒 비밀번호 변경 모달 */}
+      {showPasswordModal && (
+        <ChangePasswordModal
+          user={user}
+          onClose={() => setShowPasswordModal(false)}
+          onPasswordUpdated={(updatedUser) => setUser(updatedUser)}
+        />
+      )}
+
+      {/* 🎯 모달 1: 반 학생 일괄 배정 */}
       {assignTargetClass && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white rounded-3xl p-6 w-full max-w-lg space-y-5 shadow-2xl animate-in fade-in zoom-in-95 my-8">
@@ -699,7 +710,7 @@ export default function TeacherDashboard() {
         </div>
       )}
 
-      {/* 🎯 [모달 2] 일괄 학생 등록 */}
+      {/* 🎯 모달 2: 일괄 학생 등록 */}
       {showBatchModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white rounded-3xl p-6 w-full max-w-lg space-y-4 shadow-2xl animate-in fade-in zoom-in-95 my-8">
@@ -745,7 +756,7 @@ export default function TeacherDashboard() {
         </div>
       )}
 
-      {/* ✏️ [모달 3] 학생 정보 수정 */}
+      {/* ✏️ 모달 3: 학생 정보 수정 */}
       {editingStudent && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white rounded-3xl p-6 w-full max-w-md space-y-4 shadow-2xl animate-in fade-in zoom-in-95 my-8">

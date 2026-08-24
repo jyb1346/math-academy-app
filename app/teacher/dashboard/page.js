@@ -21,7 +21,7 @@ export default function TeacherDashboard() {
   const [newPassword, setNewPassword] = useState('1234');
   const [selectedTeacherId, setSelectedTeacherId] = useState('');
 
-  // 🚀 일괄 계정 생성 모달 상태
+  // 일괄 계정 생성 모달 상태
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [bulkNames, setBulkNames] = useState('');
   const [bulkDefaultPw, setBulkDefaultPw] = useState('1234');
@@ -98,12 +98,10 @@ export default function TeacherDashboard() {
     }
   };
 
-  // 🚀 일괄 학생 계정 생성 로직
   const handleBulkCreateStudents = async (e) => {
     e.preventDefault();
     if (!bulkNames.trim()) return alert('학생 이름을 입력해 주세요.');
 
-    // 엑셀/텍스트 줄바꿈 또는 쉼표 기준으로 학생 이름 분리
     const rawNames = bulkNames
       .split(/[\n,]/)
       .map((n) => n.trim())
@@ -135,7 +133,6 @@ export default function TeacherDashboard() {
     }
   };
 
-  // 단일 계정 추가
   const handleAddUser = async (e) => {
     e.preventDefault();
     try {
@@ -250,6 +247,7 @@ export default function TeacherDashboard() {
 
       <main className="max-w-6xl mx-auto px-4 mt-8 space-y-6">
 
+        {/* 1. 현황 지표 카드 */}
         <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
             <p className="text-xs font-bold text-slate-400">내 담당 반 수</p>
@@ -269,7 +267,48 @@ export default function TeacherDashboard() {
           </div>
         </section>
 
-        {/* 반 관리 섹션 */}
+        {/* 2. ⚡ 최상단 핵심 바로가기 배너 (위치 이동) */}
+        <section className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+          <h2 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-1.5">
+            <span>⚡</span> 자주 쓰는 핵심 바로가기
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <button
+              onClick={() => router.push('/teacher/eval')}
+              className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 rounded-xl font-bold text-xs shadow hover:opacity-95 transition flex justify-between items-center"
+            >
+              <div className="text-left">
+                <span className="block text-sm">📊 일일 피드백 작성</span>
+                <span className="text-[10px] text-blue-100 font-normal">오늘 수업 육각형 피드백 입력</span>
+              </div>
+              <span className="text-base">→</span>
+            </button>
+
+            <button
+              onClick={() => router.push('/teacher/eval/history')}
+              className="bg-slate-800 hover:bg-slate-900 text-white p-4 rounded-xl font-bold text-xs shadow transition flex justify-between items-center"
+            >
+              <div className="text-left">
+                <span className="block text-sm">📋 피드백 이력 전체 조회</span>
+                <span className="text-[10px] text-slate-300 font-normal">날짜별/반별 오버랩 그래프 확인</span>
+              </div>
+              <span className="text-base">→</span>
+            </button>
+
+            <button
+              onClick={() => router.push('/board')}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white p-4 rounded-xl font-bold text-xs shadow transition flex justify-between items-center"
+            >
+              <div className="text-left">
+                <span className="block text-sm">📢 반별 공지 및 숙제 작성</span>
+                <span className="text-[10px] text-indigo-100 font-normal">특정 반 공지사항/숙제 등록</span>
+              </div>
+              <span className="text-base">→</span>
+            </button>
+          </div>
+        </section>
+
+        {/* 3. 반 관리 섹션 */}
         <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
           <div className="flex justify-between items-center">
             <div>
@@ -326,7 +365,7 @@ export default function TeacherDashboard() {
           </div>
         </section>
 
-        {/* 메인 2컬럼 레이아웃 */}
+        {/* 4. 학생 및 선생님 계정 관리 2컬럼 레이아웃 */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
             <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
@@ -335,7 +374,6 @@ export default function TeacherDashboard() {
                   <span>📱</span> {user.role === 'HEAD_TEACHER' ? '학원 전체 학생' : '내 담당 학생'} ({students.length}명)
                 </h2>
                 
-                {/* 🚀 1개 발급 vs 일괄 발급 버튼 세트 */}
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setShowBulkModal(true)}
@@ -426,37 +464,12 @@ export default function TeacherDashboard() {
                 </div>
               </section>
             )}
-
-            <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-3">
-              <h2 className="text-base font-bold text-slate-800 mb-2">⚡ 바로가기</h2>
-              <button
-                onClick={() => router.push('/teacher/eval')}
-                className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-3.5 rounded-xl font-bold text-xs shadow hover:opacity-95 transition flex justify-between items-center"
-              >
-                <span>📊 일일 학습 피드백 작성</span>
-                <span>→</span>
-              </button>
-              <button
-                onClick={() => router.push('/teacher/eval/history')}
-                className="w-full bg-slate-50 hover:bg-slate-100 text-slate-700 p-3.5 rounded-xl font-bold text-xs border border-slate-200 transition flex justify-between items-center"
-              >
-                <span>📋 학생 피드백 이력 전체 조회</span>
-                <span>→</span>
-              </button>
-              <button
-                onClick={() => router.push('/board')}
-                className="w-full bg-slate-50 hover:bg-slate-100 text-slate-700 p-3.5 rounded-xl font-bold text-xs border border-slate-200 transition flex justify-between items-center"
-              >
-                <span>📢 반별 공지 및 숙제 작성</span>
-                <span>→</span>
-              </button>
-            </section>
           </div>
         </div>
 
       </main>
 
-      {/* 🚀 엑셀/줄바꿈 일괄 계정 생성 모달 */}
+      {/* 일괄 계정 생성 모달 */}
       {showBulkModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-lg space-y-4 shadow-2xl">
@@ -524,7 +537,7 @@ export default function TeacherDashboard() {
         </div>
       )}
 
-      {/* 🚀 일괄 생성 완료 결과 안내 팝업 */}
+      {/* 일괄 생성 결과 팝업 */}
       {bulkCreatedList && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-lg space-y-4 shadow-2xl text-center">

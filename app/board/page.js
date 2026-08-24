@@ -45,7 +45,6 @@ function BoardContent() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    // 오늘 날짜 안전 초기화
     setDueDate(new Date().toISOString().split('T')[0]);
 
     if (searchParams) {
@@ -73,18 +72,19 @@ function BoardContent() {
     try {
       const { data: cData } = await supabase.from('classes').select('*');
       const allC = cData || [];
-      const myC = allC.filter((c) => c.teacher_id === currentUser.id);
       
       setClasses(allC);
-      setMyClasses(myC);
-
-      if (myC.length > 0) {
-        setTargetClassId(myC[0].id.toString());
-      } else {
-        setTargetClassId('ALL_STUDENTS');
-      }
 
       if (currentUser.role !== 'STUDENT') {
+        const myC = allC.filter((c) => c.teacher_id === currentUser.id);
+        setMyClasses(myC);
+
+        if (myC.length > 0) {
+          setTargetClassId(myC[0].id.toString());
+        } else {
+          setTargetClassId('ALL_STUDENTS');
+        }
+
         const { data: stData } = await supabase.from('users').select('*').eq('role', 'STUDENT');
         const allSt = stData || [];
         setAllStudents(allSt);
@@ -92,11 +92,17 @@ function BoardContent() {
         const mySt = allSt.filter((s) => s.teacher_id === currentUser.id);
         setMyStudents(mySt);
       } else {
+        // 🎯 학생 계정일 경우 소속된 반 정보 및 목록 가져오기
         const { data: csData } = await supabase
           .from('class_students')
           .select('class_id')
           .eq('student_id', currentUser.id);
-        setMyClassIds(csData ? csData.map((cs) => cs.class_id) : []);
+        
+        const myCIds = csData ? csData.map((cs) => cs.class_id) : [];
+        setMyClassIds(myCIds);
+
+        const studentMyClasses = allC.filter((c) => myCIds.includes(c.id));
+        setMyClasses(studentMyClasses);
       }
 
       await fetchPosts();
@@ -478,13 +484,14 @@ function BoardContent() {
           </div>
         )}
 
+        {/* 🎯 [개편] 학생/선생님 전용 내 반 필터링 탭 */}
         <div className="space-y-2">
           <div className="flex gap-2 overflow-x-auto pb-1">
             <button
               onClick={() => setSelectedClassId('ALL')}
               className={`px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${selectedClassId === 'ALL' ? 'bg-slate-900 text-white shadow' : 'bg-white border text-slate-600'}`}
             >
-              전체 보기
+              전체 공지 보기
             </button>
 
             {myClasses.map((c) => (
@@ -493,7 +500,7 @@ function BoardContent() {
                 onClick={() => setSelectedClassId(c.id.toString())}
                 className={`px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${selectedClassId === c.id.toString() ? 'bg-indigo-600 text-white shadow' : 'bg-white border text-indigo-800'}`}
               >
-                🎯 {c.name}
+                🎯 [{c.name}] 내 반 공지
               </button>
             ))}
 

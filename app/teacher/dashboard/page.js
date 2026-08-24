@@ -50,7 +50,6 @@ export default function TeacherDashboard() {
         return;
       }
       
-      // DB에서 최신 유저 정보를 가져와 role 동기화
       fetchLatestUser(parsedUser);
     } catch (e) {
       console.error(e);
@@ -80,24 +79,22 @@ export default function TeacherDashboard() {
     }
   };
 
+  // 🎯 본인이 담당하는 반과 학생만 조회하도록 통일
   const fetchDashboardData = async (currentUser) => {
     try {
-      const isHeadTeacher = currentUser.role === 'HEAD_TEACHER';
-
-      // 1. 반 조회 (원장님은 전체 반, 일반 선생님은 본인 담당 반)
-      let classQuery = supabase.from('classes').select('*');
-      if (!isHeadTeacher) {
-        classQuery = classQuery.eq('teacher_id', currentUser.id);
-      }
-      const { data: cData } = await classQuery;
+      // 1. 내 담당 반만 조회 (teacher_id = 내 ID)
+      const { data: cData } = await supabase
+        .from('classes')
+        .select('*')
+        .eq('teacher_id', currentUser.id);
       setClasses(cData || []);
 
-      // 2. 학생 조회 (원장님은 전체 학생, 일반 선생님은 본인 담당 학생)
-      let studentQuery = supabase.from('users').select('*').eq('role', 'STUDENT');
-      if (!isHeadTeacher) {
-        studentQuery = studentQuery.eq('teacher_id', currentUser.id);
-      }
-      const { data: stData } = await studentQuery;
+      // 2. 내 담당 학생만 조회 (teacher_id = 내 ID)
+      const { data: stData } = await supabase
+        .from('users')
+        .select('*')
+        .eq('role', 'STUDENT')
+        .eq('teacher_id', currentUser.id);
       setStudents(stData || []);
 
       // 3. 반-학생 매핑 조회
@@ -328,7 +325,7 @@ export default function TeacherDashboard() {
   return (
     <div className="min-h-screen bg-slate-100/70 pb-20 font-sans text-slate-800">
       
-      {/* 🌟 헤더 (원장님 / 선생님 전용 뱃지 표시) */}
+      {/* 헤더 */}
       <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-30 px-6 py-4 flex justify-between items-center shadow-xs">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-black text-lg shadow-md shadow-blue-500/20 cursor-pointer" onClick={() => router.push('/')}>
@@ -342,9 +339,9 @@ export default function TeacherDashboard() {
               <span className={`font-black px-2 py-0.5 rounded-md text-[10px] ${
                 isHeadTeacher ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-indigo-50 text-indigo-700'
               }`}>
-                {isHeadTeacher ? '👑 원장님 권한' : '📘 선생님 권한'}
+                {isHeadTeacher ? '👑 원장님' : '📘 선생님'}
               </span>
-              <span>{user?.name} 님 대시보드</span>
+              <span>{user?.name} 선생님 대시보드</span>
             </p>
           </div>
         </div>
@@ -420,14 +417,14 @@ export default function TeacherDashboard() {
           </div>
         </section>
 
-        {/* 🏫 2. 반 개설 및 관리 */}
+        {/* 🏫 2. 내 담당 반 관리 */}
         <section className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-5">
           <div className="flex justify-between items-center border-b border-slate-100 pb-4">
             <div>
               <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
-                <span>🏫</span> {isHeadTeacher ? '학원 전체 반 관리' : '내 담당 반 관리'}
+                <span>🏫</span> 내 담당 반 관리
               </h2>
-              <p className="text-xs text-slate-400 mt-0.5">반을 클릭하거나 버튼을 눌러 학생들을 한꺼번에 쉽게 배정하세요.</p>
+              <p className="text-xs text-slate-400 mt-0.5">반을 개설하거나 내 반의 학생들을 지정해 일괄 배정하세요.</p>
             </div>
             <span className="bg-indigo-50 text-indigo-700 text-xs font-bold px-3 py-1 rounded-full border border-indigo-100">
               총 {classes.length}개 반
@@ -494,7 +491,7 @@ export default function TeacherDashboard() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-4">
             <div>
               <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
-                <span>👤</span> 신규 학생 등록
+                <span>👤</span> 내 담당 학생 신규 등록
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">개별 등록 및 학부모 번호 포함 명단 일괄 등록을 지원합니다.</p>
             </div>
@@ -552,12 +549,12 @@ export default function TeacherDashboard() {
           </form>
         </section>
 
-        {/* 👥 4. 담당 학생 목록 */}
+        {/* 👥 4. 내 담당 학생 목록 */}
         <section className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-5">
           <div className="flex justify-between items-center border-b border-slate-100 pb-4">
             <div>
               <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
-                <span>👥</span> {isHeadTeacher ? '학원 전체 학생 목록' : '담당 학생 목록'} ({students.length}명)
+                <span>👥</span> 내 담당 학생 목록 ({students.length}명)
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">학생 개별 수정 및 개별 반 변경이 가능합니다.</p>
             </div>
@@ -648,7 +645,7 @@ export default function TeacherDashboard() {
 
       </main>
 
-      {/* 🎯 모달 1: 반 학생 일괄 배정 */}
+      {/* 🎯 [모달 1] 반 학생 일괄 배정 */}
       {assignTargetClass && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white rounded-3xl p-6 w-full max-w-lg space-y-5 shadow-2xl animate-in fade-in zoom-in-95 my-8">
@@ -722,7 +719,7 @@ export default function TeacherDashboard() {
         </div>
       )}
 
-      {/* 🎯 모달 2: 일괄 학생 등록 */}
+      {/* 🎯 [모달 2] 일괄 학생 등록 */}
       {showBatchModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white rounded-3xl p-6 w-full max-w-lg space-y-4 shadow-2xl animate-in fade-in zoom-in-95 my-8">
@@ -768,7 +765,7 @@ export default function TeacherDashboard() {
         </div>
       )}
 
-      {/* ✏️ 모달 3: 학생 정보 수정 */}
+      {/* ✏️ [모달 3] 학생 정보 수정 */}
       {editingStudent && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white rounded-3xl p-6 w-full max-w-md space-y-4 shadow-2xl animate-in fade-in zoom-in-95 my-8">

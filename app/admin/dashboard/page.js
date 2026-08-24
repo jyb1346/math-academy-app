@@ -61,16 +61,16 @@ export default function AdminDashboard() {
         setSelectedTeacherId(headTeacherId);
       }
 
-      // 2. 전체 반 목록 조회 (선생님 정보 포함)
+      // 2. 전체 반 목록 조회
       const { data: cData } = await supabase
         .from('classes')
-        .select('*, users!classes_teacher_id_fkey(name)');
+        .select('*');
       setAllClasses(cData || []);
 
-      // 3. 전체 학생 목록 조회
+      // 3. 전체 학생 목록 조회 (외래키 단순화로 안전한 전체 조회)
       const { data: stData } = await supabase
         .from('users')
-        .select('*, users!users_teacher_id_fkey(name)')
+        .select('*')
         .eq('role', 'STUDENT');
       setAllStudents(stData || []);
 
@@ -79,7 +79,7 @@ export default function AdminDashboard() {
       setClassStudents(csData || []);
 
     } catch (err) {
-      console.error(err);
+      console.error('Admin Fetch Error:', err);
     } finally {
       setLoading(false);
     }
@@ -112,7 +112,7 @@ export default function AdminDashboard() {
     }
   };
 
-  // 🗑️ 강사 계정 삭제 기능
+  // 강사 계정 삭제 기능
   const handleDeleteTeacher = async (teacherId, teacherName, teacherRole) => {
     if (teacherId === user.id || teacherRole === 'HEAD_TEACHER') {
       return alert('원장님 본인 계정은 삭제할 수 없습니다.');
@@ -391,6 +391,7 @@ export default function AdminDashboard() {
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-1">
             {allClasses.map((cls) => {
               const count = classStudents.filter((cs) => cs.class_id === cls.id).length;
+              const teacherObj = allTeachers.find((t) => t.id === cls.teacher_id);
 
               return (
                 <div
@@ -400,7 +401,7 @@ export default function AdminDashboard() {
                   <div className="flex justify-between items-center">
                     <div>
                       <span className="text-sm font-extrabold text-slate-800 block">📘 {cls.name}</span>
-                      <span className="text-[10px] text-indigo-600 font-bold">담당: {cls.users?.name || '미지정'}T</span>
+                      <span className="text-[10px] text-indigo-600 font-bold">담당: {teacherObj?.name || '미지정'}T</span>
                     </div>
                     <button
                       onClick={() => handleDeleteClass(cls.id, cls.name)}
@@ -445,6 +446,7 @@ export default function AdminDashboard() {
             <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
               {allStudents.map((st) => {
                 const isChecked = selectedStudentIds.includes(st.id);
+                const teacherObj = allTeachers.find((t) => t.id === st.teacher_id);
                 return (
                   <label
                     key={st.id}
@@ -461,7 +463,7 @@ export default function AdminDashboard() {
                       />
                       <div>
                         <span className="text-xs font-bold text-slate-800 block">{st.name}</span>
-                        <span className="text-[10px] text-slate-400">담당: {st.users?.name || '미지정'}T</span>
+                        <span className="text-[10px] text-slate-400">담당: {teacherObj?.name || '미지정'}T</span>
                       </div>
                     </div>
 

@@ -112,6 +112,27 @@ export default function AdminDashboard() {
     }
   };
 
+  // 🗑️ 강사 계정 삭제 기능
+  const handleDeleteTeacher = async (teacherId, teacherName, teacherRole) => {
+    if (teacherId === user.id || teacherRole === 'HEAD_TEACHER') {
+      return alert('원장님 본인 계정은 삭제할 수 없습니다.');
+    }
+
+    if (!confirm(`[${teacherName}] 선생님 계정을 삭제하시겠습니까?\n해당 선생님이 담당하던 반과 학생 설정이 해제될 수 있습니다.`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from('users').delete().eq('id', teacherId);
+      if (error) throw error;
+
+      alert(`[${teacherName}] 선생님 계정이 삭제되었습니다.`);
+      fetchAdminData(user.id);
+    } catch (err) {
+      alert(`강사 삭제 실패: ${err.message}`);
+    }
+  };
+
   // 반 개설
   const handleCreateClass = async (e) => {
     e.preventDefault();
@@ -264,14 +285,14 @@ export default function AdminDashboard() {
           </div>
         </section>
 
-        {/* 👑 1. 강사 계정 추가 관리 */}
+        {/* 👑 1. 강사 계정 추가 및 삭제 관리 */}
         <section className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-5">
           <div className="flex justify-between items-center border-b border-slate-100 pb-4">
             <div>
               <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
-                <span>👨‍🏫</span> 학원 강사 계정 생성 및 관리
+                <span>👨‍🏫</span> 학원 강사 계정 생성 및 삭제 관리
               </h2>
-              <p className="text-xs text-slate-400 mt-0.5">신규 선생님 계정을 신설합니다. (기본 비밀번호: 1234)</p>
+              <p className="text-xs text-slate-400 mt-0.5">신규 선생님 계정을 생성하거나 기존 강사 계정을 삭제합니다. (초기 비밀번호: 1234)</p>
             </div>
             <span className="bg-amber-50 text-amber-900 border border-amber-200 text-xs font-bold px-3 py-1 rounded-full">
               총 {allTeachers.length}명
@@ -301,11 +322,26 @@ export default function AdminDashboard() {
             </button>
           </form>
 
-          <div className="flex flex-wrap gap-2 pt-2">
+          {/* 강사 태그 리스트 & 삭제 버튼 */}
+          <div className="flex flex-wrap gap-2.5 pt-2">
             {allTeachers.map((t) => (
-              <div key={t.id} className="bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-2xl text-xs font-bold text-slate-700 flex items-center gap-2">
+              <div
+                key={t.id}
+                className="bg-slate-50 border border-slate-200/90 pl-3.5 pr-2.5 py-2 rounded-2xl text-xs font-bold text-slate-700 flex items-center gap-2.5 shadow-2xs"
+              >
                 <span>{t.role === 'HEAD_TEACHER' ? '👑' : '📘'} {t.name}</span>
                 <span className="text-slate-400 font-normal">({t.email})</span>
+
+                {t.role !== 'HEAD_TEACHER' && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteTeacher(t.id, t.name, t.role)}
+                    className="text-rose-500 hover:text-rose-700 hover:bg-rose-50 font-bold text-[11px] px-1.5 py-0.5 rounded-lg transition"
+                    title="강사 계정 삭제"
+                  >
+                    삭제
+                  </button>
+                )}
               </div>
             ))}
           </div>

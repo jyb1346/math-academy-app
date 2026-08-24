@@ -1,831 +1,387 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 
-function BoardContent() {
-  const [posts, setPosts] = useState([]);
-  const [classes, setClasses] = useState([]);
-  const [myClasses, setMyClasses] = useState([]);
-  const [myClassIds, setMyClassIds] = useState([]);
-  
-  const [studentScope, setStudentScope] = useState('MY_STUDENTS');
-  const [selectedClassId, setSelectedClassId] = useState('ALL');
-
-  // 신규 작성 폼 상태
-  const [category, setCategory] = useState('ALL');
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-  const [newCategory, setNewCategory] = useState('NOTICE');
-  const [targetClassId, setTargetClassId] = useState('');
-  const [dueDate, setDueDate] = useState('');
-  const [googleFormUrl, setGoogleFormUrl] = useState('');
-  const [homeworkList, setHomeworkList] = useState([
-    { bookTitle: '', range: '' },
-  ]);
-
-  // 글 수정 모달 상태
-  const [editingPost, setEditingPost] = useState(null);
-  const [editTitle, setEditTitle] = useState('');
-  const [editContent, setEditContent] = useState('');
-  const [editCategory, setEditCategory] = useState('NOTICE');
-  const [editTargetClassId, setEditTargetClassId] = useState('');
-  const [editDueDate, setEditDueDate] = useState('');
-  const [editGoogleFormUrl, setEditGoogleFormUrl] = useState('');
-  const [editHomeworkList, setEditHomeworkList] = useState([]);
-
-  const [allStudents, setAllStudents] = useState([]);
-  const [myStudents, setMyStudents] = useState([]);
-  
-  // 학생 숙제 공지 확인 상태 저장 (post_id -> Set of student_id)
-  const [postConfirmations, setPostConfirmations] = useState({});
+export default function BoardPage() {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [classes, setClasses] = useState([]);
+  const [selectedClassId, setSelectedClassId] = useState('');
+  
+  // 숙제 관련 상태
+  const [homeworks, setHomeworks] = useState([]);
+  const [hwTitle, setHwTitle] = useState('');
+  const [hwContent, setHwContent] = useState('');
+  const [hwDueDate, setHwDueDate] = useState('');
 
+  // 공지사항 관련 상태
+  const [notices, setNotices] = useState([]);
+  const [noticeTitle, setNoticeTitle] = useState('');
+  const [noticeContent, setNoticeContent] = useState('');
+
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   useEffect(() => {
-    setDueDate(new Date().toISOString().split('T')[0]);
-
-    if (searchParams) {
-      const paramCategory = searchParams.get('category');
-      if (paramCategory) setCategory(paramCategory);
-    }
-
     const userData = localStorage.getItem('user');
     if (!userData) {
       router.push('/login');
       return;
     }
-
     try {
       const parsedUser = JSON.parse(userData);
       setUser(parsedUser);
-      initData(parsedUser);
+      fetchClasses(parsedUser);
     } catch (e) {
-      console.error(e);
       router.push('/login');
     }
   }, []);
 
-  const initData = async (currentUser) => {
+  // 반 목록 조회
+  const fetchClasses = async (currentUser) => {
     try {
-      const { data: cData } = await supabase.from('classes').select('*');
-      const allC = cData || [];
-      
-      setClasses(allC);
-
-      if (currentUser.role !== 'STUDENT') {
-        const myC = allC.filter((c) => c.teacher_id === currentUser.id);
-        setMyClasses(myC);
-
-        if (myC.length > 0) {
-          setTargetClassId(myC[0].id.toString());
-        } else {
-          setTargetClassId('ALL_STUDENTS');
-        }
-
-        const { data: stData } = await supabase.from('users').select('*').eq('role', 'STUDENT');
-        const allSt = stData || [];
-        setAllStudents(allSt);
-
-        const mySt = allSt.filter((s) => s.teacher_id === currentUser.id);
-        setMyStudents(mySt);
-      } else {
-        const { data: csData } = await supabase
-          .from('class_students')
-          .select('class_id')
-          .eq('student_id', currentUser.id);
-        
-        const myCIds = csData ? csData.map((cs) => cs.class_id) : [];
-        setMyClassIds(myCIds);
-
-        const studentMyClasses = allC.filter((c) => myCIds.includes(c.id));
-        setMyClasses(studentMyClasses);
+      let query = supabase.from('classes').select('*');
+      if (currentUser.role === 'TEACHER') {
+        query = query.eq('teacher_id', currentUser.id);
       }
+      const { data } = await query;
+      const classList = data || [];
+      setClasses(classList);
 
-      await fetchPosts();
-    } catch (err) {
-      console.error(err);
+      if (classList.length > 0) {
+        setSelectedClassId(classList[0].id.toString());
+        fetchBoardItems(classList[0].id);
+      }
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchPosts = async () => {
-    const { data, error } = await supabase
-      .from('posts')
-      .select('*, users(name), classes(name, teacher_id)')
+  // 반 변경 시 숙제/공지사항 조회
+  const handleClassChange = (classId) => {
+    setSelectedClassId(classId);
+    fetchBoardItems(classId);
+  };
+
+  const fetchBoardItems = async (classId) => {
+    // 1. 숙제 목록 조회
+    const { data: hwData } = await supabase
+      .from('homeworks')
+      .select('*')
+      .eq('class_id', parseInt(classId))
       .order('created_at', { ascending: false });
+    setHomeworks(hwData || []);
 
-    if (!error) {
-      setPosts(data || []);
-      fetchConfirmations();
-    }
+    // 2. 공지사항 목록 조회
+    const { data: nData } = await supabase
+      .from('notices')
+      .select('*')
+      .eq('class_id', parseInt(classId))
+      .order('created_at', { ascending: false });
+    setNotices(nData || []);
   };
 
-  // 🎯 학생들의 공지 확인 내역 가져오기
-  const fetchConfirmations = async () => {
-    const { data, error } = await supabase.from('post_confirmations').select('*');
-    if (!error && data) {
-      const confirmMap = {};
-      data.forEach((item) => {
-        const pIdStr = item.post_id.toString();
-        if (!confirmMap[pIdStr]) {
-          confirmMap[pIdStr] = new Set();
-        }
-        confirmMap[pIdStr].add(item.student_id);
-      });
-      setPostConfirmations(confirmMap);
-    }
-  };
-
-  // 🎯 [수정] 공지 확인 완료 토글 함수 (문자열 호환 파싱)
-  const togglePostConfirmation = async (postId) => {
-    if (!user || user.role !== 'STUDENT') return;
-
-    const postIdStr = postId.toString();
-    const isConfirmed = postConfirmations[postIdStr]?.has(user.id);
-
-    try {
-      if (isConfirmed) {
-        const { error } = await supabase
-          .from('post_confirmations')
-          .delete()
-          .eq('post_id', postId)
-          .eq('student_id', user.id);
-
-        if (error) throw error;
-
-        setPostConfirmations((prev) => {
-          const updated = { ...prev };
-          if (updated[postIdStr]) {
-            updated[postIdStr].delete(user.id);
-          }
-          return { ...updated };
-        });
-      } else {
-        const { error } = await supabase
-          .from('post_confirmations')
-          .insert([{ post_id: postId, student_id: user.id }]);
-
-        if (error) throw error;
-
-        setPostConfirmations((prev) => {
-          const updated = { ...prev };
-          if (!updated[postIdStr]) updated[postIdStr] = new Set();
-          updated[postIdStr].add(user.id);
-          return { ...updated };
-        });
-      }
-    } catch (err) {
-      alert(`확인 상태 변경 실패: ${err.message}`);
-    }
-  };
-
-  const handleAddBook = () => setHomeworkList([...homeworkList, { bookTitle: '', range: '' }]);
-  const handleRemoveBook = (index) => setHomeworkList(homeworkList.filter((_, i) => i !== index));
-  const handleBookChange = (index, field, value) => {
-    const updated = [...homeworkList];
-    updated[index][field] = value;
-    setHomeworkList(updated);
-  };
-
-  const handleEditAddBook = () => setEditHomeworkList([...editHomeworkList, { bookTitle: '', range: '' }]);
-  const handleEditRemoveBook = (index) => setEditHomeworkList(editHomeworkList.filter((_, i) => i !== index));
-  const handleEditBookChange = (index, field, value) => {
-    const updated = [...editHomeworkList];
-    updated[index][field] = value;
-    setEditHomeworkList(updated);
-  };
-
-  const handleCreatePost = async (e) => {
+  // 1️⃣ 숙제 등록 (맨 위 위치)
+  const handleCreateHomework = async (e) => {
     e.preventDefault();
-    if (!title.trim()) return alert('제목을 입력해주세요.');
+    if (!hwTitle.trim() || !selectedClassId) {
+      return alert('숙제 제목과 반을 선택해 주세요.');
+    }
 
     try {
-      let finalContent = content;
-      if (newCategory === 'HOMEWORK') {
-        const bookDetails = homeworkList
-          .filter((item) => item.bookTitle.trim() !== '')
-          .map((item) => `📘 [${item.bookTitle}] ${item.range}`)
-          .join('\n');
-        
-        const formLinkText = googleFormUrl.trim() ? `\n\n🔗 구글 폼 링크: ${googleFormUrl.trim()}` : '';
-        finalContent = `${bookDetails}${formLinkText}\n\n📝 메모:\n${content}`;
-      }
-
-      const postData = {
-        title,
-        content: finalContent,
-        category: newCategory,
-        author_id: user.id,
-        class_id: targetClassId === 'ALL_STUDENTS' ? null : parseInt(targetClassId),
-        due_date: newCategory === 'HOMEWORK' ? dueDate : null,
-      };
-
-      const { error } = await supabase.from('posts').insert([postData]);
+      const { error } = await supabase.from('homeworks').insert([
+        {
+          title: hwTitle.trim(),
+          content: hwContent.trim(),
+          due_date: hwDueDate || null,
+          class_id: parseInt(selectedClassId),
+          teacher_id: user.id,
+        },
+      ]);
       if (error) throw error;
 
-      setTitle('');
-      setContent('');
-      setGoogleFormUrl('');
-      setHomeworkList([{ bookTitle: '', range: '' }]);
-      fetchPosts();
-      alert('등록되었습니다.');
+      alert('숙제 알림이 등록되었습니다!');
+      setHwTitle('');
+      setHwContent('');
+      setHwDueDate('');
+      fetchBoardItems(selectedClassId);
     } catch (err) {
-      console.error(err);
-      alert('등록 실패');
+      alert(`숙제 등록 실패: ${err.message}`);
     }
   };
 
-  const handleOpenEdit = (post) => {
-    setEditingPost(post);
-    setEditTitle(post.title || '');
-    setEditCategory(post.category || 'NOTICE');
-    setEditTargetClassId(post.class_id ? post.class_id.toString() : 'ALL_STUDENTS');
-    setEditDueDate(post.due_date || new Date().toISOString().split('T')[0]);
-
-    const postContent = post.content || '';
-    const formMatch = postContent.match(/🔗 구글 폼 링크: (https?:\/\/[^\s]+)/);
-    setEditGoogleFormUrl(formMatch ? formMatch[1] : '');
-
-    const lines = postContent.split('\n');
-    const parsedBooks = [];
-    lines.forEach((line) => {
-      if (line.startsWith('📘 [')) {
-        const match = line.match(/📘 \[(.*?)\] (.*)/);
-        if (match) {
-          parsedBooks.push({ bookTitle: match[1], range: match[2] });
-        }
-      }
-    });
-
-    setEditHomeworkList(parsedBooks.length > 0 ? parsedBooks : [{ bookTitle: '', range: '' }]);
-
-    const memoIndex = postContent.indexOf('📝 메모:\n');
-    if (memoIndex !== -1) {
-      setEditContent(postContent.substring(memoIndex + 7));
-    } else if (parsedBooks.length > 0) {
-      setEditContent('');
-    } else {
-      setEditContent(postContent);
-    }
-  };
-
-  const handleUpdatePost = async (e) => {
-    e.preventDefault();
-    if (!editTitle.trim()) return alert('제목을 입력해주세요.');
-
+  // 숙제 삭제
+  const handleDeleteHomework = async (hwId) => {
+    if (!confirm('해당 숙제를 삭제하시겠습니까?')) return;
     try {
-      let finalContent = editContent;
-      if (editCategory === 'HOMEWORK') {
-        const bookDetails = editHomeworkList
-          .filter((item) => item.bookTitle.trim() !== '')
-          .map((item) => `📘 [${item.bookTitle}] ${item.range}`)
-          .join('\n');
-        
-        const formLinkText = editGoogleFormUrl.trim() ? `\n\n🔗 구글 폼 링크: ${editGoogleFormUrl.trim()}` : '';
-        finalContent = `${bookDetails}${formLinkText}\n\n📝 메모:\n${editContent}`;
-      }
-
-      const updateData = {
-        title: editTitle,
-        content: finalContent,
-        category: editCategory,
-        class_id: editTargetClassId === 'ALL_STUDENTS' ? null : parseInt(editTargetClassId),
-        due_date: editCategory === 'HOMEWORK' ? editDueDate : null,
-      };
-
-      const { error } = await supabase.from('posts').update(updateData).eq('id', editingPost.id);
+      const { error } = await supabase.from('homeworks').delete().eq('id', hwId);
       if (error) throw error;
-
-      alert('게시글이 성공적으로 수정되었습니다.');
-      setEditingPost(null);
-      fetchPosts();
-    } catch (err) {
-      alert(`수정 실패: ${err.message}`);
-    }
-  };
-
-  const handleDeletePost = async (postId, postTitle) => {
-    if (!confirm(`[${postTitle}] 게시글을 삭제하시겠습니까?`)) return;
-    try {
-      const { error } = await supabase.from('posts').delete().eq('id', postId);
-      if (error) throw error;
-      fetchPosts();
-      alert('삭제되었습니다.');
+      fetchBoardItems(selectedClassId);
     } catch (err) {
       alert(`삭제 실패: ${err.message}`);
     }
   };
 
-  const activeStudents = studentScope === 'MY_STUDENTS' ? myStudents : allStudents;
-  const myClassIdList = myClasses.map((c) => c.id);
-
-  const visiblePosts = posts.filter((post) => {
-    if (user?.role === 'STUDENT') {
-      if (post.class_id !== null && !myClassIds.includes(post.class_id)) {
-        return false;
-      }
-    } else {
-      if (post.class_id !== null && !myClassIdList.includes(post.class_id)) {
-        return false;
-      }
+  // 2️⃣ 공지사항 등록 (두 번째 위치)
+  const handleCreateNotice = async (e) => {
+    e.preventDefault();
+    if (!noticeTitle.trim() || !selectedClassId) {
+      return alert('공지 제목과 반을 선택해 주세요.');
     }
 
-    if (selectedClassId !== 'ALL') {
-      if (selectedClassId === 'PUBLIC') return post.class_id === null;
-      return post.class_id === parseInt(selectedClassId);
-    }
-    if (category !== 'ALL') {
-      return post.category === category;
-    }
-    return true;
-  });
+    try {
+      const { error } = await supabase.from('notices').insert([
+        {
+          title: noticeTitle.trim(),
+          content: noticeContent.trim(),
+          class_id: parseInt(selectedClassId),
+          teacher_id: user.id,
+        },
+      ]);
+      if (error) throw error;
 
-  if (loading) return <div className="p-8 text-center font-bold">로딩 중...</div>;
+      alert('공지사항이 등록되었습니다!');
+      setNoticeTitle('');
+      setNoticeContent('');
+      fetchBoardItems(selectedClassId);
+    } catch (err) {
+      alert(`공지 등록 실패: ${err.message}`);
+    }
+  };
+
+  // 공지사항 삭제
+  const handleDeleteNotice = async (noticeId) => {
+    if (!confirm('해당 공지사항을 삭제하시겠습니까?')) return;
+    try {
+      const { error } = await supabase.from('notices').delete().eq('id', noticeId);
+      if (error) throw error;
+      fetchBoardItems(selectedClassId);
+    } catch (err) {
+      alert(`삭제 실패: ${err.message}`);
+    }
+  };
+
+  if (loading) return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center font-bold text-slate-600">
+      게시판 로딩 중...
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-12">
-      <header className="bg-white border-b py-4 px-6 shadow-sm flex justify-between items-center">
-        <h1 onClick={() => router.push('/')} className="text-xl font-bold text-blue-600 cursor-pointer">
-          품수학 학원 게시판
-        </h1>
-        <button onClick={() => router.back()} className="text-sm text-gray-600 hover:underline font-bold">
-          ← 뒤로가기
+    <div className="min-h-screen bg-slate-100/70 pb-20 font-sans text-slate-800">
+      
+      {/* 헤더 */}
+      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-30 px-6 py-4 flex justify-between items-center shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-black text-lg shadow-md shadow-blue-500/20 cursor-pointer" onClick={() => router.push('/')}>
+            품
+          </div>
+          <div>
+            <h1 onClick={() => router.push('/')} className="text-base font-extrabold text-slate-800 cursor-pointer leading-tight">
+              반별 공지 및 숙제 관리
+            </h1>
+            <p className="text-[11px] text-slate-400 font-semibold mt-0.5">
+              학생들에게 숙제 알림과 학원 공지사항을 공유하세요.
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={() => router.back()}
+          className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3.5 py-2 rounded-xl transition border border-slate-200"
+        >
+          ← 이전 화면으로
         </button>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 mt-6 space-y-6">
-        
-        {user?.role !== 'STUDENT' && (
-          <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
-            <h2 className="font-bold text-lg text-gray-800">✍️ 반별 공지 및 숙제 작성 ({user?.name || ''} 선생님)</h2>
-            <form onSubmit={handleCreatePost} className="space-y-4">
-              
-              <div className="flex flex-col sm:flex-row gap-2">
-                <select
-                  value={targetClassId}
-                  onChange={(e) => setTargetClassId(e.target.value)}
-                  className="p-2.5 border rounded-xl text-sm bg-indigo-50 border-indigo-200 font-bold text-indigo-900"
-                >
-                  <optgroup label="📘 내 담당 반 목록">
-                    {myClasses.length === 0 ? (
-                      <option value="" disabled>개설된 내 반이 없습니다</option>
-                    ) : (
-                      myClasses.map((c) => (
-                        <option key={c.id} value={c.id}>🎯 [{c.name}] 전용 공지</option>
-                      ))
-                    )}
-                  </optgroup>
+      <main className="max-w-4xl mx-auto px-4 mt-8 space-y-8">
 
-                  <optgroup label="──────────────────">
-                    <option value="ALL_STUDENTS">📢 학원 전체 학생 공지</option>
-                  </optgroup>
-                </select>
+        {/* 🏫 대상 반 선택 셀렉터 */}
+        <section className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <label className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+            <span>📘</span> 관리할 반 선택:
+          </label>
+          <select
+            value={selectedClassId}
+            onChange={(e) => handleClassChange(e.target.value)}
+            className="p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-bold text-indigo-700 focus:outline-none focus:border-indigo-500 transition min-w-[200px]"
+          >
+            {classes.length === 0 ? (
+              <option value="">개설된 반이 없습니다</option>
+            ) : (
+              classes.map((cls) => (
+                <option key={cls.id} value={cls.id}>
+                  📘 {cls.name}
+                </option>
+              ))
+            )}
+          </select>
+        </section>
 
-                <select
-                  value={newCategory}
-                  onChange={(e) => setNewCategory(e.target.value)}
-                  className="p-2.5 border rounded-xl text-sm bg-gray-50 font-semibold"
-                >
-                  <option value="NOTICE">📢 공지사항</option>
-                  <option value="HOMEWORK">📝 숙제 알림</option>
-                  <option value="VIDEO">🎬 복습 영상</option>
-                  <option value="MATERIAL">📄 강의 자료</option>
-                </select>
+        {/* 🎯 1위: 숙제 알림 작성 및 목록 (최상단 배치) */}
+        <section className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
+          <div className="border-b border-slate-100 pb-4 flex justify-between items-center">
+            <div>
+              <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
+                <span>📝</span> 오늘/이번 주 숙제 등록
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">학생들이 확인할 숙제와 마감일을 작성해 주세요.</p>
+            </div>
+            <span className="bg-indigo-50 text-indigo-700 font-bold text-xs px-3 py-1 rounded-full border border-indigo-100">
+              숙제 {homeworks.length}건
+            </span>
+          </div>
 
-                {newCategory === 'HOMEWORK' && (
-                  <input
-                    type="date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                    className="p-2.5 border rounded-xl text-sm bg-blue-50 border-blue-200 font-bold text-blue-700"
-                  />
-                )}
+          {/* 숙제 작성 폼 */}
+          <form onSubmit={handleCreateHomework} className="space-y-3 bg-slate-50/80 p-4 rounded-2xl border border-slate-200/80">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="sm:col-span-2">
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">숙제 제목</label>
+                <input
+                  type="text"
+                  placeholder="예: 개념원리 p.45~50 유제 풀이"
+                  value={hwTitle}
+                  onChange={(e) => setHwTitle(e.target.value)}
+                  className="w-full p-2.5 bg-white border border-slate-200/80 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 transition"
+                />
               </div>
 
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">제출 마감일</label>
+                <input
+                  type="date"
+                  value={hwDueDate}
+                  onChange={(e) => setHwDueDate(e.target.value)}
+                  className="w-full p-2.5 bg-white border border-slate-200/80 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 transition"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">상세 안내 사항 (선택)</label>
+              <textarea
+                placeholder="오답 노트 작성 필수, 풀이 과정 제출 등"
+                value={hwContent}
+                onChange={(e) => setHwContent(e.target.value)}
+                className="w-full p-2.5 bg-white border border-slate-200/80 rounded-xl text-xs h-20 font-medium text-slate-800 focus:outline-none focus:border-indigo-500 transition"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-xs shadow-sm transition"
+            >
+              + 숙제 알림 등록하기
+            </button>
+          </form>
+
+          {/* 숙제 리스트 */}
+          <div className="space-y-3 pt-2">
+            <h3 className="text-xs font-extrabold text-slate-700">📋 등록된 숙제 목록</h3>
+            {homeworks.length === 0 ? (
+              <p className="text-center py-8 text-slate-400 text-xs font-bold">등록된 숙제가 없습니다.</p>
+            ) : (
+              homeworks.map((hw) => (
+                <div key={hw.id} className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 flex justify-between items-start gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-sm text-slate-800">{hw.title}</span>
+                      {hw.due_date && (
+                        <span className="bg-amber-100 text-amber-900 border border-amber-200 px-2.5 py-0.5 rounded-full font-bold text-[10px]">
+                          📅 마감일: {hw.due_date}
+                        </span>
+                      )}
+                    </div>
+                    {hw.content && <p className="text-xs text-slate-600 leading-relaxed">{hw.content}</p>}
+                  </div>
+
+                  <button
+                    onClick={() => handleDeleteHomework(hw.id)}
+                    className="text-rose-500 hover:underline font-bold text-xs whitespace-nowrap"
+                  >
+                    삭제
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+
+        {/* 📢 2위: 반별 공지사항 작성 및 목록 (두 번째 배치) */}
+        <section className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
+          <div className="border-b border-slate-100 pb-4 flex justify-between items-center">
+            <div>
+              <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
+                <span>📢</span> 반별 공지사항 등록
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">시험 일정, 휴강 및 보강 등 중요 공지를 작성해 주세요.</p>
+            </div>
+            <span className="bg-slate-100 text-slate-700 font-bold text-xs px-3 py-1 rounded-full">
+              공지 {notices.length}건
+            </span>
+          </div>
+
+          {/* 공지사항 작성 폼 */}
+          <form onSubmit={handleCreateNotice} className="space-y-3 bg-slate-50/80 p-4 rounded-2xl border border-slate-200/80">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">공지 제목</label>
               <input
                 type="text"
-                placeholder="제목을 입력하세요"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="w-full p-2.5 border rounded-xl text-sm font-medium"
+                placeholder="예: 다음 주 중간고사 대비 보강 안내"
+                value={noticeTitle}
+                onChange={(e) => setNoticeTitle(e.target.value)}
+                className="w-full p-2.5 bg-white border border-slate-200/80 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-slate-500 transition"
               />
-
-              {newCategory === 'HOMEWORK' && (
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-bold text-slate-700">📚 교재별 숙제 목록</span>
-                    <button
-                      type="button"
-                      onClick={handleAddBook}
-                      className="text-xs bg-blue-600 text-white font-bold px-3 py-1.5 rounded-lg hover:bg-blue-700 transition"
-                    >
-                      + 교재 추가
-                    </button>
-                  </div>
-
-                  {homeworkList.map((item, index) => (
-                    <div key={index} className="flex gap-2 items-center">
-                      <input
-                        type="text"
-                        placeholder="교재명 (예: 개념쎈)"
-                        value={item.bookTitle}
-                        onChange={(e) => handleBookChange(index, 'bookTitle', e.target.value)}
-                        className="w-1/3 p-2 border rounded-lg text-sm bg-white font-medium"
-                      />
-                      <input
-                        type="text"
-                        placeholder="범위 (예: p.45 ~ p.50)"
-                        value={item.range}
-                        onChange={(e) => handleBookChange(index, 'range', e.target.value)}
-                        className="flex-1 p-2 border rounded-lg text-sm bg-white font-medium"
-                      />
-                      {homeworkList.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveBook(index)}
-                          className="text-xs bg-rose-100 text-rose-600 font-bold px-2.5 py-2 rounded-lg"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-                  ))}
-
-                  <div className="pt-2 border-t border-slate-200">
-                    <label className="block text-xs font-bold text-slate-600 mb-1">
-                      📋 구글 설문지 제출 링크 (선택)
-                    </label>
-                    <input
-                      type="url"
-                      placeholder="https://forms.gle/..."
-                      value={googleFormUrl}
-                      onChange={(e) => setGoogleFormUrl(e.target.value)}
-                      className="w-full p-2 border rounded-lg text-sm bg-white"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <textarea
-                placeholder="내용을 적어주세요."
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                className="w-full p-3 border rounded-xl text-sm h-20"
-              />
-
-              <div className="flex justify-end">
-                <button type="submit" className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-indigo-700 shadow transition">
-                  등록하기
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {user?.role !== 'STUDENT' && (
-          <div className="flex items-center justify-between bg-white p-3 px-4 rounded-xl border border-slate-200">
-            <span className="text-xs font-bold text-slate-700">👥 학생 확인 상태 표시 범위:</span>
-            <div className="flex gap-1.5">
-              <button
-                onClick={() => setStudentScope('MY_STUDENTS')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  studentScope === 'MY_STUDENTS'
-                    ? 'bg-blue-600 text-white shadow'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                👤 내 담당 학생만 ({myStudents.length}명)
-              </button>
-              <button
-                onClick={() => setStudentScope('ALL_STUDENTS')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  studentScope === 'ALL_STUDENTS'
-                    ? 'bg-slate-800 text-white shadow'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                🌐 학원 전체 학생 ({allStudents.length}명)
-              </button>
             </div>
-          </div>
-        )}
 
-        <div className="space-y-2">
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            <button
-              onClick={() => setSelectedClassId('ALL')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${selectedClassId === 'ALL' ? 'bg-slate-900 text-white shadow' : 'bg-white border text-slate-600'}`}
-            >
-              전체 공지 보기
-            </button>
-
-            {myClasses.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setSelectedClassId(c.id.toString())}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${selectedClassId === c.id.toString() ? 'bg-indigo-600 text-white shadow' : 'bg-white border text-indigo-800'}`}
-              >
-                🎯 [{c.name}] 내 반 공지
-              </button>
-            ))}
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">공지 상세 내용</label>
+              <textarea
+                placeholder="공지 내용을 자세히 작성해 주세요."
+                value={noticeContent}
+                onChange={(e) => setNoticeContent(e.target.value)}
+                className="w-full p-2.5 bg-white border border-slate-200/80 rounded-xl text-xs h-24 font-medium text-slate-800 focus:outline-none focus:border-slate-500 transition"
+              />
+            </div>
 
             <button
-              onClick={() => setSelectedClassId('PUBLIC')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${selectedClassId === 'PUBLIC' ? 'bg-slate-700 text-white shadow' : 'bg-slate-100 border text-slate-500'}`}
+              type="submit"
+              className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 rounded-xl text-xs shadow-sm transition"
             >
-              🌐 학원 전체 공지
+              + 공지사항 등록하기
             </button>
-          </div>
-        </div>
+          </form>
 
-        <div className="space-y-4">
-          {visiblePosts.length === 0 ? (
-            <p className="text-center py-8 text-gray-500 text-xs font-bold">등록된 공지글이 없습니다.</p>
-          ) : (
-            visiblePosts.map((post) => {
-              const postContent = post.content || '';
-              const formMatch = postContent.match(/🔗 구글 폼 링크: (https?:\/\/[^\s]+)/);
-              const formUrl = formMatch ? formMatch[1] : null;
-
-              const isMyPost = user?.id === post.author_id;
-              
-              // 🎯 공지 확인 여부 체크 (문자열 변환 파싱)
-              const postIdStr = post.id.toString();
-              const isConfirmedByMe = postConfirmations[postIdStr]?.has(user?.id);
-
-              return (
-                <div key={post.id} className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm space-y-3">
-                  <div className="flex justify-between items-center text-xs text-gray-500">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-blue-600">
-                        {post.category === 'NOTICE' && '📢 공지사항'}
-                        {post.category === 'HOMEWORK' && '📝 숙제 알림'}
-                        {post.category === 'VIDEO' && '🎬 복습 영상'}
-                        {post.category === 'MATERIAL' && '📄 강의 자료'}
-                      </span>
-                      {post.classes ? (
-                        <span className="bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded-full font-bold">
-                          🎯 {post.classes.name}
-                        </span>
-                      ) : (
-                        <span className="bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-bold">
-                          🌐 학원 전체 공지
-                        </span>
-                      )}
-                      {post.due_date && (
-                        <span className="bg-rose-100 text-rose-700 px-2.5 py-0.5 rounded-full font-bold">
-                          📅 마감일: {post.due_date}
-                        </span>
-                      )}
-                    </div>
-                    
-                    <div className="flex items-center gap-2">
-                      {isMyPost && (
-                        <>
-                          <button
-                            onClick={() => handleOpenEdit(post)}
-                            className="text-xs bg-amber-50 text-amber-700 hover:bg-amber-100 px-2.5 py-1 rounded-lg font-bold border border-amber-200 transition"
-                          >
-                            ✏️ 수정
-                          </button>
-                          <button
-                            onClick={() => handleDeletePost(post.id, post.title)}
-                            className="text-xs bg-rose-50 text-rose-600 hover:bg-rose-100 px-2.5 py-1 rounded-lg font-bold border border-rose-200 transition"
-                          >
-                            삭제
-                          </button>
-                        </>
-                      )}
-                      <span>{new Date(post.created_at).toLocaleDateString()}</span>
-                    </div>
+          {/* 공지사항 리스트 */}
+          <div className="space-y-3 pt-2">
+            <h3 className="text-xs font-extrabold text-slate-700">📢 등록된 공지사항 목록</h3>
+            {notices.length === 0 ? (
+              <p className="text-center py-8 text-slate-400 text-xs font-bold">등록된 공지사항이 없습니다.</p>
+            ) : (
+              notices.map((n) => (
+                <div key={n.id} className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 flex justify-between items-start gap-4">
+                  <div className="space-y-1">
+                    <span className="font-extrabold text-sm text-slate-800 block">{n.title}</span>
+                    {n.content && <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line">{n.content}</p>}
                   </div>
 
-                  <h3 className="font-bold text-base text-gray-800">{post.title}</h3>
-                  <p className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">{post.content}</p>
-
-                  {formUrl && (
-                    <div className="pt-2">
-                      <a
-                        href={formUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-xl text-xs shadow transition"
-                      >
-                        <span>📋 구글 폼 숙제 제출하기</span>
-                        <span>↗</span>
-                      </a>
-                    </div>
-                  )}
-
-                  {/* 🎯 [학생 전용] 숙제/공지 확인 완료 버튼 */}
-                  {user?.role === 'STUDENT' && (
-                    <div className="pt-3 border-t border-slate-100 flex justify-end">
-                      <button
-                        onClick={() => togglePostConfirmation(post.id)}
-                        className={`px-4 py-2 rounded-xl text-xs font-extrabold transition shadow-sm flex items-center gap-1.5 ${
-                          isConfirmedByMe
-                            ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200'
-                        }`}
-                      >
-                        <span>{isConfirmedByMe ? '✓ 숙제 및 공지 확인 완료' : '☐ 공지 확인하기'}</span>
-                      </button>
-                    </div>
-                  )}
-
-                  {/* 🎯 [선생님 전용] 학생 공지/숙제 확인 현황 표 */}
-                  {user?.role !== 'STUDENT' && (
-                    <div className="mt-4 pt-3 border-t border-gray-100 bg-slate-50 p-4 rounded-xl space-y-3">
-                      <div className="flex justify-between items-center">
-                        <p className="text-xs font-bold text-slate-700">👀 학생 공지/숙제 확인 현황</p>
-                        <span className="text-[10px] font-bold text-blue-600">
-                          {studentScope === 'MY_STUDENTS' ? '👤 내 담당 학생만 보기' : '🌐 학원 전체 학생 보기'}
-                        </span>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        {activeStudents.length === 0 ? (
-                          <span className="text-xs text-slate-400">해당 범위의 학생이 없습니다.</span>
-                        ) : (
-                          activeStudents.map((st) => {
-                            const isConfirmed = postConfirmations[postIdStr]?.has(st.id);
-                            return (
-                              <span
-                                key={st.id}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${
-                                  isConfirmed
-                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                    : 'bg-white text-slate-400 border-slate-200'
-                                }`}
-                              >
-                                {st.name} {isConfirmed ? '✓ 확인완료' : '미확인'}
-                              </span>
-                            );
-                          })
-                        )}
-                      </div>
-                    </div>
-                  )}
-
+                  <button
+                    onClick={() => handleDeleteNotice(n.id)}
+                    className="text-rose-500 hover:underline font-bold text-xs whitespace-nowrap"
+                  >
+                    삭제
+                  </button>
                 </div>
-              );
-            })
-          )}
-        </div>
+              ))
+            )}
+          </div>
+        </section>
+
       </main>
 
-      {/* 글 수정 모달 */}
-      {editingPost && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-lg space-y-4 shadow-2xl my-8">
-            <div className="flex justify-between items-center border-b pb-3">
-              <h3 className="text-lg font-bold text-slate-800">✏️ 공지/숙제 게시글 수정</h3>
-              <button onClick={() => setEditingPost(null)} className="text-xs font-bold text-slate-400 hover:text-slate-600">닫기</button>
-            </div>
-
-            <form onSubmit={handleUpdatePost} className="space-y-4">
-              <div className="flex flex-col sm:flex-row gap-2">
-                <select
-                  value={editTargetClassId}
-                  onChange={(e) => setEditTargetClassId(e.target.value)}
-                  className="p-2.5 border rounded-xl text-sm bg-indigo-50 border-indigo-200 font-bold text-indigo-900"
-                >
-                  <optgroup label="📘 내 담당 반 목록">
-                    {myClasses.map((c) => (
-                      <option key={c.id} value={c.id}>🎯 [{c.name}] 전용 공지</option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="──────────────────">
-                    <option value="ALL_STUDENTS">📢 학원 전체 학생 공지</option>
-                  </optgroup>
-                </select>
-
-                <select
-                  value={editCategory}
-                  onChange={(e) => setEditCategory(e.target.value)}
-                  className="p-2.5 border rounded-xl text-sm bg-gray-50 font-semibold"
-                >
-                  <option value="NOTICE">📢 공지사항</option>
-                  <option value="HOMEWORK">📝 숙제 알림</option>
-                  <option value="VIDEO">🎬 복습 영상</option>
-                  <option value="MATERIAL">📄 강의 자료</option>
-                </select>
-
-                {editCategory === 'HOMEWORK' && (
-                  <input
-                    type="date"
-                    value={editDueDate}
-                    onChange={(e) => setEditDueDate(e.target.value)}
-                    className="p-2.5 border rounded-xl text-sm bg-blue-50 border-blue-200 font-bold text-blue-700"
-                  />
-                )}
-              </div>
-
-              <input
-                type="text"
-                placeholder="제목을 입력하세요"
-                value={editTitle}
-                onChange={(e) => setEditTitle(e.target.value)}
-                className="w-full p-2.5 border rounded-xl text-sm font-medium"
-              />
-
-              {editCategory === 'HOMEWORK' && (
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-bold text-slate-700">📚 교재별 숙제 목록 수정</span>
-                    <button
-                      type="button"
-                      onClick={handleEditAddBook}
-                      className="text-xs bg-blue-600 text-white font-bold px-3 py-1.5 rounded-lg hover:bg-blue-700 transition"
-                    >
-                      + 교재 추가
-                    </button>
-                  </div>
-
-                  {editHomeworkList.map((item, index) => (
-                    <div key={index} className="flex gap-2 items-center">
-                      <input
-                        type="text"
-                        placeholder="교재명"
-                        value={item.bookTitle}
-                        onChange={(e) => handleEditBookChange(index, 'bookTitle', e.target.value)}
-                        className="w-1/3 p-2 border rounded-lg text-sm bg-white font-medium"
-                      />
-                      <input
-                        type="text"
-                        placeholder="범위"
-                        value={item.range}
-                        onChange={(e) => handleEditBookChange(index, 'range', e.target.value)}
-                        className="flex-1 p-2 border rounded-lg text-sm bg-white font-medium"
-                      />
-                      {editHomeworkList.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleEditRemoveBook(index)}
-                          className="text-xs bg-rose-100 text-rose-600 font-bold px-2.5 py-2 rounded-lg"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-                  ))}
-
-                  <div className="pt-2 border-t border-slate-200">
-                    <label className="block text-xs font-bold text-slate-600 mb-1">
-                      📋 구글 설문지 제출 링크 (선택)
-                    </label>
-                    <input
-                      type="url"
-                      placeholder="https://forms.gle/..."
-                      value={editGoogleFormUrl}
-                      onChange={(e) => setEditGoogleFormUrl(e.target.value)}
-                      className="w-full p-2 border rounded-lg text-sm bg-white"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <textarea
-                placeholder="내용을 적어주세요."
-                value={editContent}
-                onChange={(e) => setEditContent(e.target.value)}
-                className="w-full p-3 border rounded-xl text-sm h-28"
-              />
-
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setEditingPost(null)}
-                  className="w-1/2 bg-slate-200 text-slate-700 py-2.5 rounded-xl font-bold text-xs"
-                >
-                  취소
-                </button>
-                <button
-                  type="submit"
-                  className="w-1/2 bg-indigo-600 text-white py-2.5 rounded-xl font-bold text-xs shadow hover:bg-indigo-700 transition"
-                >
-                  수정사항 저장하기
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
     </div>
-  );
-}
-
-export default function BoardPage() {
-  return (
-    <Suspense fallback={<div className="p-8 text-center font-bold">로딩 중...</div>}>
-      <BoardContent />
-    </Suspense>
   );
 }

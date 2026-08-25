@@ -64,14 +64,16 @@ function BoardContent() {
     { bookTitle: '', range: '' },
   ]);
 
-  // 📄/🖼️ 파일 및 질문 사진 첨부 상태
+  // 📄/🖼️ 게시글 파일 및 질문 사진 첨부 상태
   const [attachedFile, setAttachedFile] = useState(null);
   const [uploading, setUploading] = useState(false);
 
   // 💬 Q&A 답변 댓글 관련 상태
   const [replies, setReplies] = useState({});
   const [replyInput, setReplyInput] = useState({});
+  const [replyFiles, setReplyFiles] = useState({}); // post_id -> File
   const [openReplyBox, setOpenReplyBox] = useState({});
+  const [replyUploading, setReplyUploading] = useState(false);
 
   // 글 수정 모달 상태
   const [editingPost, setEditingPost] = useState(null);
@@ -96,9 +98,12 @@ function BoardContent() {
   useEffect(() => {
     setDueDate(new Date().toISOString().split('T')[0]);
 
+    // 🎯 URL 쿼리 파라미터 감지하여 바로 QNA 카테고리로 변경 및 펼침 처리
     if (searchParams) {
       const paramCategory = searchParams.get('category');
-      if (paramCategory) setCategory(paramCategory);
+      if (paramCategory) {
+        setCategory(paramCategory);
+      }
     }
 
     const userData = localStorage.getItem('user');
@@ -115,7 +120,7 @@ function BoardContent() {
       console.error(e);
       router.push('/login');
     }
-  }, []);
+  }, [searchParams]);
 
   const initData = async (currentUser) => {
     try {
@@ -208,27 +213,56 @@ function BoardContent() {
     }
   };
 
+  // 💬 선생님 풀이 사진 포함 답변 등록 처리
   const handleAddReply = async (postId) => {
-    const text = replyInput[postId];
-    if (!text || !text.trim()) return alert('답변 내용을 입력해주세요.');
+    const text = replyInput[postId] || '';
+    const file = replyFiles[postId];
+
+    if (!text.trim() && !file) {
+      return alert('답변 내용이나 풀이 사진을 입력해주세요.');
+    }
 
     try {
+      setReplyUploading(true);
+      let replyImageUrl = null;
+
+      if (file) {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `reply_${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const filePath = `reply_files/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('attachments')
+          .upload(filePath, file);
+
+        if (!uploadError) {
+          const { data: urlData } = supabase.storage
+            .from('attachments')
+            .getPublicUrl(filePath);
+          replyImageUrl = urlData?.publicUrl;
+        }
+      }
+
       const replyData = {
         post_id: postId,
         author_id: user.id,
         author_name: user.name || (user.role === 'STUDENT' ? '학생' : '선생님'),
         content: text.trim(),
+        image_url: replyImageUrl,
       };
 
       const { error } = await supabase.from('post_replies').insert([replyData]);
       if (error) throw error;
 
       setReplyInput((prev) => ({ ...prev, [postId]: '' }));
+      setReplyFiles((prev) => ({ ...prev, [postId]: null }));
       fetchReplies();
       alert('답변이 등록되었습니다.');
     } catch (err) {
       console.error(err);
       alert('답변 등록 실패: ' + err.message);
+    } finally {
+      setReplyUploading(false);
     }
   };
 
@@ -323,7 +357,6 @@ function BoardContent() {
         }
       }
 
-      // 현재 선택된 카테고리 태그 상태(category)에 맞게 등록 카테고리 결정
       const targetCategory = category === 'QNA' ? 'QNA' : newCategory;
 
       let finalContent = content;
@@ -513,7 +546,7 @@ function BoardContent() {
 
       <main className="max-w-4xl mx-auto px-4 mt-6 space-y-6">
         
-        {/* 🎯 [주요 개편] 4개 카테고리 분류 탭 (최상단 배치) */}
+        {/* 🎯 4개 카테고리 분류 탭 */}
         <div className="space-y-3">
           <div className="flex gap-1.5 overflow-x-auto pb-1 border-b border-slate-200">
             <button
@@ -602,13 +635,13 @@ function BoardContent() {
           </div>
         </div>
 
-        {/* 🎯 카테고리에 맞춰 독립적으로 노출되는 스마트 작성 폼 */}
+        {/* 스마트 작성 폼 */}
         {category === 'QNA' ? (
           /* 💬 질의응답 (Q&A) 전용 질문 작성 폼 */
           <div className="bg-amber-50/80 p-5 rounded-2xl border border-amber-200 shadow-xs space-y-3">
             <h2 className="font-bold text-sm text-amber-900 flex items-center gap-1.5">
               <span>❓ 선생님께 질문 작성하기</span>
-              <span className="text-xs font-normal text-amber-700">({user?.name} 학생)</span>
+              <span className="text-xs font-normal text-amber-700">({user?.name} {user?.role === 'STUDENT' ? '학생' : '선생님'})</span>
             </h2>
             <form onSubmit={handleCreatePost} className="space-y-3">
               <div className="flex flex-col sm:flex-row gap-2">
@@ -669,7 +702,7 @@ function BoardContent() {
             </form>
           </div>
         ) : (
-          /* ✍️ 선생님 전용 일반 공지/숙제 작성 폼 (선생님 로그인 시에만 노출) */
+          /* ✍️ 선생님 전용 일반 공지/숙제 작성 폼 */
           user?.role !== 'STUDENT' && (
             <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs space-y-4">
               <h2 className="font-bold text-sm text-gray-800">✍️ 반별 공지 및 게시글 작성 ({user?.name || ''} 선생님)</h2>
@@ -878,7 +911,7 @@ function BoardContent() {
                         {post.category === 'QNA' && '💬 질의응답'}
                       </span>
 
-                      {/* 🎯 Q&A 답변 여부 상태 배지 */}
+                      {/* Q&A 답변 완료 표시 */}
                       {post.category === 'QNA' && (
                         isReplied ? (
                           <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">
@@ -993,7 +1026,7 @@ function BoardContent() {
                       className="text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-xl transition flex items-center gap-1"
                     >
                       <span>💬 선생님 답변 / 댓글 ({postReplies.length})</span>
-                      <span>{openReplyBox[post.id] ? '▲' : '▼'}</span>
+                      <span>{(openReplyBox[post.id] || category === 'QNA') ? '▲' : '▼'}</span>
                     </button>
 
                     {/* 🎯 [학생 전용] 숙제/공지 확인 완료 버튼 */}
@@ -1012,16 +1045,16 @@ function BoardContent() {
                   </div>
 
                   {/* 💬 Q&A 답변 댓글 목록 및 입력 창 */}
-                  {openReplyBox[post.id] && (
+                  {(openReplyBox[post.id] || category === 'QNA') && (
                     <div className="mt-3 bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
-                      <p className="text-xs font-bold text-slate-700">💬 질문 답변 및 댓글 목록</p>
+                      <p className="text-xs font-bold text-slate-700">💬 질문 답변 및 해설</p>
 
                       {postReplies.length === 0 ? (
-                        <p className="text-xs text-slate-400 font-medium py-2">등록된 선생님 답변이나 댓글이 없습니다.</p>
+                        <p className="text-xs text-slate-400 font-medium py-2">등록된 선생님 답변이나 풀이가 없습니다.</p>
                       ) : (
-                        <div className="space-y-2">
+                        <div className="space-y-3">
                           {postReplies.map((r) => (
-                            <div key={r.id} className="bg-white p-3 rounded-xl border border-slate-200/80 space-y-1">
+                            <div key={r.id} className="bg-white p-3.5 rounded-xl border border-slate-200/80 space-y-2 shadow-2xs">
                               <div className="flex justify-between items-center text-[11px] text-slate-500 font-bold">
                                 <span className="text-indigo-600 font-extrabold">👨‍🏫 {r.author_name || '선생님'}</span>
                                 <div className="flex items-center gap-2">
@@ -1036,30 +1069,58 @@ function BoardContent() {
                                   )}
                                 </div>
                               </div>
-                              <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">{r.content}</p>
+                              
+                              {r.content && (
+                                <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">{r.content}</p>
+                              )}
+
+                              {/* 📸 선생님 풀이 사진 표시 */}
+                              {r.image_url && (
+                                <div className="mt-2 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 p-1">
+                                  <img
+                                    src={r.image_url}
+                                    alt="선생님 풀이 사진"
+                                    className="w-full max-h-80 object-contain rounded-lg"
+                                  />
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
                       )}
 
-                      {/* 💬 답변 입력 폼 */}
-                      <div className="flex gap-2 pt-2">
-                        <input
-                          type="text"
-                          placeholder={user?.role !== 'STUDENT' ? "학생 질문에 답변을 입력하세요..." : "추가 문의사항을 적어주세요..."}
-                          value={replyInput[post.id] || ''}
-                          onChange={(e) => setReplyInput({ ...replyInput, [post.id]: e.target.value })}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleAddReply(post.id);
-                          }}
-                          className="flex-1 p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-indigo-500"
-                        />
-                        <button
-                          onClick={() => handleAddReply(post.id)}
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition whitespace-nowrap shadow-xs"
-                        >
-                          답변 등록
-                        </button>
+                      {/* 💬 답변 및 풀이 사진 첨부/입력 폼 */}
+                      <div className="pt-2 space-y-2 border-t border-slate-200/80">
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <input
+                            type="text"
+                            placeholder={user?.role !== 'STUDENT' ? "학생 질문에 답변 및 해설을 입력하세요..." : "추가 문의사항을 적어주세요..."}
+                            value={replyInput[post.id] || ''}
+                            onChange={(e) => setReplyInput({ ...replyInput, [post.id]: e.target.value })}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleAddReply(post.id);
+                            }}
+                            className="flex-1 p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-indigo-500"
+                          />
+                          <button
+                            onClick={() => handleAddReply(post.id)}
+                            disabled={replyUploading}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition whitespace-nowrap shadow-xs"
+                          >
+                            {replyUploading ? '등록 중...' : '답변 등록'}
+                          </button>
+                        </div>
+
+                        {/* 📸 풀이 사진 파일 선택 버튼 */}
+                        <div className="flex items-center justify-between bg-white px-3 py-1.5 rounded-xl border border-slate-200 text-xs">
+                          <span className="font-bold text-slate-600 text-[11px]">📸 풀이/해설 사진 첨부:</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => setReplyFiles({ ...replyFiles, [post.id]: e.target.files[0] || null })}
+                            className="text-[11px] font-semibold text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer"
+                          />
+                        </div>
                       </div>
                     </div>
                   )}

@@ -13,7 +13,7 @@ function BoardContent() {
   const [studentScope, setStudentScope] = useState('MY_STUDENTS');
   const [selectedClassId, setSelectedClassId] = useState('ALL');
 
-  // 신규 작성 폼 상태
+  // 신규 작성 폼 상태 (기본값 HOMEWORK로 설정)
   const [category, setCategory] = useState('ALL');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -126,7 +126,6 @@ function BoardContent() {
     }
   };
 
-  // 🎯 학생들의 공지 확인 내역 가져오기
   const fetchConfirmations = async () => {
     const { data, error } = await supabase.from('post_confirmations').select('*');
     if (!error && data) {
@@ -141,7 +140,6 @@ function BoardContent() {
     }
   };
 
-  // 🎯 학생이 직접 [공지 및 숙제 확인 완료] 버튼 클릭 시 토글 처리
   const togglePostConfirmation = async (postId) => {
     if (!user || user.role !== 'STUDENT') return;
 
@@ -238,7 +236,7 @@ function BoardContent() {
   const handleOpenEdit = (post) => {
     setEditingPost(post);
     setEditTitle(post.title || '');
-    setEditCategory(post.category || 'NOTICE');
+    setEditCategory(post.category || 'HOMEWORK');
     setEditTargetClassId(post.class_id ? post.class_id.toString() : 'ALL_STUDENTS');
     setEditDueDate(post.due_date || new Date().toISOString().split('T')[0]);
 
@@ -316,6 +314,14 @@ function BoardContent() {
     }
   };
 
+  const handleHeaderTitleClick = () => {
+    if (user?.role === 'STUDENT') {
+      router.push('/student/dashboard');
+    } else {
+      router.push('/teacher/dashboard');
+    }
+  };
+
   const activeStudents = studentScope === 'MY_STUDENTS' ? myStudents : allStudents;
   const myClassIdList = myClasses.map((c) => c.id);
 
@@ -344,14 +350,23 @@ function BoardContent() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-12">
-      <header className="bg-white border-b py-4 px-6 shadow-sm flex justify-between items-center">
-        <h1 onClick={() => router.push('/')} className="text-xl font-bold text-blue-600 cursor-pointer">
-          품수학 학원 게시판
-        </h1>
-        <button onClick={() => router.back()} className="text-sm text-gray-600 hover:underline font-bold">
-          ← 뒤로가기
-        </button>
-      </header>
+     <header className="bg-white border-b py-4 px-6 shadow-sm flex justify-between items-center">
+  <h1 
+    onClick={() => {
+      if (user?.role === 'STUDENT') {
+        router.push('/student/dashboard');
+      } else {
+        router.push('/teacher/dashboard');
+      }
+    }} 
+    className="text-xl font-bold text-blue-600 cursor-pointer hover:opacity-80 transition"
+  >
+    품수학 학원 게시판
+  </h1>
+  <button onClick={() => router.back()} className="text-sm text-gray-600 hover:underline font-bold">
+    ← 뒤로가기
+  </button>
+</header>
 
       <main className="max-w-4xl mx-auto px-4 mt-6 space-y-6">
         

@@ -17,7 +17,7 @@ function BoardContent() {
   const [category, setCategory] = useState('ALL');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [newCategory, setNewCategory] = useState('NOTICE');
+  const [newCategory, setNewCategory] = useState('HOMEWORK');
   const [targetClassId, setTargetClassId] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [googleFormUrl, setGoogleFormUrl] = useState('');
@@ -29,7 +29,7 @@ function BoardContent() {
   const [editingPost, setEditingPost] = useState(null);
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
-  const [editCategory, setEditCategory] = useState('NOTICE');
+  const [editCategory, setEditCategory] = useState('HOMEWORK');
   const [editTargetClassId, setEditTargetClassId] = useState('');
   const [editDueDate, setEditDueDate] = useState('');
   const [editGoogleFormUrl, setEditGoogleFormUrl] = useState('');

@@ -69,9 +69,9 @@ function BoardContent() {
   const [uploading, setUploading] = useState(false);
 
   // 💬 Q&A 답변 댓글 관련 상태
-  const [replies, setReplies] = useState({}); // post_id -> array of replies
-  const [replyInput, setReplyInput] = useState({}); // post_id -> text
-  const [openReplyBox, setOpenReplyBox] = useState({}); // post_id -> boolean
+  const [replies, setReplies] = useState({});
+  const [replyInput, setReplyInput] = useState({});
+  const [openReplyBox, setOpenReplyBox] = useState({});
 
   // 글 수정 모달 상태
   const [editingPost, setEditingPost] = useState(null);
@@ -188,7 +188,6 @@ function BoardContent() {
     }
   };
 
-  // 💬 답변 댓글 목록 가져오기
   const fetchReplies = async () => {
     try {
       const { data, error } = await supabase
@@ -209,7 +208,6 @@ function BoardContent() {
     }
   };
 
-  // 💬 선생님/사용자 답변 등록 함수
   const handleAddReply = async (postId) => {
     const text = replyInput[postId];
     if (!text || !text.trim()) return alert('답변 내용을 입력해주세요.');
@@ -230,11 +228,10 @@ function BoardContent() {
       alert('답변이 등록되었습니다.');
     } catch (err) {
       console.error(err);
-      alert('답변 등록 실패 (DB 테이블 생성 여부를 확인해 주세요): ' + err.message);
+      alert('답변 등록 실패: ' + err.message);
     }
   };
 
-  // 💬 답변 삭제 함수
   const handleDeleteReply = async (replyId) => {
     if (!confirm('답변을 삭제하시겠습니까?')) return;
     try {
@@ -326,8 +323,11 @@ function BoardContent() {
         }
       }
 
+      // 현재 선택된 카테고리 태그 상태(category)에 맞게 등록 카테고리 결정
+      const targetCategory = category === 'QNA' ? 'QNA' : newCategory;
+
       let finalContent = content;
-      if (newCategory === 'HOMEWORK') {
+      if (targetCategory === 'HOMEWORK') {
         const bookDetails = homeworkList
           .filter((item) => item.bookTitle.trim() !== '')
           .map((item) => `📘 [${item.bookTitle}] ${item.range}`)
@@ -344,10 +344,10 @@ function BoardContent() {
       const postData = {
         title,
         content: finalContent,
-        category: newCategory,
+        category: targetCategory,
         author_id: user.id,
         class_id: targetClassId === 'ALL_STUDENTS' || !targetClassId ? null : parseInt(targetClassId),
-        due_date: newCategory === 'HOMEWORK' ? dueDate : null,
+        due_date: targetCategory === 'HOMEWORK' ? dueDate : null,
       };
 
       const { error } = await supabase.from('posts').insert([postData]);
@@ -513,190 +513,12 @@ function BoardContent() {
 
       <main className="max-w-4xl mx-auto px-4 mt-6 space-y-6">
         
-        {/* 공지 및 질의응답 작성 폼 (학생/선생님 모두 이용 가능) */}
-        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
-          <h2 className="font-bold text-lg text-gray-800">
-            ✍️ {user?.role === 'STUDENT' ? '선생님께 질문하기 / 게시글 작성' : `반별 공지 및 게시글 작성 (${user?.name || ''} 선생님)`}
-          </h2>
-          <form onSubmit={handleCreatePost} className="space-y-4">
-            
-            <div className="flex flex-col sm:flex-row gap-2">
-              <select
-                value={targetClassId}
-                onChange={(e) => setTargetClassId(e.target.value)}
-                className="p-2.5 border rounded-xl text-sm bg-indigo-50 border-indigo-200 font-bold text-indigo-900"
-              >
-                <optgroup label="📘 내 담당 반 목록">
-                  {myClasses.length === 0 ? (
-                    <option value="" disabled>개설된 내 반이 없습니다</option>
-                  ) : (
-                    myClasses.map((c) => (
-                      <option key={c.id} value={c.id}>🎯 [{c.name}] 반에 등록</option>
-                    ))
-                  )}
-                </optgroup>
-
-                <optgroup label="──────────────────">
-                  <option value="ALL_STUDENTS">📢 학원 전체 공지/질문</option>
-                </optgroup>
-              </select>
-
-              <select
-                value={newCategory}
-                onChange={(e) => setNewCategory(e.target.value)}
-                className="p-2.5 border rounded-xl text-sm bg-gray-50 font-semibold"
-              >
-                {user?.role !== 'STUDENT' && <option value="HOMEWORK">📝 숙제 알림</option>}
-                {user?.role !== 'STUDENT' && <option value="NOTICE">📢 공지사항</option>}
-                {user?.role !== 'STUDENT' && <option value="VIDEO">🎬 복습 영상</option>}
-                {user?.role !== 'STUDENT' && <option value="MATERIAL">📄 수업자료 (JPG/PDF)</option>}
-                <option value="QNA">💬 질의응답 (선생님께 질문)</option>
-              </select>
-
-              {newCategory === 'HOMEWORK' && user?.role !== 'STUDENT' && (
-                <input
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  className="p-2.5 border rounded-xl text-sm bg-blue-50 border-blue-200 font-bold text-blue-700"
-                />
-              )}
-            </div>
-
-            <input
-              type="text"
-              placeholder={newCategory === 'QNA' ? "질문 제목을 입력하세요 (예: 개념쎈 45페이지 3번 질문있습니다)" : "제목을 입력하세요"}
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full p-2.5 border rounded-xl text-sm font-medium"
-            />
-
-            {newCategory === 'HOMEWORK' && user?.role !== 'STUDENT' && (
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold text-slate-700">📚 교재별 숙제 목록</span>
-                  <button
-                    type="button"
-                    onClick={handleAddBook}
-                    className="text-xs bg-blue-600 text-white font-bold px-3 py-1.5 rounded-lg hover:bg-blue-700 transition"
-                  >
-                    + 교재 추가
-                  </button>
-                </div>
-
-                {homeworkList.map((item, index) => (
-                  <div key={index} className="flex gap-2 items-center">
-                    <input
-                      type="text"
-                      placeholder="교재명 (예: 개념쎈)"
-                      value={item.bookTitle}
-                      onChange={(e) => handleBookChange(index, 'bookTitle', e.target.value)}
-                      className="w-1/3 p-2 border rounded-lg text-sm bg-white font-medium"
-                    />
-                    <input
-                      type="text"
-                      placeholder="범위 (예: p.45 ~ p.50)"
-                      value={item.range}
-                      onChange={(e) => handleBookChange(index, 'range', e.target.value)}
-                      className="flex-1 p-2 border rounded-lg text-sm bg-white font-medium"
-                    />
-                    {homeworkList.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveBook(index)}
-                        className="text-xs bg-rose-100 text-rose-600 font-bold px-2.5 py-2 rounded-lg"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                ))}
-
-                <div className="pt-2 border-t border-slate-200">
-                  <label className="block text-xs font-bold text-slate-600 mb-1">
-                    📋 구글 설문지 제출 링크 (선택)
-                  </label>
-                  <input
-                    type="url"
-                    placeholder="https://forms.gle/..."
-                    value={googleFormUrl}
-                    onChange={(e) => setGoogleFormUrl(e.target.value)}
-                    className="w-full p-2 border rounded-lg text-sm bg-white"
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* 📸 문제 사진 / 자료 첨부 버튼 */}
-            <div className="bg-emerald-50/60 p-3 rounded-xl border border-emerald-200/80 flex items-center justify-between">
-              <div>
-                <label className="block text-xs font-bold text-emerald-900">
-                  📸 문제 사진 및 첨부파일 등록 (JPG, PNG, PDF 지원)
-                </label>
-                <p className="text-[11px] text-emerald-700 mt-0.5">질문하고 싶은 문제 사진을 찍어서 올려주시면 됩니다.</p>
-              </div>
-              <input
-                type="file"
-                accept="image/*,application/pdf"
-                onChange={(e) => setAttachedFile(e.target.files[0] || null)}
-                className="text-xs font-semibold text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-600 file:text-white hover:file:bg-emerald-700 cursor-pointer"
-              />
-            </div>
-
-            <textarea
-              placeholder={newCategory === 'QNA' ? "모르는 부분이나 궁금한 점을 자세히 적어주세요." : "내용을 적어주세요."}
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              className="w-full p-3 border rounded-xl text-sm h-24"
-            />
-
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                disabled={uploading}
-                className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-indigo-700 shadow transition"
-              >
-                {uploading ? '파일 업로드 중...' : '게시글 / 질문 등록하기'}
-              </button>
-            </div>
-          </form>
-        </div>
-
-        {/* 선생님 전용: 확인 학생 범위 옵션 */}
-        {user?.role !== 'STUDENT' && (
-          <div className="flex items-center justify-between bg-white p-3 px-4 rounded-xl border border-slate-200">
-            <span className="text-xs font-bold text-slate-700">👥 학생 확인 상태 표시 범위:</span>
-            <div className="flex gap-1.5">
-              <button
-                onClick={() => setStudentScope('MY_STUDENTS')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  studentScope === 'MY_STUDENTS'
-                    ? 'bg-blue-600 text-white shadow'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                👤 내 담당 학생만 ({myStudents.length}명)
-              </button>
-              <button
-                onClick={() => setStudentScope('ALL_STUDENTS')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  studentScope === 'ALL_STUDENTS'
-                    ? 'bg-slate-800 text-white shadow'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                🌐 학원 전체 학생 ({allStudents.length}명)
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* 🎯 4개 카테고리 분류 탭 */}
+        {/* 🎯 [주요 개편] 4개 카테고리 분류 탭 (최상단 배치) */}
         <div className="space-y-3">
           <div className="flex gap-1.5 overflow-x-auto pb-1 border-b border-slate-200">
             <button
               onClick={() => setCategory('ALL')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition whitespace-nowrap ${
+              className={`px-4 py-2.5 rounded-xl text-xs font-black transition whitespace-nowrap ${
                 category === 'ALL'
                   ? 'bg-blue-600 text-white shadow-md'
                   : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -706,7 +528,7 @@ function BoardContent() {
             </button>
             <button
               onClick={() => setCategory('NOTICE_HOMEWORK')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition whitespace-nowrap ${
+              className={`px-4 py-2.5 rounded-xl text-xs font-black transition whitespace-nowrap ${
                 category === 'NOTICE_HOMEWORK'
                   ? 'bg-blue-600 text-white shadow-md'
                   : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -716,7 +538,7 @@ function BoardContent() {
             </button>
             <button
               onClick={() => setCategory('VIDEO')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition whitespace-nowrap ${
+              className={`px-4 py-2.5 rounded-xl text-xs font-black transition whitespace-nowrap ${
                 category === 'VIDEO'
                   ? 'bg-blue-600 text-white shadow-md'
                   : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -726,7 +548,7 @@ function BoardContent() {
             </button>
             <button
               onClick={() => setCategory('MATERIAL')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition whitespace-nowrap ${
+              className={`px-4 py-2.5 rounded-xl text-xs font-black transition whitespace-nowrap ${
                 category === 'MATERIAL'
                   ? 'bg-blue-600 text-white shadow-md'
                   : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -736,13 +558,13 @@ function BoardContent() {
             </button>
             <button
               onClick={() => setCategory('QNA')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition whitespace-nowrap ${
+              className={`px-4 py-2.5 rounded-xl text-xs font-black transition whitespace-nowrap ${
                 category === 'QNA'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                  ? 'bg-amber-600 text-white shadow-md'
+                  : 'bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100'
               }`}
             >
-              4️⃣ 💬 질의응답 (Q&A)
+              4️⃣ 💬 질의응답 (Q&A 질문)
             </button>
           </div>
 
@@ -779,6 +601,247 @@ function BoardContent() {
             </button>
           </div>
         </div>
+
+        {/* 🎯 카테고리에 맞춰 독립적으로 노출되는 스마트 작성 폼 */}
+        {category === 'QNA' ? (
+          /* 💬 질의응답 (Q&A) 전용 질문 작성 폼 */
+          <div className="bg-amber-50/80 p-5 rounded-2xl border border-amber-200 shadow-xs space-y-3">
+            <h2 className="font-bold text-sm text-amber-900 flex items-center gap-1.5">
+              <span>❓ 선생님께 질문 작성하기</span>
+              <span className="text-xs font-normal text-amber-700">({user?.name} 학생)</span>
+            </h2>
+            <form onSubmit={handleCreatePost} className="space-y-3">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <select
+                  value={targetClassId}
+                  onChange={(e) => setTargetClassId(e.target.value)}
+                  className="p-2 border rounded-xl text-xs bg-white font-bold text-slate-700"
+                >
+                  <optgroup label="📘 내 반 선택">
+                    {myClasses.map((c) => (
+                      <option key={c.id} value={c.id}>🎯 [{c.name}] 반 질문</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="──────">
+                    <option value="ALL_STUDENTS">🌐 학원 전체 질문</option>
+                  </optgroup>
+                </select>
+
+                <input
+                  type="text"
+                  placeholder="질문 제목 (예: 개념쎈 45페이지 3번 문제 질문입니다)"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="flex-1 p-2 border rounded-xl text-xs font-medium bg-white"
+                />
+              </div>
+
+              {/* 📸 문제 사진 첨부 전용 영역 */}
+              <div className="bg-white p-2.5 rounded-xl border border-amber-200 flex items-center justify-between">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700">📸 모르는 문제 사진 첨부 (선택)</label>
+                  <p className="text-[10px] text-slate-400">교재나 시험지 사진을 찍어서 올려주시면 선생님이 답변해 드립니다.</p>
+                </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setAttachedFile(e.target.files[0] || null)}
+                  className="text-xs font-semibold text-slate-600 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-amber-600 file:text-white hover:file:bg-amber-700 cursor-pointer"
+                />
+              </div>
+
+              <textarea
+                placeholder="궁금한 문제나 개념 질문을 적어주세요."
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                className="w-full p-2.5 border rounded-xl text-xs h-20 bg-white"
+              />
+
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={uploading}
+                  className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-5 py-2 rounded-xl text-xs shadow-xs transition"
+                >
+                  {uploading ? '사진 질문 등록 중...' : '💬 질문 등록하기'}
+                </button>
+              </div>
+            </form>
+          </div>
+        ) : (
+          /* ✍️ 선생님 전용 일반 공지/숙제 작성 폼 (선생님 로그인 시에만 노출) */
+          user?.role !== 'STUDENT' && (
+            <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs space-y-4">
+              <h2 className="font-bold text-sm text-gray-800">✍️ 반별 공지 및 게시글 작성 ({user?.name || ''} 선생님)</h2>
+              <form onSubmit={handleCreatePost} className="space-y-3">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <select
+                    value={targetClassId}
+                    onChange={(e) => setTargetClassId(e.target.value)}
+                    className="p-2 border rounded-xl text-xs bg-indigo-50 border-indigo-200 font-bold text-indigo-900"
+                  >
+                    <optgroup label="📘 내 담당 반 목록">
+                      {myClasses.length === 0 ? (
+                        <option value="" disabled>개설된 내 반이 없습니다</option>
+                      ) : (
+                        myClasses.map((c) => (
+                          <option key={c.id} value={c.id}>🎯 [{c.name}] 전용 공지</option>
+                        ))
+                      )}
+                    </optgroup>
+                    <optgroup label="──────────────────">
+                      <option value="ALL_STUDENTS">📢 학원 전체 학생 공지</option>
+                    </optgroup>
+                  </select>
+
+                  <select
+                    value={newCategory}
+                    onChange={(e) => setNewCategory(e.target.value)}
+                    className="p-2 border rounded-xl text-xs bg-gray-50 font-semibold"
+                  >
+                    <option value="HOMEWORK">📝 숙제 알림</option>
+                    <option value="NOTICE">📢 공지사항</option>
+                    <option value="VIDEO">🎬 복습 영상</option>
+                    <option value="MATERIAL">📄 수업자료 (JPG/PDF)</option>
+                  </select>
+
+                  {newCategory === 'HOMEWORK' && (
+                    <input
+                      type="date"
+                      value={dueDate}
+                      onChange={(e) => setDueDate(e.target.value)}
+                      className="p-2 border rounded-xl text-xs bg-blue-50 border-blue-200 font-bold text-blue-700"
+                    />
+                  )}
+                </div>
+
+                <input
+                  type="text"
+                  placeholder="제목을 입력하세요"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="w-full p-2 border rounded-xl text-xs font-medium"
+                />
+
+                {newCategory === 'HOMEWORK' && (
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold text-slate-700">📚 교재별 숙제 목록</span>
+                      <button
+                        type="button"
+                        onClick={handleAddBook}
+                        className="text-[11px] bg-blue-600 text-white font-bold px-2.5 py-1 rounded-lg hover:bg-blue-700 transition"
+                      >
+                        + 교재 추가
+                      </button>
+                    </div>
+
+                    {homeworkList.map((item, index) => (
+                      <div key={index} className="flex gap-2 items-center">
+                        <input
+                          type="text"
+                          placeholder="교재명 (예: 개념쎈)"
+                          value={item.bookTitle}
+                          onChange={(e) => handleBookChange(index, 'bookTitle', e.target.value)}
+                          className="w-1/3 p-2 border rounded-lg text-xs bg-white font-medium"
+                        />
+                        <input
+                          type="text"
+                          placeholder="범위 (예: p.45 ~ p.50)"
+                          value={item.range}
+                          onChange={(e) => handleBookChange(index, 'range', e.target.value)}
+                          className="flex-1 p-2 border rounded-lg text-xs bg-white font-medium"
+                        />
+                        {homeworkList.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveBook(index)}
+                            className="text-xs bg-rose-100 text-rose-600 font-bold px-2 py-1.5 rounded-lg"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    ))}
+
+                    <div className="pt-2 border-t border-slate-200">
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                        📋 구글 설문지 제출 링크 (선택)
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://forms.gle/..."
+                        value={googleFormUrl}
+                        onChange={(e) => setGoogleFormUrl(e.target.value)}
+                        className="w-full p-2 border rounded-lg text-xs bg-white"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="bg-emerald-50/60 p-2.5 rounded-xl border border-emerald-200/80 flex items-center justify-between">
+                  <div>
+                    <label className="block text-xs font-bold text-emerald-900">
+                      📎 첨부파일 등록 (JPG, PNG, PDF 지원)
+                    </label>
+                  </div>
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    onChange={(e) => setAttachedFile(e.target.files[0] || null)}
+                    className="text-xs font-semibold text-slate-600 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-emerald-600 file:text-white hover:file:bg-emerald-700 cursor-pointer"
+                  />
+                </div>
+
+                <textarea
+                  placeholder="내용을 적어주세요. (유튜브 링크 입력 시 재생 플레이어가 생성됩니다)"
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  className="w-full p-2.5 border rounded-xl text-xs h-20"
+                />
+
+                <div className="flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={uploading}
+                    className="bg-indigo-600 text-white px-5 py-2 rounded-xl font-bold text-xs hover:bg-indigo-700 shadow-xs transition"
+                  >
+                    {uploading ? '등록 중...' : '등록하기'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )
+        )}
+
+        {/* 선생님 전용: 확인 학생 범위 옵션 */}
+        {user?.role !== 'STUDENT' && (
+          <div className="flex items-center justify-between bg-white p-3 px-4 rounded-xl border border-slate-200">
+            <span className="text-xs font-bold text-slate-700">👥 학생 확인 상태 표시 범위:</span>
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => setStudentScope('MY_STUDENTS')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  studentScope === 'MY_STUDENTS'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                👤 내 담당 학생만 ({myStudents.length}명)
+              </button>
+              <button
+                onClick={() => setStudentScope('ALL_STUDENTS')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  studentScope === 'ALL_STUDENTS'
+                    ? 'bg-slate-800 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                🌐 학원 전체 학생 ({allStudents.length}명)
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* 게시글 목록 */}
         <div className="space-y-4">

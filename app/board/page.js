@@ -387,8 +387,8 @@ function BoardContent() {
                   onChange={(e) => setNewCategory(e.target.value)}
                   className="p-2.5 border rounded-xl text-sm bg-gray-50 font-semibold"
                 >
-                  <option value="NOTICE">📢 공지사항</option>
                   <option value="HOMEWORK">📝 숙제 알림</option>
+                  <option value="NOTICE">📢 공지사항</option>
                   <option value="VIDEO">🎬 복습 영상</option>
                   <option value="MATERIAL">📄 강의 자료</option>
                 </select>
@@ -559,8 +559,8 @@ function BoardContent() {
                   <div className="flex justify-between items-center text-xs text-gray-500">
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-blue-600">
-                        {post.category === 'NOTICE' && '📢 공지사항'}
                         {post.category === 'HOMEWORK' && '📝 숙제 알림'}
+                        {post.category === 'NOTICE' && '📢 공지사항'}
                         {post.category === 'VIDEO' && '🎬 복습 영상'}
                         {post.category === 'MATERIAL' && '📄 강의 자료'}
                       </span>
@@ -706,8 +706,8 @@ function BoardContent() {
                   onChange={(e) => setEditCategory(e.target.value)}
                   className="p-2.5 border rounded-xl text-sm bg-gray-50 font-semibold"
                 >
-                  <option value="NOTICE">📢 공지사항</option>
                   <option value="HOMEWORK">📝 숙제 알림</option>
+                  <option value="NOTICE">📢 공지사항</option>
                   <option value="VIDEO">🎬 복습 영상</option>
                   <option value="MATERIAL">📄 강의 자료</option>
                 </select>
@@ -773,7 +773,7 @@ function BoardContent() {
 
                   <div className="pt-2 border-t border-slate-200">
                     <label className="block text-xs font-bold text-slate-600 mb-1">
-                      📋 구글 설문지 제출 링크 (선택)
+                      📋 숙제 제출 링크 (선택)
                     </label>
                     <input
                       type="url"

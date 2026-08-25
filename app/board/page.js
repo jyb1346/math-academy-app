@@ -50,8 +50,10 @@ function BoardContent() {
   const [studentScope, setStudentScope] = useState('MY_STUDENTS');
   const [selectedClassId, setSelectedClassId] = useState('ALL');
 
-  // 신규 작성 폼 상태 (기본값 HOMEWORK)
+  // 🎯 카테고리 필터 상태: ALL(전체), NOTICE_HOMEWORK(숙제 및 반별 공지사항), VIDEO(복습영상), MATERIAL(수업자료), QNA(질의응답)
   const [category, setCategory] = useState('ALL');
+
+  // 신규 작성 폼 상태
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [newCategory, setNewCategory] = useState('HOMEWORK');
@@ -233,7 +235,6 @@ function BoardContent() {
     setEditHomeworkList(updated);
   };
 
-  // 🎯 파일 업로드 및 게시글 등록 함수
   const handleCreatePost = async (e) => {
     e.preventDefault();
     if (!title.trim()) return alert('제목을 입력해주세요.');
@@ -242,7 +243,6 @@ function BoardContent() {
       setUploading(true);
       let filePublicUrl = null;
 
-      // 파일이 첨부되어 있는 경우 Supabase Storage에 업로드
       if (attachedFile) {
         const fileExt = attachedFile.name.split('.').pop();
         const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
@@ -253,7 +253,6 @@ function BoardContent() {
           .upload(filePath, attachedFile);
 
         if (uploadError) {
-          // 스토리지 버킷 미생성 시 안내
           console.warn('Storage upload error:', uploadError.message);
         } else {
           const { data: urlData } = supabase.storage
@@ -274,7 +273,6 @@ function BoardContent() {
         finalContent = `${bookDetails}${formLinkText}\n\n📝 메모:\n${content}`;
       }
 
-      // 파일 URL이 있는 경우 본문 하단에 자동 첨부
       if (filePublicUrl) {
         finalContent += `\n\n📎 첨부파일: ${filePublicUrl}`;
       }
@@ -284,7 +282,7 @@ function BoardContent() {
         content: finalContent,
         category: newCategory,
         author_id: user.id,
-        class_id: targetClassId === 'ALL_STUDENTS' ? null : parseInt(targetClassId),
+        class_id: targetClassId === 'ALL_STUDENTS' || !targetClassId ? null : parseInt(targetClassId),
         due_date: newCategory === 'HOMEWORK' ? dueDate : null,
       };
 
@@ -398,6 +396,7 @@ function BoardContent() {
   const activeStudents = studentScope === 'MY_STUDENTS' ? myStudents : allStudents;
   const myClassIdList = myClasses.map((c) => c.id);
 
+  // 🎯 카테고리 필터링 적용된 게시글 목록
   const visiblePosts = posts.filter((post) => {
     if (user?.role === 'STUDENT') {
       if (post.class_id !== null && !myClassIds.includes(post.class_id)) {
@@ -409,20 +408,33 @@ function BoardContent() {
       }
     }
 
+    // 반별 선택 필터
     if (selectedClassId !== 'ALL') {
-      if (selectedClassId === 'PUBLIC') return post.class_id === null;
-      return post.class_id === parseInt(selectedClassId);
+      if (selectedClassId === 'PUBLIC') {
+        if (post.class_id !== null) return false;
+      } else {
+        if (post.class_id !== parseInt(selectedClassId)) return false;
+      }
     }
-    if (category !== 'ALL') {
-      return post.category === category;
+
+    // 🎯 4대 카테고리 필터
+    if (category === 'NOTICE_HOMEWORK') {
+      return post.category === 'HOMEWORK' || post.category === 'NOTICE';
+    } else if (category === 'VIDEO') {
+      return post.category === 'VIDEO';
+    } else if (category === 'MATERIAL') {
+      return post.category === 'MATERIAL';
+    } else if (category === 'QNA') {
+      return post.category === 'QNA';
     }
+
     return true;
   });
 
   if (loading) return <div className="p-8 text-center font-bold">로딩 중...</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-12">
+    <div className="min-h-screen bg-gray-50 pb-12 font-sans">
       <header className="bg-white border-b py-4 px-6 shadow-sm flex justify-between items-center">
         <h1 
           onClick={handleHeaderTitleClick} 
@@ -440,7 +452,7 @@ function BoardContent() {
         {/* 선생님/원장님용 공지 작성 */}
         {user?.role !== 'STUDENT' && (
           <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
-            <h2 className="font-bold text-lg text-gray-800">✍️ 반별 공지 및 숙제 작성 ({user?.name || ''} 선생님)</h2>
+            <h2 className="font-bold text-lg text-gray-800">✍️ 반별 공지 및 게시글 작성 ({user?.name || ''} 선생님)</h2>
             <form onSubmit={handleCreatePost} className="space-y-4">
               
               <div className="flex flex-col sm:flex-row gap-2">
@@ -471,8 +483,9 @@ function BoardContent() {
                 >
                   <option value="HOMEWORK">📝 숙제 알림</option>
                   <option value="NOTICE">📢 공지사항</option>
-                  <option value="MATERIAL">📄 강의 자료 (JPG/PDF)</option>
                   <option value="VIDEO">🎬 복습 영상</option>
+                  <option value="MATERIAL">📄 수업자료 (JPG/PDF)</option>
+                  <option value="QNA">💬 질의응답</option>
                 </select>
 
                 {newCategory === 'HOMEWORK' && (
@@ -553,7 +566,7 @@ function BoardContent() {
               <div className="bg-emerald-50/60 p-3 rounded-xl border border-emerald-200/80 flex items-center justify-between">
                 <div>
                   <label className="block text-xs font-bold text-emerald-900">
-                    📎 강의자료 및 첨부파일 등록 (JPG, PNG, PDF 지원)
+                    📎 수업자료 및 첨부파일 등록 (JPG, PNG, PDF 지원)
                   </label>
                   <p className="text-[11px] text-emerald-700 mt-0.5">이미지 파일은 게시글에 바로 미리보기가 표시됩니다.</p>
                 </div>
@@ -614,29 +627,89 @@ function BoardContent() {
           </div>
         )}
 
-        {/* 카테고리 & 반별 필터 버튼 */}
-        <div className="space-y-2">
+        {/* 🎯 [주요 개편] 4개 카테고리 분류 탭 */}
+        <div className="space-y-3">
+          <div className="flex gap-1.5 overflow-x-auto pb-1 border-b border-slate-200">
+            <button
+              onClick={() => setCategory('ALL')}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition whitespace-nowrap ${
+                category === 'ALL'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              🌐 전체보기
+            </button>
+            <button
+              onClick={() => setCategory('NOTICE_HOMEWORK')}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition whitespace-nowrap ${
+                category === 'NOTICE_HOMEWORK'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              1️⃣ 📝 숙제 및 반별 공지사항
+            </button>
+            <button
+              onClick={() => setCategory('VIDEO')}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition whitespace-nowrap ${
+                category === 'VIDEO'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              2️⃣ 🎬 복습영상 게시판
+            </button>
+            <button
+              onClick={() => setCategory('MATERIAL')}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition whitespace-nowrap ${
+                category === 'MATERIAL'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              3️⃣ 📄 수업자료 게시판
+            </button>
+            <button
+              onClick={() => setCategory('QNA')}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition whitespace-nowrap ${
+                category === 'QNA'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              4️⃣ 💬 질의응답
+            </button>
+          </div>
+
+          {/* 반별 서브 필터 버튼 */}
           <div className="flex gap-2 overflow-x-auto pb-1">
             <button
               onClick={() => setSelectedClassId('ALL')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${selectedClassId === 'ALL' ? 'bg-slate-900 text-white shadow' : 'bg-white border text-slate-600'}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
+                selectedClassId === 'ALL' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600'
+              }`}
             >
-              전체 공지 보기
+              전체 반
             </button>
 
             {myClasses.map((c) => (
               <button
                 key={c.id}
                 onClick={() => setSelectedClassId(c.id.toString())}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${selectedClassId === c.id.toString() ? 'bg-indigo-600 text-white shadow' : 'bg-white border text-indigo-800'}`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
+                  selectedClassId === c.id.toString() ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700'
+                }`}
               >
-                🎯 [{c.name}] 내 반 공지
+                🎯 [{c.name}]
               </button>
             ))}
 
             <button
               onClick={() => setSelectedClassId('PUBLIC')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${selectedClassId === 'PUBLIC' ? 'bg-slate-700 text-white shadow' : 'bg-slate-100 border text-slate-500'}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
+                selectedClassId === 'PUBLIC' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-500'
+              }`}
             >
               🌐 학원 전체 공지
             </button>
@@ -646,14 +719,15 @@ function BoardContent() {
         {/* 게시글 목록 */}
         <div className="space-y-4">
           {visiblePosts.length === 0 ? (
-            <p className="text-center py-8 text-gray-500 text-xs font-bold">등록된 공지글이 없습니다.</p>
+            <p className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-300 text-slate-400 text-xs font-bold">
+              선택한 게시판에 등록된 공지글이 없습니다.
+            </p>
           ) : (
             visiblePosts.map((post) => {
               const postContent = post.content || '';
               const formMatch = postContent.match(/🔗 구글 폼 링크: (https?:\/\/[^\s]+)/);
               const formUrl = formMatch ? formMatch[1] : null;
 
-              // 🎯 첨부파일 URL 감지
               const fileMatch = postContent.match(/📎 첨부파일: (https?:\/\/[^\s]+)/);
               const fileUrl = fileMatch ? fileMatch[1] : null;
               const isImage = fileUrl && (fileUrl.match(/\.(jpeg|jpg|gif|png|webp)/i) || fileUrl.includes('image'));
@@ -670,8 +744,9 @@ function BoardContent() {
                       <span className="font-bold text-blue-600">
                         {post.category === 'HOMEWORK' && '📝 숙제 알림'}
                         {post.category === 'NOTICE' && '📢 공지사항'}
-                        {post.category === 'MATERIAL' && '📄 강의 자료'}
                         {post.category === 'VIDEO' && '🎬 복습 영상'}
+                        {post.category === 'MATERIAL' && '📄 수업 자료'}
+                        {post.category === 'QNA' && '💬 질의응답'}
                       </span>
                       {post.classes ? (
                         <span className="bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded-full font-bold">
@@ -720,7 +795,7 @@ function BoardContent() {
                     <div className="mt-3 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 p-2">
                       <img
                         src={fileUrl}
-                        alt="강의 자료 이미지"
+                        alt="수업자료 이미지"
                         className="w-full max-h-96 object-contain rounded-xl"
                       />
                     </div>
@@ -735,7 +810,7 @@ function BoardContent() {
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold px-4 py-2.5 rounded-xl text-xs shadow-xs transition"
                       >
-                        <span>📄 첨부된 PDF / 강의자료 받기</span>
+                        <span>📄 첨부된 PDF / 수업자료 받기</span>
                         <span>⬇️</span>
                       </a>
                     </div>
@@ -830,7 +905,7 @@ function BoardContent() {
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white rounded-2xl p-6 w-full max-w-lg space-y-4 shadow-2xl my-8">
             <div className="flex justify-between items-center border-b pb-3">
-              <h3 className="text-lg font-bold text-slate-800">✏️ 공지/숙제 게시글 수정</h3>
+              <h3 className="text-lg font-bold text-slate-800">✏️ 게시글 수정</h3>
               <button onClick={() => setEditingPost(null)} className="text-xs font-bold text-slate-400 hover:text-slate-600">닫기</button>
             </div>
 
@@ -858,8 +933,9 @@ function BoardContent() {
                 >
                   <option value="HOMEWORK">📝 숙제 알림</option>
                   <option value="NOTICE">📢 공지사항</option>
-                  <option value="MATERIAL">📄 강의 자료</option>
                   <option value="VIDEO">🎬 복습 영상</option>
+                  <option value="MATERIAL">📄 수업 자료</option>
+                  <option value="QNA">💬 질의응답</option>
                 </select>
 
                 {editCategory === 'HOMEWORK' && (

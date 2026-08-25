@@ -3,6 +3,8 @@
 import { useState, useEffect, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter, useSearchParams } from 'next/navigation';
+
+// 🎯 import 경로를 확실한 상대 경로로 지정
 import CategoryTabs from './components/CategoryTabs';
 import PostCreateForm from './components/PostCreateForm';
 import PostEditModal from './components/PostEditModal';

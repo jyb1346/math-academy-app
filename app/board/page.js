@@ -4,6 +4,43 @@ import { useState, useEffect, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter, useSearchParams } from 'next/navigation';
 
+// 🎯 유튜브 URL에서 Video ID 추출 함수
+function getYouTubeId(url) {
+  if (!url) return null;
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+  const match = url.match(regExp);
+  return match && match[2].length === 11 ? match[2] : null;
+}
+
+// 🎯 본문 텍스트 내 URL을 파란색 클릭 가능한 링크로 변환하는 렌더링 컴포넌트
+function FormattedContent({ text }) {
+  if (!text) return null;
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+
+  const parts = text.split(urlRegex);
+
+  return (
+    <p className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">
+      {parts.map((part, i) => {
+        if (part.match(urlRegex)) {
+          return (
+            <a
+              key={i}
+              href={part}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 font-bold hover:underline break-all inline-flex items-center gap-1 my-0.5"
+            >
+              🔗 {part} ↗
+            </a>
+          );
+        }
+        return part;
+      })}
+    </p>
+  );
+}
+
 function BoardContent() {
   const [posts, setPosts] = useState([]);
   const [classes, setClasses] = useState([]);
@@ -13,7 +50,7 @@ function BoardContent() {
   const [studentScope, setStudentScope] = useState('MY_STUDENTS');
   const [selectedClassId, setSelectedClassId] = useState('ALL');
 
-  // 신규 작성 폼 상태 (기본값 HOMEWORK로 설정)
+  // 신규 작성 폼 상태 (기본값 HOMEWORK)
   const [category, setCategory] = useState('ALL');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -24,6 +61,10 @@ function BoardContent() {
   const [homeworkList, setHomeworkList] = useState([
     { bookTitle: '', range: '' },
   ]);
+
+  // 📄/🖼️ 파일 첨부 전용 상태 (PDF/JPG 등)
+  const [attachedFile, setAttachedFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
 
   // 글 수정 모달 상태
   const [editingPost, setEditingPost] = useState(null);
@@ -38,7 +79,6 @@ function BoardContent() {
   const [allStudents, setAllStudents] = useState([]);
   const [myStudents, setMyStudents] = useState([]);
   
-  // 🎯 학생 숙제 공지 확인 상태 저장 (post_id -> Set of student_id)
   const [postConfirmations, setPostConfirmations] = useState({});
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -193,11 +233,36 @@ function BoardContent() {
     setEditHomeworkList(updated);
   };
 
+  // 🎯 파일 업로드 및 게시글 등록 함수
   const handleCreatePost = async (e) => {
     e.preventDefault();
     if (!title.trim()) return alert('제목을 입력해주세요.');
 
     try {
+      setUploading(true);
+      let filePublicUrl = null;
+
+      // 파일이 첨부되어 있는 경우 Supabase Storage에 업로드
+      if (attachedFile) {
+        const fileExt = attachedFile.name.split('.').pop();
+        const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const filePath = `board_files/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('attachments')
+          .upload(filePath, attachedFile);
+
+        if (uploadError) {
+          // 스토리지 버킷 미생성 시 안내
+          console.warn('Storage upload error:', uploadError.message);
+        } else {
+          const { data: urlData } = supabase.storage
+            .from('attachments')
+            .getPublicUrl(filePath);
+          filePublicUrl = urlData?.publicUrl;
+        }
+      }
+
       let finalContent = content;
       if (newCategory === 'HOMEWORK') {
         const bookDetails = homeworkList
@@ -207,6 +272,11 @@ function BoardContent() {
         
         const formLinkText = googleFormUrl.trim() ? `\n\n🔗 구글 폼 링크: ${googleFormUrl.trim()}` : '';
         finalContent = `${bookDetails}${formLinkText}\n\n📝 메모:\n${content}`;
+      }
+
+      // 파일 URL이 있는 경우 본문 하단에 자동 첨부
+      if (filePublicUrl) {
+        finalContent += `\n\n📎 첨부파일: ${filePublicUrl}`;
       }
 
       const postData = {
@@ -224,12 +294,15 @@ function BoardContent() {
       setTitle('');
       setContent('');
       setGoogleFormUrl('');
+      setAttachedFile(null);
       setHomeworkList([{ bookTitle: '', range: '' }]);
       fetchPosts();
       alert('등록되었습니다.');
     } catch (err) {
       console.error(err);
-      alert('등록 실패');
+      alert('등록 실패: ' + err.message);
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -350,23 +423,17 @@ function BoardContent() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-12">
-     <header className="bg-white border-b py-4 px-6 shadow-sm flex justify-between items-center">
-  <h1 
-    onClick={() => {
-      if (user?.role === 'STUDENT') {
-        router.push('/student/dashboard');
-      } else {
-        router.push('/teacher/dashboard');
-      }
-    }} 
-    className="text-xl font-bold text-blue-600 cursor-pointer hover:opacity-80 transition"
-  >
-    품수학 학원 게시판
-  </h1>
-  <button onClick={() => router.back()} className="text-sm text-gray-600 hover:underline font-bold">
-    ← 뒤로가기
-  </button>
-</header>
+      <header className="bg-white border-b py-4 px-6 shadow-sm flex justify-between items-center">
+        <h1 
+          onClick={handleHeaderTitleClick} 
+          className="text-xl font-bold text-blue-600 cursor-pointer hover:opacity-80 transition"
+        >
+          품수학 학원 게시판
+        </h1>
+        <button onClick={() => router.back()} className="text-sm text-gray-600 hover:underline font-bold">
+          ← 뒤로가기
+        </button>
+      </header>
 
       <main className="max-w-4xl mx-auto px-4 mt-6 space-y-6">
         
@@ -404,8 +471,8 @@ function BoardContent() {
                 >
                   <option value="HOMEWORK">📝 숙제 알림</option>
                   <option value="NOTICE">📢 공지사항</option>
+                  <option value="MATERIAL">📄 강의 자료 (JPG/PDF)</option>
                   <option value="VIDEO">🎬 복습 영상</option>
-                  <option value="MATERIAL">📄 강의 자료</option>
                 </select>
 
                 {newCategory === 'HOMEWORK' && (
@@ -482,16 +549,36 @@ function BoardContent() {
                 </div>
               )}
 
+              {/* 📎 파일 첨부 버튼 (JPG, PNG, PDF 전용) */}
+              <div className="bg-emerald-50/60 p-3 rounded-xl border border-emerald-200/80 flex items-center justify-between">
+                <div>
+                  <label className="block text-xs font-bold text-emerald-900">
+                    📎 강의자료 및 첨부파일 등록 (JPG, PNG, PDF 지원)
+                  </label>
+                  <p className="text-[11px] text-emerald-700 mt-0.5">이미지 파일은 게시글에 바로 미리보기가 표시됩니다.</p>
+                </div>
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  onChange={(e) => setAttachedFile(e.target.files[0] || null)}
+                  className="text-xs font-semibold text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-600 file:text-white hover:file:bg-emerald-700 cursor-pointer"
+                />
+              </div>
+
               <textarea
-                placeholder="내용을 적어주세요."
+                placeholder="내용을 적어주세요. (유튜브/웹사이트 링크 입력 시 자동 연결 및 재생 플레이어가 생성됩니다)"
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 className="w-full p-3 border rounded-xl text-sm h-20"
               />
 
               <div className="flex justify-end">
-                <button type="submit" className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-indigo-700 shadow transition">
-                  등록하기
+                <button
+                  type="submit"
+                  disabled={uploading}
+                  className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-indigo-700 shadow transition"
+                >
+                  {uploading ? '파일 업로드 중...' : '등록하기'}
                 </button>
               </div>
             </form>
@@ -527,7 +614,7 @@ function BoardContent() {
           </div>
         )}
 
-        {/* 반별 필터 버튼 */}
+        {/* 카테고리 & 반별 필터 버튼 */}
         <div className="space-y-2">
           <div className="flex gap-2 overflow-x-auto pb-1">
             <button
@@ -566,6 +653,13 @@ function BoardContent() {
               const formMatch = postContent.match(/🔗 구글 폼 링크: (https?:\/\/[^\s]+)/);
               const formUrl = formMatch ? formMatch[1] : null;
 
+              // 🎯 첨부파일 URL 감지
+              const fileMatch = postContent.match(/📎 첨부파일: (https?:\/\/[^\s]+)/);
+              const fileUrl = fileMatch ? fileMatch[1] : null;
+              const isImage = fileUrl && (fileUrl.match(/\.(jpeg|jpg|gif|png|webp)/i) || fileUrl.includes('image'));
+
+              const ytId = getYouTubeId(postContent);
+
               const isMyPost = user?.id === post.author_id;
               const isConfirmedByMe = postConfirmations[post.id]?.has(user?.id);
 
@@ -576,8 +670,8 @@ function BoardContent() {
                       <span className="font-bold text-blue-600">
                         {post.category === 'HOMEWORK' && '📝 숙제 알림'}
                         {post.category === 'NOTICE' && '📢 공지사항'}
-                        {post.category === 'VIDEO' && '🎬 복습 영상'}
                         {post.category === 'MATERIAL' && '📄 강의 자료'}
+                        {post.category === 'VIDEO' && '🎬 복습 영상'}
                       </span>
                       {post.classes ? (
                         <span className="bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded-full font-bold">
@@ -617,7 +711,48 @@ function BoardContent() {
                   </div>
 
                   <h3 className="font-bold text-base text-gray-800">{post.title}</h3>
-                  <p className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">{post.content}</p>
+                  
+                  {/* 🎯 자동 링크 연결 텍스트 */}
+                  <FormattedContent text={post.content.replace(/📎 첨부파일: https?:\/\/[^\s]+/, '')} />
+
+                  {/* 🖼️ 이미지 파일 미리보기 */}
+                  {isImage && (
+                    <div className="mt-3 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 p-2">
+                      <img
+                        src={fileUrl}
+                        alt="강의 자료 이미지"
+                        className="w-full max-h-96 object-contain rounded-xl"
+                      />
+                    </div>
+                  )}
+
+                  {/* 📄 PDF 및 기타 첨부파일 다운로드 버튼 */}
+                  {fileUrl && !isImage && (
+                    <div className="pt-2">
+                      <a
+                        href={fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold px-4 py-2.5 rounded-xl text-xs shadow-xs transition"
+                      >
+                        <span>📄 첨부된 PDF / 강의자료 받기</span>
+                        <span>⬇️</span>
+                      </a>
+                    </div>
+                  )}
+
+                  {/* 🎬 유튜브 영상 자동 플레이어 임베드 */}
+                  {ytId && (
+                    <div className="mt-3 aspect-video w-full rounded-2xl overflow-hidden shadow-md border border-slate-200 bg-black">
+                      <iframe
+                        src={`https://www.youtube.com/embed/${ytId}`}
+                        title="YouTube video player"
+                        className="w-full h-full border-0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                      ></iframe>
+                    </div>
+                  )}
 
                   {formUrl && (
                     <div className="pt-2">
@@ -723,8 +858,8 @@ function BoardContent() {
                 >
                   <option value="HOMEWORK">📝 숙제 알림</option>
                   <option value="NOTICE">📢 공지사항</option>
-                  <option value="VIDEO">🎬 복습 영상</option>
                   <option value="MATERIAL">📄 강의 자료</option>
+                  <option value="VIDEO">🎬 복습 영상</option>
                 </select>
 
                 {editCategory === 'HOMEWORK' && (

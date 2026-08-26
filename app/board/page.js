@@ -28,7 +28,7 @@ function BoardContent() {
   const [showModal, setShowModal] = useState(false);
   const [editingPost, setEditingPost] = useState(null);
   const [targetClassId, setTargetClassId] = useState('');
-  const [category, setCategory] = useState('HOMEWORK');
+  const [category, setCategory] = useState('NOTICE');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [dueDate, setDueDate] = useState('');
@@ -69,7 +69,7 @@ function BoardContent() {
         }
       }
 
-      // 1. 선생님의 반 목록 조회
+      // 1. 반 목록 불러오기
       const { data: cData } = await supabase
         .from('classes')
         .select('*')
@@ -82,14 +82,14 @@ function BoardContent() {
         setTargetClassId(String(fetchedClasses[0].id));
       }
 
-      // 2. posts 불러오기 (users 조인 및 classes 조인 safe 처리)
+      // 2. 스키마 명세에 맞춰 posts 및 관련 정보 안전 조인
       const { data: pData, error: pErr } = await supabase
         .from('posts')
-        .select('*, users(name), classes(name)')
+        .select('*, users!posts_author_id_fkey(name), classes(name)')
         .order('created_at', { ascending: false });
 
       if (pErr) {
-        // 조인 오류 발생 시 posts만 단독 조회
+        // 조인 관계 일시 미적용 시 단독 안전 조회
         const { data: fallbackData } = await supabase
           .from('posts')
           .select('*')
@@ -122,7 +122,7 @@ function BoardContent() {
   const handleOpenEditModal = (post) => {
     setEditingPost(post);
     setTargetClassId(post.class_id ? String(post.class_id) : (classes[0] ? String(classes[0].id) : ''));
-    setCategory(post.category || 'HOMEWORK');
+    setCategory(post.category || 'NOTICE');
     setTitle(post.title || '');
     setContent(post.content || '');
     setDueDate(post.due_date || '');
@@ -136,13 +136,10 @@ function BoardContent() {
     if (!title.trim()) return alert('제목을 입력해 주세요.');
 
     try {
-      // class_id가 유효한 숫자인 경우 변환, 없으면 null 처리
-      const formattedClassId = targetClassId && !isNaN(Number(targetClassId)) ? Number(targetClassId) : null;
-
+      // 스키마에 명시된 text 타입에 정확히 매칭 (string 보장)
       const payload = {
-        teacher_id: user.id,
         author_id: user.id,
-        class_id: formattedClassId,
+        class_id: targetClassId ? String(targetClassId) : null,
         category,
         title: title.trim(),
         content: content.trim(),
@@ -188,10 +185,10 @@ function BoardContent() {
     }
   };
 
-  // 💡 class_id가 null인 전체 공지도 함께 잘 보이도록 필터 개선
+  // 반 필터링 (ALL 혹은 class_id가 null인 전체 공지도 표시)
   const filteredPosts = posts.filter((post) => {
     if (selectedClassId === 'ALL') return true;
-    if (!post.class_id) return true; // class_id가 없는 전체 공지글은 어떤 반을 선택해도 기본 표시
+    if (!post.class_id) return true;
     return String(post.class_id) === String(selectedClassId);
   });
 
@@ -265,7 +262,7 @@ function BoardContent() {
             </div>
           ) : (
             filteredPosts.map((post) => {
-              const matchedClassName = post.classes?.name || classes.find((c) => String(c.id) === String(post.class_id))?.name || '전체 공지';
+              const className = post.classes?.name || classes.find((c) => String(c.id) === String(post.class_id))?.name || '전체 공지';
               const authorName = post.users?.name || '선생님';
 
               return (
@@ -274,7 +271,7 @@ function BoardContent() {
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="bg-indigo-50 text-indigo-700 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-indigo-100">
-                          📘 {matchedClassName}
+                          📘 {className}
                         </span>
                         <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
                           {post.category === 'NOTICE' && '📢 일반 공지'}

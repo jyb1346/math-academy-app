@@ -356,15 +356,15 @@ function BoardContent() {
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">대상 반</label>
                   <select
-                    value={targetClassId}
-                    onChange={(e) => setTargetClassId(e.target.value)}
-                    className="w-full p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-bold text-slate-800 focus:outline-none"
-                  >
-                    <option value="">📢 전체 공지 (반 선택 안 함)</option>
-                    {classes.map((cls) => (
-                      <option key={cls.id} value={cls.id}>📘 {cls.name}</option>
-                    ))}
-                  </select>
+  value={targetClassId}
+  onChange={(e) => setTargetClassId(e.target.value)}
+  className="w-full p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-bold text-slate-800 focus:outline-none"
+>
+  <option value="">📢 전체 공지 (반 선택 안 함)</option>
+  {classes.map((cls) => (
+    <option key={cls.id} value={cls.id}>📘 {cls.name}</option>
+  ))}
+</select>
                 </div>
 
                 <div>

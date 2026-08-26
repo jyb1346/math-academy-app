@@ -62,7 +62,7 @@ function BoardContent() {
           .from('users')
           .select('teacher_id')
           .eq('id', currentUser.id)
-          .single();
+          .maybeSingle();
 
         if (stInfo?.teacher_id) {
           teacherId = stInfo.teacher_id;
@@ -72,7 +72,7 @@ function BoardContent() {
       // 1. 반 목록 전체 불러오기
       const { data: cData } = await supabase
         .from('classes')
-        .select('*')
+        .select('id, name')
         .eq('teacher_id', teacherId);
 
       const fetchedClasses = cData || [];
@@ -82,10 +82,10 @@ function BoardContent() {
         setTargetClassId(String(fetchedClasses[0].id));
       }
 
-      // 2. 외래키 오류 방지를 위해 posts 단독 수집
+      // 2. 외래키 문제 방지: 조인(classes) 문구 절대 사용 안함
       const { data: pData, error: pErr } = await supabase
         .from('posts')
-        .select('*')
+        .select('id, teacher_id, class_id, category, title, content, due_date, video_url, file_url, created_at')
         .order('created_at', { ascending: false });
 
       if (pErr) throw pErr;
@@ -152,7 +152,7 @@ function BoardContent() {
           .insert([payload]);
 
         if (error) throw error;
-        alert('게시글이 성공적으로 등록되었습니다!');
+        alert('게시글이 저장되었습니다.');
       }
 
       setShowModal(false);
@@ -175,7 +175,7 @@ function BoardContent() {
     }
   };
 
-  // 반 선택 필터링 (전체 보기 시 무조건 다 출력)
+  // 선택된 반에 맞춰 필터링 (ALL 일 때는 무조건 전부 표시)
   const filteredPosts = posts.filter((post) => {
     if (selectedClassId === 'ALL') return true;
     return String(post.class_id) === String(selectedClassId);
@@ -259,7 +259,7 @@ function BoardContent() {
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="bg-indigo-50 text-indigo-700 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-indigo-100">
-                          📘 {matchedClass?.name || '기타/전체 반'}
+                          📘 {matchedClass?.name || '전체/선택 반'}
                         </span>
                         <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
                           {post.category === 'HOMEWORK' && '📝 숙제 공지'}

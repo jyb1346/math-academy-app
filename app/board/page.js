@@ -69,7 +69,7 @@ function BoardContent() {
         }
       }
 
-      // 1. 반 목록 불러오기
+      // 1. 반 목록 가져오기
       const { data: cData } = await supabase
         .from('classes')
         .select('*')
@@ -82,24 +82,17 @@ function BoardContent() {
         setTargetClassId(String(fetchedClasses[0].id));
       }
 
-      // 2. posts 및 작성자 단독 안전 조인
+      // 2. posts 단독 안전 조회 (조인 절대 사용 안함 -> PGRST200 완벽 차단)
       const { data: pData, error: pErr } = await supabase
         .from('posts')
-        .select('*, users!posts_author_id_fkey(name)')
+        .select('*')
         .order('created_at', { ascending: false });
 
-      if (pErr) {
-        const { data: fallbackData } = await supabase
-          .from('posts')
-          .select('*')
-          .order('created_at', { ascending: false });
-        setPosts(fallbackData || []);
-      } else {
-        setPosts(pData || []);
-      }
+      if (pErr) throw pErr;
+      setPosts(pData || []);
 
     } catch (err) {
-      console.error(err);
+      console.error("데이터 로드 에러:", err);
     } finally {
       setLoading(false);
     }
@@ -181,9 +174,10 @@ function BoardContent() {
     }
   };
 
+  // 모든 조건에서 게시글이 잘 보이도록 필터링
   const filteredPosts = posts.filter((post) => {
     if (selectedClassId === 'ALL') return true;
-    if (!post.class_id) return true;
+    if (!post.class_id) return true; // 반 미지정 게시글은 전체 공지로 항상 표시
     return String(post.class_id) === String(selectedClassId);
   });
 
@@ -257,8 +251,8 @@ function BoardContent() {
             </div>
           ) : (
             filteredPosts.map((post) => {
+              // 💡 DB 조인 대신 프론트에서 classes 데이터와 1:1 안전 매칭
               const matchedClassName = classes.find((c) => String(c.id) === String(post.class_id))?.name || '전체 공지';
-              const authorName = post.users?.name || '선생님';
 
               return (
                 <div key={post.id} className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
@@ -273,9 +267,6 @@ function BoardContent() {
                           {post.category === 'HOMEWORK' && '📝 숙제 공지'}
                           {post.category === 'VIDEO' && '🎥 복습 영상'}
                           {post.category === 'MATERIAL' && '📁 수업 자료'}
-                        </span>
-                        <span className="text-[11px] text-slate-400 font-semibold ml-1">
-                          작성자: {authorName}
                         </span>
                       </div>
                       <h2 className="text-base font-extrabold text-slate-800 pt-1">{post.title}</h2>

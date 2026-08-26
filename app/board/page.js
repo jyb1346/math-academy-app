@@ -126,45 +126,52 @@ function BoardContent() {
     setShowModal(true);
   };
 
-  const handleSubmitPost = async (e) => {
-    e.preventDefault();
-    if (!title.trim()) return alert('제목을 입력해 주세요.');
+ const handleSubmitPost = async (e) => {
+  e.preventDefault();
+  if (!title.trim()) return alert('제목을 입력해 주세요.');
 
-    try {
-      const payload = {
-        author_id: user.id,
-        class_id: targetClassId ? targetClassId : null,
-        category,
-        title: title.trim(),
-        content: content.trim(),
-        due_date: dueDate || null,
-        video_url: videoUrl.trim() || null,
-        file_url: fileUrl.trim() || null,
-      };
+  try {
+    // 💡 선택한 반 ID가 실제로 classes 목록에 존재하는지 한 번 더 안전하게 확인
+    const selectedClass = classes.find((c) => String(c.id) === String(targetClassId));
+    
+    // 만약 선택한 반 ID가 DB 반 목록에 정식으로 존재하는 ID면 그 ID를 쓰고,
+    // 그렇지 않거나 '전체 공지'를 선택했다면 null로 안전 처리 (외래키 충돌 방지)
+    const validClassId = selectedClass ? selectedClass.id : null;
 
-      if (editingPost) {
-        const { error } = await supabase
-          .from('posts')
-          .update(payload)
-          .eq('id', editingPost.id);
+    const payload = {
+      author_id: user.id,
+      class_id: validClassId,
+      category,
+      title: title.trim(),
+      content: content.trim(),
+      due_date: dueDate || null,
+      video_url: videoUrl.trim() || null,
+      file_url: fileUrl.trim() || null,
+    };
 
-        if (error) throw error;
-        alert('게시글이 수정되었습니다.');
-      } else {
-        const { error } = await supabase
-          .from('posts')
-          .insert([payload]);
+    if (editingPost) {
+      const { error } = await supabase
+        .from('posts')
+        .update(payload)
+        .eq('id', editingPost.id);
 
-        if (error) throw error;
-        alert('게시글이 정상적으로 등록되었습니다!');
-      }
+      if (error) throw error;
+      alert('게시글이 수정되었습니다.');
+    } else {
+      const { error } = await supabase
+        .from('posts')
+        .insert([payload]);
 
-      setShowModal(false);
-      fetchBoardData(user);
-    } catch (err) {
-      alert(`저장 실패: ${err.message}`);
+      if (error) throw error;
+      alert('게시글이 성공적으로 등록되었습니다!');
     }
-  };
+
+    setShowModal(false);
+    fetchBoardData(user);
+  } catch (err) {
+    alert(`저장 실패: ${err.message}`);
+  }
+};
 
   const handleDeletePost = async (postId, postTitle) => {
     if (!confirm(`[${postTitle}] 게시글을 삭제하시겠습니까?`)) return;

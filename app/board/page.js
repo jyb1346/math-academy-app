@@ -82,15 +82,14 @@ function BoardContent() {
         setTargetClassId(String(fetchedClasses[0].id));
       }
 
-      // 2. 외래키가 구성되었으므로 안전하게 조인 조회
+      // 2. posts 불러오기 (users 조인 및 classes 조인 safe 처리)
       const { data: pData, error: pErr } = await supabase
         .from('posts')
-        .select('*, classes(name)')
+        .select('*, users(name), classes(name)')
         .order('created_at', { ascending: false });
 
       if (pErr) {
-        // 혹시라도 조인 실패 시 단독 조회로 자동 폴백(Fallback)
-        console.warn("조인 실패로 단독 조회를 진행합니다:", pErr);
+        // 조인 오류 발생 시 posts만 단독 조회
         const { data: fallbackData } = await supabase
           .from('posts')
           .select('*')
@@ -122,7 +121,7 @@ function BoardContent() {
 
   const handleOpenEditModal = (post) => {
     setEditingPost(post);
-    setTargetClassId(String(post.class_id));
+    setTargetClassId(post.class_id ? String(post.class_id) : (classes[0] ? String(classes[0].id) : ''));
     setCategory(post.category || 'HOMEWORK');
     setTitle(post.title || '');
     setContent(post.content || '');
@@ -134,14 +133,15 @@ function BoardContent() {
 
   const handleSubmitPost = async (e) => {
     e.preventDefault();
-    if (!title.trim() || !content.trim()) return alert('제목과 내용을 입력해 주세요.');
-    if (!targetClassId) return alert('대상 반을 선택해 주세요.');
+    if (!title.trim()) return alert('제목을 입력해 주세요.');
 
     try {
-      const formattedClassId = !isNaN(Number(targetClassId)) ? Number(targetClassId) : targetClassId;
+      // class_id가 유효한 숫자인 경우 변환, 없으면 null 처리
+      const formattedClassId = targetClassId && !isNaN(Number(targetClassId)) ? Number(targetClassId) : null;
 
       const payload = {
         teacher_id: user.id,
+        author_id: user.id,
         class_id: formattedClassId,
         category,
         title: title.trim(),
@@ -165,7 +165,7 @@ function BoardContent() {
           .insert([payload]);
 
         if (error) throw error;
-        alert('게시글이 정상적으로 등록되었습니다!');
+        alert('게시글이 성공적으로 등록되었습니다!');
       }
 
       setShowModal(false);
@@ -188,8 +188,10 @@ function BoardContent() {
     }
   };
 
+  // 💡 class_id가 null인 전체 공지도 함께 잘 보이도록 필터 개선
   const filteredPosts = posts.filter((post) => {
     if (selectedClassId === 'ALL') return true;
+    if (!post.class_id) return true; // class_id가 없는 전체 공지글은 어떤 반을 선택해도 기본 표시
     return String(post.class_id) === String(selectedClassId);
   });
 
@@ -263,7 +265,8 @@ function BoardContent() {
             </div>
           ) : (
             filteredPosts.map((post) => {
-              const className = post.classes?.name || classes.find((c) => String(c.id) === String(post.class_id))?.name || '기타/전체 반';
+              const matchedClassName = post.classes?.name || classes.find((c) => String(c.id) === String(post.class_id))?.name || '전체 공지';
+              const authorName = post.users?.name || '선생님';
 
               return (
                 <div key={post.id} className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
@@ -271,12 +274,16 @@ function BoardContent() {
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="bg-indigo-50 text-indigo-700 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-indigo-100">
-                          📘 {className}
+                          📘 {matchedClassName}
                         </span>
                         <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
+                          {post.category === 'NOTICE' && '📢 일반 공지'}
                           {post.category === 'HOMEWORK' && '📝 숙제 공지'}
                           {post.category === 'VIDEO' && '🎥 복습 영상'}
                           {post.category === 'MATERIAL' && '📁 수업 자료'}
+                        </span>
+                        <span className="text-[11px] text-slate-400 font-semibold ml-1">
+                          작성자: {authorName}
                         </span>
                       </div>
                       <h2 className="text-base font-extrabold text-slate-800 pt-1">{post.title}</h2>
@@ -300,9 +307,11 @@ function BoardContent() {
                     )}
                   </div>
 
-                  <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
-                    {post.content}
-                  </p>
+                  {post.content && (
+                    <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
+                      {post.content}
+                    </p>
+                  )}
 
                   <div className="flex flex-wrap items-center gap-3 text-xs pt-1">
                     {post.due_date && (
@@ -374,6 +383,7 @@ function BoardContent() {
                     onChange={(e) => setCategory(e.target.value)}
                     className="w-full p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-bold text-slate-800 focus:outline-none"
                   >
+                    <option value="NOTICE">📢 일반 공지</option>
                     <option value="HOMEWORK">📝 숙제 공지</option>
                     <option value="VIDEO">🎥 복습 영상</option>
                     <option value="MATERIAL">📁 수업 자료</option>

@@ -6,13 +6,12 @@ import { useRouter } from 'next/navigation';
 export default function Home() {
   const router = useRouter();
 
-  // 페이지 접속 시 자동 로그인 체크
   useEffect(() => {
     const userData = localStorage.getItem('user');
     if (userData) {
       try {
         const user = JSON.parse(userData);
-        if (user.role === 'TEACHER') {
+        if (user.role === 'TEACHER' || user.role === 'HEAD_TEACHER') {
           router.push('/teacher/dashboard');
         } else if (user.role === 'STUDENT') {
           router.push('/student/dashboard');
@@ -25,7 +24,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* 헤더 */}
       <header className="bg-white border-b border-gray-200 py-4 px-4 shadow-sm text-center">
         <div className="max-w-5xl mx-auto">
           <h1 
@@ -37,7 +35,6 @@ export default function Home() {
         </div>
       </header>
 
-      {/* 히어로 섹션 */}
       <section className="bg-blue-600 text-white py-12 sm:py-16 px-4 text-center">
         <div className="max-w-3xl mx-auto space-y-4">
           <h2 className="text-2xl sm:text-4xl font-extrabold leading-snug">
@@ -57,7 +54,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* 학원 핵심 시스템 소개 */}
       <main className="max-w-4xl mx-auto px-4 py-10 space-y-6 flex-1 w-full">
         <h3 className="text-lg font-bold text-gray-800 text-center">학원 핵심 시스템</h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

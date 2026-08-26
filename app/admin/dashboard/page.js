@@ -58,7 +58,7 @@ export default function AdminDashboard() {
       setAllTeachers(teachers);
 
       if (teachers.length > 0 && !selectedTeacherId) {
-        setSelectedTeacherId(headTeacherId);
+        setSelectedTeacherId(headTeacherId || teachers[0]?.id || '');
       }
 
       // 2. 전체 반 목록 조회
@@ -67,7 +67,7 @@ export default function AdminDashboard() {
         .select('*');
       setAllClasses(cData || []);
 
-      // 3. 전체 학생 목록 조회 (외래키 단순화로 안전한 전체 조회)
+      // 3. 전체 학생 목록 조회
       const { data: stData } = await supabase
         .from('users')
         .select('*')
@@ -189,11 +189,13 @@ export default function AdminDashboard() {
     if (!assignTargetClass) return;
 
     try {
+      // 1. 기존 반 배정 해제
       await supabase
         .from('class_students')
         .delete()
         .eq('class_id', assignTargetClass.id);
 
+      // 2. 선택된 학생들 새롭게 배정
       if (selectedStudentIds.length > 0) {
         const insertPayloads = selectedStudentIds.map((stId) => ({
           student_id: stId,

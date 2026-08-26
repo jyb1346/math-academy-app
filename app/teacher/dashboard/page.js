@@ -191,7 +191,7 @@ export default function TeacherDashboard() {
       await supabase.from('class_students').delete().eq('student_id', studentId);
 
       const { error } = await supabase.from('class_students').insert([
-        { student_id: studentId, class_id: parseInt(classId) }
+        { student_id: studentId, class_id: classId }
       ]);
 
       if (error) throw error;
@@ -205,7 +205,7 @@ export default function TeacherDashboard() {
   const openClassAssignModal = (cls) => {
     setAssignTargetClass(cls);
     const currentStudentIds = classStudents
-      .filter((cs) => cs.class_id === cls.id)
+      .filter((cs) => String(cs.class_id) === String(cls.id))
       .map((cs) => cs.student_id);
 
     setSelectedStudentIds(currentStudentIds);
@@ -400,7 +400,7 @@ export default function TeacherDashboard() {
               <p className="text-xs text-slate-400 py-2 col-span-full">개설된 반이 없습니다. 반을 추가해 주세요.</p>
             ) : (
               classes.map((cls) => {
-                const count = classStudents.filter((cs) => cs.class_id === cls.id).length;
+                const count = classStudents.filter((cs) => String(cs.class_id) === String(cls.id)).length;
 
                 return (
                   <div
@@ -434,7 +434,7 @@ export default function TeacherDashboard() {
           </div>
         </section>
 
-        {/* 📊 🎯 3. 학생 신규 일괄 등록 (기본 메인 화면으로 배치) */}
+        {/* 📊 🎯 3. 학생 신규 일괄 등록 */}
         <section className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-5">
           <div className="border-b border-slate-100 pb-4">
             <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
@@ -452,9 +452,7 @@ export default function TeacherDashboard() {
               <p>• 엑셀 붙여넣기 시: 엑셀의 <span className="font-bold text-slate-900">[학생 이름 열]</span>과 <span className="font-bold text-slate-900">[학부모 연락처 열]</span>을 각각 복사(Ctrl+C)하여 아래 2개 박스에 각각 붙여넣으세요.</p>
             </div>
 
-            {/* 2개 세로 입력 박스 그리드 */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* 박스 1: 이름 세로 입력란 */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1 flex justify-between">
                   <span>👤 학생 이름 열 (필수)</span>
@@ -470,7 +468,6 @@ export default function TeacherDashboard() {
                 />
               </div>
 
-              {/* 박스 2: 전화번호 세로 입력란 */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1 flex justify-between">
                   <span>📱 학부모 연락처 열 (선택)</span>
@@ -513,7 +510,7 @@ export default function TeacherDashboard() {
             ) : (
               students.map((st) => {
                 const assignedClassInfo = classStudents.find((cs) => cs.student_id === st.id);
-                const assignedClass = classes.find((c) => c.id === assignedClassInfo?.class_id);
+                const assignedClass = classes.find((c) => String(c.id) === String(assignedClassInfo?.class_id));
 
                 return (
                   <div
@@ -552,7 +549,7 @@ export default function TeacherDashboard() {
 
                     <div className="flex items-center gap-2">
                       <select
-                        value={selectedClassMap[st.id] || (assignedClass ? assignedClass.id.toString() : '')}
+                        value={selectedClassMap[st.id] || (assignedClass ? String(assignedClass.id) : '')}
                         onChange={(e) => setSelectedClassMap({ ...selectedClassMap, [st.id]: e.target.value })}
                         className="p-2 border rounded-xl text-xs font-bold text-slate-700 bg-white"
                       >

@@ -13,7 +13,7 @@ export default function TeacherEvalPage() {
 
   // 평가 항목 상태
   const [evalDate, setEvalDate] = useState(new Date().toISOString().split('T')[0]);
-  const [attendanceStatus, setAttendanceStatus] = useState('ATTEND'); // ATTEND, LATE, ABSENT
+  const [attendanceStatus, setAttendanceStatus] = useState('ATTEND');
   const [latenessMinutes, setLatenessMinutes] = useState(5);
 
   const [conceptScore, setConceptScore] = useState(8);
@@ -55,7 +55,7 @@ export default function TeacherEvalPage() {
       setClasses(classList);
 
       if (classList.length > 0) {
-        setSelectedClassId(classList[0].id.toString());
+        setSelectedClassId(String(classList[0].id));
         fetchClassStudents(classList[0].id);
       } else {
         const { data: stData } = await supabase
@@ -97,7 +97,6 @@ export default function TeacherEvalPage() {
     fetchClassStudents(cId);
   };
 
-  // 🎯 피드백 제출 및 중복 확인 덮어쓰기 로직
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!selectedStudentId) return alert('학생을 선택해 주세요.');
@@ -106,7 +105,6 @@ export default function TeacherEvalPage() {
     const studentName = selectedStudent ? selectedStudent.name : '해당';
 
     try {
-      // 1. 해당 학생 및 날짜에 이미 피드백이 존재하는지 확인
       const { data: existingEval, error: checkError } = await supabase
         .from('daily_evaluations')
         .select('id')
@@ -132,7 +130,6 @@ export default function TeacherEvalPage() {
       };
 
       if (existingEval) {
-        // 이미 해당 날짜 피드백이 존재하는 경우
         const confirmOverwrite = confirm(
           `⚠️ [${studentName}] 학생의 ${evalDate} 날짜 피드백이 이미 작성되어 있습니다.\n\n새로 작성한 내용으로 수정(덮어쓰기)하시겠습니까?\n'취소'를 누르면 기존 피드백이 유지됩니다.`
         );
@@ -142,7 +139,6 @@ export default function TeacherEvalPage() {
           return;
         }
 
-        // 기존 데이터 수정 (Update)
         const { error: updateError } = await supabase
           .from('daily_evaluations')
           .update(payload)
@@ -151,7 +147,6 @@ export default function TeacherEvalPage() {
         if (updateError) throw updateError;
         alert(`[${studentName}] 학생의 ${evalDate} 피드백이 성공적으로 수정(덮어쓰기)되었습니다!`);
       } else {
-        // 신규 작성 (Insert)
         const { error: insertError } = await supabase
           .from('daily_evaluations')
           .insert([payload]);
@@ -196,7 +191,6 @@ export default function TeacherEvalPage() {
 
           <form onSubmit={handleSubmit} className="space-y-6">
             
-            {/* 반 & 학생 & 날짜 선택 */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1">🏫 담당 반 선택</label>
@@ -239,7 +233,6 @@ export default function TeacherEvalPage() {
               </div>
             </div>
 
-            {/* 출결 및 지각 정보 선택 폼 */}
             <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-200/80 space-y-3">
               <span className="text-xs font-extrabold text-amber-900 block">⏰ 출석 및 지각 상태 기록</span>
               <div className="flex flex-wrap gap-2 items-center">
@@ -296,7 +289,6 @@ export default function TeacherEvalPage() {
               </div>
             </div>
 
-            {/* 6대 영역 점수 슬라이더 */}
             <div className="space-y-4 pt-2">
               <h3 className="text-xs font-bold text-slate-700">📊 6대 성취도 영역 (각 1~10점)</h3>
               
@@ -369,7 +361,6 @@ export default function TeacherEvalPage() {
               </div>
             </div>
 
-            {/* 총평 메모 */}
             <div className="space-y-1">
               <label className="block text-xs font-bold text-slate-700">✍️ 선생님 총평 코멘트</label>
               <textarea

@@ -82,14 +82,13 @@ function BoardContent() {
         setTargetClassId(String(fetchedClasses[0].id));
       }
 
-      // 2. 스키마 명세에 맞춰 posts 및 관련 정보 안전 조인
+      // 2. posts 및 작성자 단독 안전 조인
       const { data: pData, error: pErr } = await supabase
         .from('posts')
-        .select('*, users!posts_author_id_fkey(name), classes(name)')
+        .select('*, users!posts_author_id_fkey(name)')
         .order('created_at', { ascending: false });
 
       if (pErr) {
-        // 조인 관계 일시 미적용 시 단독 안전 조회
         const { data: fallbackData } = await supabase
           .from('posts')
           .select('*')
@@ -113,15 +112,13 @@ function BoardContent() {
     setDueDate('');
     setVideoUrl('');
     setFileUrl('');
-    if (classes.length > 0) {
-      setTargetClassId(String(classes[0].id));
-    }
+    setTargetClassId(classes.length > 0 ? String(classes[0].id) : '');
     setShowModal(true);
   };
 
   const handleOpenEditModal = (post) => {
     setEditingPost(post);
-    setTargetClassId(post.class_id ? String(post.class_id) : (classes[0] ? String(classes[0].id) : ''));
+    setTargetClassId(post.class_id ? String(post.class_id) : '');
     setCategory(post.category || 'NOTICE');
     setTitle(post.title || '');
     setContent(post.content || '');
@@ -136,10 +133,9 @@ function BoardContent() {
     if (!title.trim()) return alert('제목을 입력해 주세요.');
 
     try {
-      // 스키마에 명시된 text 타입에 정확히 매칭 (string 보장)
       const payload = {
         author_id: user.id,
-        class_id: targetClassId ? String(targetClassId) : null,
+        class_id: targetClassId && targetClassId !== 'ALL' ? String(targetClassId) : null,
         category,
         title: title.trim(),
         content: content.trim(),
@@ -185,7 +181,6 @@ function BoardContent() {
     }
   };
 
-  // 반 필터링 (ALL 혹은 class_id가 null인 전체 공지도 표시)
   const filteredPosts = posts.filter((post) => {
     if (selectedClassId === 'ALL') return true;
     if (!post.class_id) return true;
@@ -262,7 +257,7 @@ function BoardContent() {
             </div>
           ) : (
             filteredPosts.map((post) => {
-              const className = post.classes?.name || classes.find((c) => String(c.id) === String(post.class_id))?.name || '전체 공지';
+              const matchedClassName = classes.find((c) => String(c.id) === String(post.class_id))?.name || '전체 공지';
               const authorName = post.users?.name || '선생님';
 
               return (
@@ -271,7 +266,7 @@ function BoardContent() {
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="bg-indigo-50 text-indigo-700 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-indigo-100">
-                          📘 {className}
+                          📘 {matchedClassName}
                         </span>
                         <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
                           {post.category === 'NOTICE' && '📢 일반 공지'}
@@ -367,6 +362,7 @@ function BoardContent() {
                     onChange={(e) => setTargetClassId(e.target.value)}
                     className="w-full p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-bold text-slate-800 focus:outline-none"
                   >
+                    <option value="">📢 전체 공지 (반 선택 안 함)</option>
                     {classes.map((cls) => (
                       <option key={cls.id} value={cls.id}>📘 {cls.name}</option>
                     ))}

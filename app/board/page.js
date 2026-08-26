@@ -82,7 +82,7 @@ function BoardContent() {
         setTargetClassId(String(fetchedClasses[0].id));
       }
 
-      // 2. 작성된 전체 posts 가져오기 (조건 없이 전부 수집)
+      // 2. 외래키 오류 방지를 위해 posts 단독 수집
       const { data: pData, error: pErr } = await supabase
         .from('posts')
         .select('*')
@@ -175,7 +175,7 @@ function BoardContent() {
     }
   };
 
-  // 반 선택 필터링 (전체 보기시 무조건 다 보여줌)
+  // 반 선택 필터링 (전체 보기 시 무조건 다 출력)
   const filteredPosts = posts.filter((post) => {
     if (selectedClassId === 'ALL') return true;
     return String(post.class_id) === String(selectedClassId);

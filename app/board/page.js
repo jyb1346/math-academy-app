@@ -1,10 +1,24 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function BoardPage() {
+// 🎯 useSearchParams를 사용하는 서브 컴포넌트
+function CategoryHandler({ setCategory }) {
+  const searchParams = useSearchParams();
+  const categoryParam = searchParams.get('category');
+
+  useEffect(() => {
+    if (categoryParam) {
+      setCategory(categoryParam);
+    }
+  }, [categoryParam, setCategory]);
+
+  return null;
+}
+
+function BoardContent() {
   const [user, setUser] = useState(null);
   const [classes, setClasses] = useState([]);
   const [selectedClassId, setSelectedClassId] = useState('ALL');
@@ -23,8 +37,6 @@ export default function BoardPage() {
   const [fileUrl, setFileUrl] = useState('');
 
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const categoryParam = searchParams.get('category');
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -41,12 +53,6 @@ export default function BoardPage() {
       router.push('/login');
     }
   }, []);
-
-  useEffect(() => {
-    if (categoryParam) {
-      setCategory(categoryParam);
-    }
-  }, [categoryParam]);
 
   const fetchBoardData = async (currentUser) => {
     try {
@@ -77,7 +83,7 @@ export default function BoardPage() {
         setTargetClassId(String(fetchedClasses[0].id));
       }
 
-      // 2. 외래키 조인(classes) 없이 posts 단독 조회하여 에러 방지
+      // 2. posts 단독 조회
       const { data: pData, error: pErr } = await supabase
         .from('posts')
         .select('*')
@@ -171,9 +177,6 @@ export default function BoardPage() {
   };
 
   const filteredPosts = posts.filter((post) => {
-    if (categoryParam && post.category !== categoryParam) {
-      return false;
-    }
     if (selectedClassId !== 'ALL' && String(post.class_id) !== String(selectedClassId)) {
       return false;
     }
@@ -186,7 +189,10 @@ export default function BoardPage() {
 
   return (
     <div className="min-h-screen bg-slate-100/70 pb-20 font-sans text-slate-800">
-      
+      <Suspense fallback={null}>
+        <CategoryHandler setCategory={setCategory} />
+      </Suspense>
+
       {/* 헤더 */}
       <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-30 px-6 py-4 flex justify-between items-center shadow-xs">
         <div className="flex items-center gap-3">
@@ -247,7 +253,6 @@ export default function BoardPage() {
             </div>
           ) : (
             filteredPosts.map((post) => {
-              // state의 classes 목록에서 반 이름을 직접 매칭
               const matchedClass = classes.find((c) => String(c.id) === String(post.class_id));
 
               return (
@@ -440,5 +445,13 @@ export default function BoardPage() {
       )}
 
     </div>
+  );
+}
+
+export default function BoardPage() {
+  return (
+    <Suspense fallback={<div className="p-10 text-center font-bold text-slate-500">게시판 로딩 중...</div>}>
+      <BoardContent />
+    </Suspense>
   );
 }

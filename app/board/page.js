@@ -78,21 +78,26 @@ function BoardContent() {
       const fetchedClasses = cData || [];
       setClasses(fetchedClasses);
 
-      if (fetchedClasses.length > 0 && !targetClassId) {
-        setTargetClassId(String(fetchedClasses[0].id));
-      }
-
-      // 2. posts 단독 안전 조회 (조인 절대 사용 안함 -> PGRST200 완벽 차단)
+      // 2. 게시글 및 연결 데이터(반 이름, 작성자) 한 번에 조회
       const { data: pData, error: pErr } = await supabase
         .from('posts')
-        .select('*')
+        .select('*, classes(name), users!posts_author_id_fkey(name)')
         .order('created_at', { ascending: false });
 
-      if (pErr) throw pErr;
-      setPosts(pData || []);
+      if (pErr) {
+        console.error("조회 에러:", pErr);
+        // Fallback: 단독 조회
+        const { data: fbData } = await supabase
+          .from('posts')
+          .select('*')
+          .order('created_at', { ascending: false });
+        setPosts(fbData || []);
+      } else {
+        setPosts(pData || []);
+      }
 
     } catch (err) {
-      console.error("데이터 로드 에러:", err);
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -105,7 +110,7 @@ function BoardContent() {
     setDueDate('');
     setVideoUrl('');
     setFileUrl('');
-    setTargetClassId(classes.length > 0 ? String(classes[0].id) : '');
+    setTargetClassId('');
     setShowModal(true);
   };
 
@@ -128,7 +133,7 @@ function BoardContent() {
     try {
       const payload = {
         author_id: user.id,
-        class_id: targetClassId && targetClassId !== 'ALL' ? String(targetClassId) : null,
+        class_id: targetClassId ? targetClassId : null,
         category,
         title: title.trim(),
         content: content.trim(),
@@ -151,7 +156,7 @@ function BoardContent() {
           .insert([payload]);
 
         if (error) throw error;
-        alert('게시글이 성공적으로 등록되었습니다!');
+        alert('게시글이 정상적으로 등록되었습니다!');
       }
 
       setShowModal(false);
@@ -174,10 +179,9 @@ function BoardContent() {
     }
   };
 
-  // 모든 조건에서 게시글이 잘 보이도록 필터링
   const filteredPosts = posts.filter((post) => {
     if (selectedClassId === 'ALL') return true;
-    if (!post.class_id) return true; // 반 미지정 게시글은 전체 공지로 항상 표시
+    if (!post.class_id) return true; // 전체 공지는 항상 표시
     return String(post.class_id) === String(selectedClassId);
   });
 
@@ -251,8 +255,8 @@ function BoardContent() {
             </div>
           ) : (
             filteredPosts.map((post) => {
-              // 💡 DB 조인 대신 프론트에서 classes 데이터와 1:1 안전 매칭
-              const matchedClassName = classes.find((c) => String(c.id) === String(post.class_id))?.name || '전체 공지';
+              const matchedClassName = post.classes?.name || classes.find((c) => String(c.id) === String(post.class_id))?.name || '전체 공지';
+              const authorName = post.users?.name || '선생님';
 
               return (
                 <div key={post.id} className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
@@ -267,6 +271,9 @@ function BoardContent() {
                           {post.category === 'HOMEWORK' && '📝 숙제 공지'}
                           {post.category === 'VIDEO' && '🎥 복습 영상'}
                           {post.category === 'MATERIAL' && '📁 수업 자료'}
+                        </span>
+                        <span className="text-[11px] text-slate-400 font-semibold ml-1">
+                          작성자: {authorName}
                         </span>
                       </div>
                       <h2 className="text-base font-extrabold text-slate-800 pt-1">{post.title}</h2>

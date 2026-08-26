@@ -69,7 +69,7 @@ function BoardContent() {
         }
       }
 
-      // 1. 반 목록 전체 불러오기
+      // 1. 선생님의 반 목록 조회
       const { data: cData } = await supabase
         .from('classes')
         .select('*')
@@ -78,18 +78,27 @@ function BoardContent() {
       const fetchedClasses = cData || [];
       setClasses(fetchedClasses);
 
-      if (fetchedClasses.length > 0) {
+      if (fetchedClasses.length > 0 && !targetClassId) {
         setTargetClassId(String(fetchedClasses[0].id));
       }
 
-      // 2. 게시글 단독 조회
+      // 2. 외래키가 구성되었으므로 안전하게 조인 조회
       const { data: pData, error: pErr } = await supabase
         .from('posts')
-        .select('*')
+        .select('*, classes(name)')
         .order('created_at', { ascending: false });
 
-      if (pErr) throw pErr;
-      setPosts(pData || []);
+      if (pErr) {
+        // 혹시라도 조인 실패 시 단독 조회로 자동 폴백(Fallback)
+        console.warn("조인 실패로 단독 조회를 진행합니다:", pErr);
+        const { data: fallbackData } = await supabase
+          .from('posts')
+          .select('*')
+          .order('created_at', { ascending: false });
+        setPosts(fallbackData || []);
+      } else {
+        setPosts(pData || []);
+      }
 
     } catch (err) {
       console.error(err);
@@ -129,7 +138,6 @@ function BoardContent() {
     if (!targetClassId) return alert('대상 반을 선택해 주세요.');
 
     try {
-      // 숫자로 변환 가능한 경우 숫자로, 아니면 그대로 처리
       const formattedClassId = !isNaN(Number(targetClassId)) ? Number(targetClassId) : targetClassId;
 
       const payload = {
@@ -157,7 +165,7 @@ function BoardContent() {
           .insert([payload]);
 
         if (error) throw error;
-        alert('게시글이 성공적으로 등록되었습니다!');
+        alert('게시글이 정상적으로 등록되었습니다!');
       }
 
       setShowModal(false);
@@ -255,7 +263,7 @@ function BoardContent() {
             </div>
           ) : (
             filteredPosts.map((post) => {
-              const matchedClass = classes.find((c) => String(c.id) === String(post.class_id));
+              const className = post.classes?.name || classes.find((c) => String(c.id) === String(post.class_id))?.name || '기타/전체 반';
 
               return (
                 <div key={post.id} className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
@@ -263,7 +271,7 @@ function BoardContent() {
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="bg-indigo-50 text-indigo-700 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-indigo-100">
-                          📘 {matchedClass?.name || '기타/전체 반'}
+                          📘 {className}
                         </span>
                         <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
                           {post.category === 'HOMEWORK' && '📝 숙제 공지'}

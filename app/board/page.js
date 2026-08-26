@@ -72,20 +72,20 @@ function BoardContent() {
       // 1. 반 목록 전체 불러오기
       const { data: cData } = await supabase
         .from('classes')
-        .select('id, name')
+        .select('*')
         .eq('teacher_id', teacherId);
 
       const fetchedClasses = cData || [];
       setClasses(fetchedClasses);
 
-      if (fetchedClasses.length > 0 && !targetClassId) {
+      if (fetchedClasses.length > 0) {
         setTargetClassId(String(fetchedClasses[0].id));
       }
 
-      // 2. 외래키 문제 방지: 조인(classes) 문구 절대 사용 안함
+      // 2. 게시글 단독 조회
       const { data: pData, error: pErr } = await supabase
         .from('posts')
-        .select('id, teacher_id, class_id, category, title, content, due_date, video_url, file_url, created_at')
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (pErr) throw pErr;
@@ -105,7 +105,9 @@ function BoardContent() {
     setDueDate('');
     setVideoUrl('');
     setFileUrl('');
-    if (classes.length > 0) setTargetClassId(String(classes[0].id));
+    if (classes.length > 0) {
+      setTargetClassId(String(classes[0].id));
+    }
     setShowModal(true);
   };
 
@@ -127,9 +129,12 @@ function BoardContent() {
     if (!targetClassId) return alert('대상 반을 선택해 주세요.');
 
     try {
+      // 숫자로 변환 가능한 경우 숫자로, 아니면 그대로 처리
+      const formattedClassId = !isNaN(Number(targetClassId)) ? Number(targetClassId) : targetClassId;
+
       const payload = {
         teacher_id: user.id,
-        class_id: targetClassId,
+        class_id: formattedClassId,
         category,
         title: title.trim(),
         content: content.trim(),
@@ -152,7 +157,7 @@ function BoardContent() {
           .insert([payload]);
 
         if (error) throw error;
-        alert('게시글이 저장되었습니다.');
+        alert('게시글이 성공적으로 등록되었습니다!');
       }
 
       setShowModal(false);
@@ -175,7 +180,6 @@ function BoardContent() {
     }
   };
 
-  // 선택된 반에 맞춰 필터링 (ALL 일 때는 무조건 전부 표시)
   const filteredPosts = posts.filter((post) => {
     if (selectedClassId === 'ALL') return true;
     return String(post.class_id) === String(selectedClassId);
@@ -259,7 +263,7 @@ function BoardContent() {
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="bg-indigo-50 text-indigo-700 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-indigo-100">
-                          📘 {matchedClass?.name || '전체/선택 반'}
+                          📘 {matchedClass?.name || '기타/전체 반'}
                         </span>
                         <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
                           {post.category === 'HOMEWORK' && '📝 숙제 공지'}

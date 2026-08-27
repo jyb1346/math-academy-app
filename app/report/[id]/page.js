@@ -94,8 +94,8 @@ export default function StudentReportPage() {
 
   const renderAttendanceText = () => {
     if (evalData.attendance_status === 'LATE') {
-      const mins = evalData.lateness_minutes >= 30 ? '30분 이상 지각' : `${evalData.lateness_minutes || 5}분 지각`;
-      return `⏰ ${mins}`;
+      const mins = evalData.lateness_minutes >= 30 ? '30분 이상 지각' : (evalData.lateness_minutes || 5) + '분 지각';
+      return '⏰ ' + mins;
     }
     if (evalData.attendance_status === 'ABSENT') {
       return '🔴 결석';
@@ -113,11 +113,11 @@ export default function StudentReportPage() {
             품수학 일일 학습 보고서
           </span>
           <h2 className="text-2xl font-extrabold pt-1">
-            {evalData.users?.name || '학생'} 피드백
+            {(evalData.users?.name || '학생') + ' 피드백'}
           </h2>
           <div className="flex items-center justify-center gap-2 pt-1">
             <span className="text-xs text-blue-100">
-              📅 수업 일자: {evalData.eval_date}
+              {'📅 수업 일자: ' + evalData.eval_date}
             </span>
             <span className="bg-white/20 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full">
               {renderAttendanceText()}
@@ -149,12 +149,12 @@ export default function StudentReportPage() {
 
           {/* 6대 역량 수치 그리드 */}
           <div className="w-full grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-2xl border border-slate-200/80 text-xs font-bold text-slate-700 mt-1">
-            <div className="text-center">개념: <span className="text-blue-600 font-extrabold">{evalData.concept_score ?? '-'}점</span></div>
-            <div className="text-center">연산: <span className="text-blue-600 font-extrabold">{evalData.calc_score ?? '-'}점</span></div>
-            <div className="text-center">응용: <span className="text-blue-600 font-extrabold">{evalData.app_score ?? '-'}점</span></div>
-            <div className="text-center">집중: <span className="text-blue-600 font-extrabold">{evalData.attitude_score ?? '-'}점</span></div>
-            <div className="text-center">과제: <span className="text-blue-600 font-extrabold">{evalData.homework_score ?? '-'}점</span></div>
-            <div className="text-center">끈기: <span className="text-blue-600 font-extrabold">{evalData.perseverance_score ?? '-'}점</span></div>
+            <div className="text-center">개념: <span className="text-blue-600 font-extrabold">{(evalData.concept_score ?? '-') + '점'}</span></div>
+            <div className="text-center">연산: <span className="text-blue-600 font-extrabold">{(evalData.calc_score ?? '-') + '점'}</span></div>
+            <div className="text-center">응용: <span className="text-blue-600 font-extrabold">{(evalData.app_score ?? '-') + '점'}</span></div>
+            <div className="text-center">집중: <span className="text-blue-600 font-extrabold">{(evalData.attitude_score ?? '-') + '점'}</span></div>
+            <div className="text-center">과제: <span className="text-blue-600 font-extrabold">{(evalData.homework_score ?? '-') + '점'}</span></div>
+            <div className="text-center">끈기: <span className="text-blue-600 font-extrabold">{(evalData.perseverance_score ?? '-') + '점'}</span></div>
           </div>
         </div>
 
@@ -168,7 +168,7 @@ export default function StudentReportPage() {
           </p>
         </div>
 
-        {/* 학부모 답장 작성 섹션 (새로 추가) */}
+        {/* 학부모 답장 작성 섹션 */}
         <div className="p-6 bg-white border-t border-gray-100 space-y-3">
           <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
             💬 선생님께 답장 남기기

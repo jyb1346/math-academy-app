@@ -49,7 +49,7 @@ function BoardContent() {
   const [showModal, setShowModal] = useState(false);
   const [editingPost, setEditingPost] = useState(null);
   const [targetClassId, setTargetClassId] = useState('');
-  const [modalCategory, setModalCategory] = useState('NOTICE');
+  const [modalCategory, setModalCategory] = useState('HOMEWORK');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [dueDate, setDueDate] = useState('');
@@ -90,12 +90,13 @@ function BoardContent() {
         }
       }
 
-      // 1. 반 목록 가져오기
-      const { data: cData } = await supabase
-        .from('classes')
-        .select('*')
-        .eq('teacher_id', teacherId);
+      // 1. 반 목록 가져오기 (원장님은 전체 반 조회 가능, 일반 강사는 본인 담당 반)
+      let classQuery = supabase.from('classes').select('*');
+      if (currentUser.role === 'TEACHER') {
+        classQuery = classQuery.eq('teacher_id', teacherId);
+      }
 
+      const { data: cData } = await classQuery;
       const fetchedClasses = cData || [];
       setClasses(fetchedClasses);
 
@@ -130,15 +131,24 @@ function BoardContent() {
     setDueDate('');
     setVideoUrl('');
     setFileUrl('');
-    setTargetClassId('');
-    setModalCategory(category === 'ALL' || category === 'NOTICE_HOMEWORK' ? 'NOTICE' : category);
+
+    // 🎯 현재 보고 있는 반 탭이 있으면 해당 반을 기본값으로, 없으면 첫 번째 반 또는 전체 공지
+    let defaultClass = '';
+    if (selectedClassId && selectedClassId !== 'ALL' && selectedClassId !== 'PUBLIC') {
+      defaultClass = selectedClassId;
+    } else if (classes.length > 0) {
+      defaultClass = String(classes[0].id);
+    }
+
+    setTargetClassId(defaultClass);
+    setModalCategory(category === 'ALL' || category === 'NOTICE_HOMEWORK' ? 'HOMEWORK' : category);
     setShowModal(true);
   };
 
   const handleOpenEditModal = (post) => {
     setEditingPost(post);
     setTargetClassId(post.class_id ? String(post.class_id) : '');
-    setModalCategory(post.category || 'NOTICE');
+    setModalCategory(post.category || 'HOMEWORK');
     setTitle(post.title || '');
     
     // 내용에서 첨부 링크 분리 파싱
@@ -173,9 +183,13 @@ function BoardContent() {
         combinedContent += `\n\n📎 첨부파일 링크: ${fileUrl.trim()}`;
       }
 
+      // 💡 외래키 안전 처리: 선택한 반 ID가 실제 classes 목록에 존재하는 UUID일 때만 전달, 아니면 null(전체 공지)
+      const matchedClass = classes.find((c) => String(c.id) === String(targetClassId));
+      const validClassId = matchedClass ? matchedClass.id : null;
+
       const payload = {
         author_id: user.id,
-        class_id: targetClassId ? targetClassId : null,
+        class_id: validClassId,
         category: modalCategory,
         title: title.trim(),
         content: combinedContent,
@@ -196,7 +210,7 @@ function BoardContent() {
           .insert([payload]);
 
         if (error) throw error;
-        alert('게시글이 성공적으로 등록되었습니다!');
+        alert(`${matchedClass ? `[${matchedClass.name}] 반` : '학원 전체'} 게시글이 성공적으로 등록되었습니다!`);
       }
 
       setShowModal(false);
@@ -312,6 +326,7 @@ function BoardContent() {
           ) : (
             filteredPosts.map((post) => {
               const matchedClassName = post.classes?.name || classes.find((c) => String(c.id) === String(post.class_id))?.name || '학원 전체 공지';
+              const isPublic = !post.class_id;
               const authorName = post.users?.name || '선생님';
               const rawContent = post.content || '';
               const ytId = getYouTubeId(rawContent);
@@ -326,8 +341,8 @@ function BoardContent() {
                   <div className="flex justify-between items-start">
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="bg-indigo-50 text-indigo-700 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-indigo-100">
-                          📘 {matchedClassName}
+                        <span className={isPublic ? 'text-[10px] font-bold px-2.5 py-0.5 rounded-full border bg-slate-100 text-slate-700 border-slate-200' : 'text-[10px] font-bold px-2.5 py-0.5 rounded-full border bg-indigo-50 text-indigo-700 border-indigo-100'}>
+                          {isPublic ? '🌐 학원 전체 공지' : ('🎯 [' + matchedClassName + ']')}
                         </span>
                         <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
                           {post.category === 'NOTICE' && '📢 일반 공지'}
@@ -371,7 +386,7 @@ function BoardContent() {
                   {ytId && (
                     <div className="mt-3 aspect-video w-full rounded-2xl overflow-hidden shadow-sm border border-slate-200 bg-black">
                       <iframe
-                        src={`https://www.youtube.com/embed/${ytId}`}
+                        src={'https://www.youtube.com/embed/' + ytId}
                         title="수업 복습 영상"
                         className="w-full h-full border-0"
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -422,18 +437,18 @@ function BoardContent() {
             <form onSubmit={handleSubmitPost} className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">대상 반</label>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">게시 대상 반</label>
                   <select
                     value={targetClassId}
                     onChange={(e) => setTargetClassId(e.target.value)}
                     className="w-full p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-bold text-slate-800 focus:outline-none"
                   >
-                    <option value="">🌐 학원 전체 공지</option>
                     {classes.map((cls) => (
                       <option key={cls.id} value={cls.id}>
-                        📘 {cls.name}
+                        🎯 [{cls.name}] 전용 게시글
                       </option>
                     ))}
+                    <option value="">🌐 학원 전체 학생 공지</option>
                   </select>
                 </div>
 
@@ -444,8 +459,8 @@ function BoardContent() {
                     onChange={(e) => setModalCategory(e.target.value)}
                     className="w-full p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-bold text-slate-800 focus:outline-none"
                   >
-                    <option value="NOTICE">📢 일반 공지</option>
                     <option value="HOMEWORK">📝 숙제 공지</option>
+                    <option value="NOTICE">📢 일반 공지</option>
                     <option value="VIDEO">🎥 복습 영상</option>
                     <option value="MATERIAL">📁 수업 자료</option>
                     <option value="QNA">💬 질의응답</option>

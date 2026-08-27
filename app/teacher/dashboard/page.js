@@ -20,6 +20,32 @@ export default function TeacherDashboard() {
   // 반 생성 폼
   const [newClassName, setNewClassName] = useState('');
 
+  // 📲 카카오톡 초대 및 앱 설치 안내 링크 복사/공유
+  const handleShareKakaoLink = async () => {
+    const appUrl = typeof window !== 'undefined' ? window.location.origin : 'https://math-academy-app.vercel.app';
+    const shareText = `[품수학 학원 공식 앱 안내]\n안녕하세요! 품수학 학원 전용 알림 앱입니다.\n아래 링크를 눌러 스마트폰 홈 화면에 추가하시면 반별 숙제 공지와 1:1 질문 풀이 알림을 실시간으로 확인하실 수 있습니다.\n\n🔗 품수학 앱 바로가기:\n${appUrl}`;
+
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title: '품수학 학원 전용 앱',
+          text: shareText,
+          url: appUrl,
+        });
+        return;
+      } catch (err) {
+        // User cancelled or fallback to clipboard
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(shareText);
+      alert('💬 카카오톡 전송용 안내 문구와 링크가 복사되었습니다!\n카톡 채팅방이나 단톡방에 붙여넣어(Ctrl+V) 보내주세요.');
+    } catch (err) {
+      prompt('아래 링크를 복사하여 카카오톡으로 전달해 주세요:', shareText);
+    }
+  };
+
   // 🎯 메인에 배치된 엑셀 2박스 일괄 학생 등록 상태
   const [batchNamesText, setBatchNamesText] = useState('');   // 이름 세로 박스
   const [batchPhonesText, setBatchPhonesText] = useState(''); // 전화번호 세로 박스

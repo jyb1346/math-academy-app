@@ -294,6 +294,14 @@ export default function TeacherDashboard() {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleShareKakaoLink}
+            className="text-xs bg-amber-300 hover:bg-amber-400 text-amber-950 font-black px-3.5 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5"
+            title="학부모/학생에게 카톡으로 앱 설치 링크 보내기"
+          >
+            <span>💬</span>
+            <span>카톡 앱 초대 링크</span>
+          </button>
           {isHeadTeacher && (
             <button
               onClick={() => router.push('/admin/dashboard')}

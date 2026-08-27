@@ -25,13 +25,23 @@ export default function PushNotificationManager({ user }) {
   const [showIosGuide, setShowIosGuide] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
 
+  // 👁️ 배너 수동 닫기 상태
+  const [dismissInstallBanner, setDismissInstallBanner] = useState(false);
+  const [dismissPushBanner, setDismissPushBanner] = useState(false);
+  const [showTestControls, setShowTestControls] = useState(false);
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      // 이미 앱(홈 화면 추가 상태)으로 실행 중인지 확인
       const isApp = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
       setIsStandalone(Boolean(isApp));
 
-      // 안드로이드 / 크롬 PWA 설치 이벤트 감지
+      if (localStorage.getItem('dismiss_install_banner') === 'true') {
+        setDismissInstallBanner(true);
+      }
+      if (localStorage.getItem('dismiss_push_banner') === 'true') {
+        setDismissPushBanner(true);
+      }
+
       window.addEventListener('beforeinstallprompt', (e) => {
         e.preventDefault();
         setDeferredPrompt(e);
@@ -58,7 +68,7 @@ export default function PushNotificationManager({ user }) {
 
   const handleSubscribe = async () => {
     if (!isSupported) {
-      alert('현재 브라우저에서는 웹 푸시 알림을 지원하지 않습니다. (아이폰은 Safari에서 \'홈 화면에 추가\' 후 이용해 주세요)');
+      alert('현재 브라우저에서는 웹 푸시 알림을 지원하지 않습니다. (아이폰은 Safari에서 [홈 화면에 추가] 후 이용해 주세요)');
       return;
     }
 
@@ -77,7 +87,6 @@ export default function PushNotificationManager({ user }) {
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       });
 
-      // 서버에 구독 저장
       await fetch('/api/push/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -88,7 +97,7 @@ export default function PushNotificationManager({ user }) {
       });
 
       setIsSubscribed(true);
-      alert('🔔 품수학 학원 실시간 알림이 활성화되었습니다! [내 폰으로 테스트 알림] 버튼을 눌러 테스트해 보세요.');
+      alert('🔔 품수학 학원 실시간 알림이 활성화되었습니다!');
     } catch (err) {
       console.error(err);
       alert('알림 활성화 실패: ' + err.message);
@@ -97,7 +106,6 @@ export default function PushNotificationManager({ user }) {
     }
   };
 
-  // 🎯 내 핸드폰으로 즉시 테스트 알림 발송
   const handleSendTestPush = async () => {
     if (!user?.id) return alert('로그인 사용자 정보가 없습니다.');
     setTestSending(true);
@@ -127,83 +135,129 @@ export default function PushNotificationManager({ user }) {
     }
   };
 
-  // 📲 홈 화면 바로가기 설치 버튼 클릭 핸들러
   const handleInstallApp = async () => {
     if (deferredPrompt) {
-      // 안드로이드 / 크롬
       deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') {
         setDeferredPrompt(null);
       }
     } else {
-      // 아이폰(iOS) 안내 모달 열기
       setShowIosGuide(true);
     }
   };
 
   return (
     <div className="space-y-2">
-      {/* 1. 홈 화면 바로가기 추가 안내 배너 (홈 화면에 아직 추가 안 된 경우 표시) */}
-      {!isStandalone && (
-        <div className="bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-sm flex flex-col sm:flex-row justify-between items-center gap-2 text-xs">
+      {/* 1. 홈 화면 바로가기 추가 안내 배너 (앱 모드가 아니고, 닫지 않았을 때 표시) */}
+      {!isStandalone && !dismissInstallBanner && (
+        <div className="bg-slate-900 text-white px-4 py-2.5 rounded-2xl shadow-sm flex flex-col sm:flex-row justify-between items-center gap-2 text-xs">
           <div className="flex items-center gap-3">
-            <img src="/apple-touch-icon.png" alt="품수학 아이콘" className="w-8 h-8 rounded-xl bg-white p-0.5 shadow-sm" />
+            <img src="/apple-touch-icon.png" alt="품수학" className="w-7 h-7 rounded-xl bg-white p-0.5" />
             <div>
-              <span className="font-extrabold text-amber-300 block">
+              <span className="font-extrabold text-amber-300">
                 📲 핸드폰 홈 화면에 품수학 앱을 추가해 보세요!
               </span>
-              <span className="text-[11px] text-slate-300">
-                인터넷 주소창 없이 진짜 앱처럼 켜지고 알림도 더 빠르고 안정적으로 울립니다.
+              <span className="text-[11px] text-slate-300 ml-1.5 hidden md:inline">
+                진짜 앱처럼 풀스크린으로 실행되고 알림도 더 빠릅니다.
               </span>
             </div>
           </div>
 
-          <button
-            onClick={handleInstallApp}
-            className="bg-amber-400 hover:bg-amber-500 text-slate-950 font-black px-3.5 py-1.5 rounded-xl shadow-xs transition whitespace-nowrap"
-          >
-            + 홈 화면에 바로가기 추가
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={handleInstallApp}
+              className="bg-amber-400 hover:bg-amber-500 text-slate-950 font-black px-3 py-1.5 rounded-xl shadow-xs transition whitespace-nowrap"
+            >
+              + 바로가기 추가
+            </button>
+            <button
+              onClick={() => {
+                setDismissInstallBanner(true);
+                localStorage.setItem('dismiss_install_banner', 'true');
+              }}
+              className="text-slate-400 hover:text-white px-2 py-1"
+              title="닫기"
+            >
+              ✕
+            </button>
+          </div>
         </div>
       )}
 
-      {/* 2. 실시간 푸시 알림 제어 배너 */}
-      <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 text-white px-5 py-3.5 rounded-2xl shadow-md flex flex-col sm:flex-row justify-between items-center gap-3 text-xs animate-in fade-in">
-        <div className="flex items-center gap-2.5">
-          <span className="text-xl">🔔</span>
-          <div>
-            <span className="font-extrabold block">
-              {isSubscribed ? '✅ 실시간 알림이 켜져 있습니다.' : '새 공지 및 1:1 질문 답변이 올라오면 핸드폰으로 바로 알림을 받아보세요!'}
-            </span>
-            <span className="text-[11px] text-blue-100 font-medium">
-              {isSubscribed ? '공지 및 1:1 질문 등록 시 핸드폰 상단으로 즉시 알림이 울립니다.' : '알림을 켜두시면 학원 소식을 놓치지 않고 확인할 수 있습니다.'}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {isSubscribed && (
-            <button
-              onClick={handleSendTestPush}
-              disabled={testSending}
-              className="bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold px-3.5 py-1.5 rounded-xl shadow-xs transition whitespace-nowrap disabled:bg-slate-400"
-            >
-              {testSending ? '발송 중...' : '📲 내 폰으로 테스트 알림'}
-            </button>
-          )}
+      {/* 2. 실시간 푸시 알림 배너 */}
+      {/* 🎯 이미 알림이 켜져 있는(isSubscribed) 경우: 큰 배너는 자동으로 숨기고, 우측에 작고 깔끔한 배지로 표시! */}
+      {isSubscribed ? (
+        <div className="flex justify-end items-center gap-2 pt-1 text-[11px]">
+          <span className="bg-emerald-50 text-emerald-700 font-bold border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+            <span>🟢</span>
+            <span>실시간 알림 ON</span>
+          </span>
 
           <button
-            onClick={handleSubscribe}
-            disabled={loading}
-            className="bg-white text-indigo-900 font-black px-4 py-1.5 rounded-xl hover:bg-indigo-50 transition shadow-sm whitespace-nowrap disabled:bg-slate-300"
+            onClick={() => setShowTestControls(!showTestControls)}
+            className="text-slate-400 hover:text-slate-600 font-bold underline cursor-pointer"
           >
-            {loading ? '설정 중...' : (isSubscribed ? '🔄 알림 재등록' : '알림 켜기 ↗')}
+            {showTestControls ? '닫기' : '알림 관리/테스트'}
           </button>
-        </div>
-      </div>
 
-      {/* 🔍 아이폰 홈 화면 추가 3초 안내 모달 */}
+          {showTestControls && (
+            <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200 shadow-xs animate-in fade-in">
+              <button
+                onClick={handleSendTestPush}
+                disabled={testSending}
+                className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-2.5 py-1 rounded-lg transition text-[11px] disabled:bg-slate-400"
+              >
+                {testSending ? '발송 중...' : '📲 내 폰 테스트'}
+              </button>
+              <button
+                onClick={handleSubscribe}
+                disabled={loading}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2.5 py-1 rounded-lg transition text-[11px]"
+              >
+                🔄 재등록
+              </button>
+            </div>
+          )}
+        </div>
+      ) : !dismissPushBanner && (
+        /* 아직 알림을 켜지 않은 경우: 알림 켜기 배너 표시 */
+        <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 text-white px-4 py-3 rounded-2xl shadow-sm flex flex-col sm:flex-row justify-between items-center gap-2 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🔔</span>
+            <div>
+              <span className="font-extrabold block">
+                새 공지 및 1:1 질문 답변이 올라오면 핸드폰으로 바로 알림을 받아보세요!
+              </span>
+              <span className="text-[11px] text-blue-100">
+                아이폰(iOS) 사용자는 사파리에서 [홈 화면에 추가] 후 알림을 켜주세요.
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={handleSubscribe}
+              disabled={loading}
+              className="bg-white text-indigo-900 font-black px-3.5 py-1.5 rounded-xl hover:bg-indigo-50 transition shadow-xs whitespace-nowrap disabled:bg-slate-300"
+            >
+              {loading ? '설정 중...' : '알림 켜기 ↗'}
+            </button>
+            <button
+              onClick={() => {
+                setDismissPushBanner(true);
+                localStorage.setItem('dismiss_push_banner', 'true');
+              }}
+              className="text-blue-200 hover:text-white px-2 py-1"
+              title="닫기"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 🔍 아이폰 홈 화면 추가 안내 모달 */}
       {showIosGuide && (
         <div
           onClick={() => setShowIosGuide(false)}

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
+import PushNotificationManager from '@/components/PushNotificationManager';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 
 export default function TeacherDashboard() {
@@ -10,6 +11,7 @@ export default function TeacherDashboard() {
   const [classes, setClasses] = useState([]);
   const [students, setStudents] = useState([]);
   const [classStudents, setClassStudents] = useState([]);
+  const [pendingQnaCount, setPendingQnaCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   // 비밀번호 변경 모달 상태
@@ -67,6 +69,13 @@ export default function TeacherDashboard() {
 
       const { data: csData } = await supabase.from('class_students').select('*');
       setClassStudents(csData || []);
+
+      const { data: qnaData } = await supabase
+        .from('qna')
+        .select('id, status')
+        .eq('teacher_id', teacherId)
+        .eq('status', 'PENDING');
+      setPendingQnaCount(qnaData ? qnaData.length : 0);
 
     } catch (err) {
       console.error(err);
@@ -311,10 +320,11 @@ export default function TeacherDashboard() {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 mt-8 space-y-8">
+        <PushNotificationManager user={user} />
 
         {/* 🎯 1. 메인 대형 액션 메뉴 */}
         <section className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             
             {/* 카드 A: 일일 피드백 작성 */}
             <div

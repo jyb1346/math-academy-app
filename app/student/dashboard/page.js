@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import PushNotificationManager from '@/components/PushNotificationManager';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 
 export default function StudentDashboard() {
@@ -60,6 +61,7 @@ export default function StudentDashboard() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 mt-8 space-y-6">
+        <PushNotificationManager user={user} />
         
         {/* 학생 환영 인사 카드 */}
         <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -149,7 +151,7 @@ export default function StudentDashboard() {
 
           {/* 5. Q&A게시판 */}
           <div
-            onClick={() => router.push('/board?category=QNA')}
+            onClick={() => router.push('/qna')}
             className="group relative bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs cursor-pointer hover:border-amber-300 transition-all duration-300 col-span-1 md:col-span-2"
           >
             <div className="flex justify-between items-start">
@@ -159,8 +161,8 @@ export default function StudentDashboard() {
               <span className="text-xl text-slate-300 group-hover:text-amber-600 transition-all">→</span>
             </div>
             <div className="mt-4">
-              <h3 className="text-lg font-extrabold text-slate-800">수학 질의응답 (Q&A) 게시판</h3>
-              <p className="text-xs text-slate-400 mt-1">모르는 문제 질문을 남기면 담당 선생님이 친절하게 답변해 드립니다.</p>
+              <h3 className="text-lg font-extrabold text-slate-800">1:1 수학 질의응답 (Q&A)</h3>
+              <p className="text-xs text-slate-400 mt-1">모르는 문제 사진을 찍어 올리면 담당 선생님이 1:1로 풀이 답변을 남겨 드립니다.</p>
             </div>
           </div>
 

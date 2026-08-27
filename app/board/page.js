@@ -498,7 +498,7 @@ function BoardMain() {
   if (loading) return <div className="p-8 text-center font-bold text-slate-500">게시판 로딩 중...</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-16 font-sans text-slate-800">
+    <div className="min-h-screen bg-gray-50 pb-32 font-sans text-slate-800">
       
       {/* 헤더 */}
       <header className="bg-white border-b py-4 px-6 shadow-xs flex justify-between items-center sticky top-0 z-30">
@@ -613,20 +613,20 @@ function BoardMain() {
                   <div className="flex justify-between items-start">
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className={isPublic ? 'text-[11px] font-bold px-2.5 py-0.5 rounded-full border bg-slate-100 text-slate-700 border-slate-200' : 'text-[11px] font-bold px-2.5 py-0.5 rounded-full border bg-indigo-50 text-indigo-700 border-indigo-100'}>
+                        <span className={isPublic ? 'text-xs sm:text-sm font-black px-3.5 py-1 rounded-full border bg-slate-100 text-slate-700 border-slate-200' : 'text-xs sm:text-sm font-black px-3.5 py-1 rounded-full border bg-indigo-50 text-indigo-700 border-indigo-100'}>
                           {isPublic ? '🌐 학원 전체 공지' : ('🎯 [' + matchedClassName + ']')}
                         </span>
-                        <span className="bg-slate-100 text-slate-600 text-[11px] font-bold px-2.5 py-0.5 rounded-full">
+                        <span className="bg-slate-100 text-slate-600 text-xs sm:text-sm font-black px-3.5 py-1 rounded-full">
                           {post.category === 'NOTICE' && '📢 일반 공지'}
                           {post.category === 'HOMEWORK' && '📝 숙제 공지'}
                           {post.category === 'VIDEO' && '🎥 복습 영상'}
                           {post.category === 'MATERIAL' && '📁 수업 자료'}
                         </span>
-                        <span className="text-xs text-slate-400 font-semibold ml-1">
+                        <span className="text-sm text-slate-500 font-bold ml-1">
                           작성자: {authorName} • {new Date(post.created_at).toLocaleDateString()}
                         </span>
                       </div>
-                      <h3 className="text-base font-extrabold text-slate-800 pt-1">{post.title}</h3>
+                      <h3 className="text-xl sm:text-2xl font-black text-slate-900 pt-1 leading-snug tracking-tight">{post.title}</h3>
                     </div>
 
                     {user?.role !== 'STUDENT' && (
@@ -648,9 +648,9 @@ function BoardMain() {
                   </div>
 
                   {rawContent && (
-                    <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap bg-slate-50/60 p-4 rounded-xl border border-slate-100">
+                    <div className="text-base sm:text-lg text-slate-800 leading-relaxed sm:leading-loose whitespace-pre-wrap bg-slate-50/90 p-5 sm:p-6 rounded-2xl border border-slate-200 font-semibold">
                       {rawContent}
-                    </p>
+                    </div>
                   )}
 
                   {/* 🎬 유튜브 영상 자동 임베드 */}
@@ -680,7 +680,7 @@ function BoardMain() {
                           href={fileUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-xl font-bold transition"
+                          className="inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-4 py-2 rounded-xl font-black transition text-sm sm:text-base shadow-xs"
                         >
                           <span>📁 첨부 파일</span>
                           <span>↗</span>
@@ -694,7 +694,7 @@ function BoardMain() {
                         /* 학생: [확인했습니다] 토글 버튼 */
                         <button
                           onClick={() => handleToggleConfirm(post.id)}
-                          className={`text-xs font-black px-4 py-1.5 rounded-xl transition flex items-center gap-1.5 ${
+                          className={`text-sm sm:text-base font-black px-5 py-2.5 rounded-2xl transition flex items-center gap-2 shadow-sm ${
                             isStudentConfirmed
                               ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
                               : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200'
@@ -707,7 +707,7 @@ function BoardMain() {
                         /* 선생님: [확인 N명 / 미확인 N명] 클릭 시 상세 명단 모달 */
                         <button
                           onClick={() => setActiveConfirmModalPost(post)}
-                          className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3.5 py-1.5 rounded-xl transition border border-slate-200 flex items-center gap-2"
+                          className="text-sm bg-slate-100 hover:bg-slate-200 text-slate-800 font-black px-4 py-2.5 rounded-2xl transition border border-slate-200 flex items-center gap-2"
                         >
                           <span>👀 읽음 현황:</span>
                           <span className="text-emerald-700 font-extrabold">확인 {confirmedList.length}명</span>

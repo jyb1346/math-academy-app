@@ -109,7 +109,7 @@ export default function StudentEvalPage() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-100/70 pb-20 font-sans text-slate-800">
+    <div className="min-h-screen bg-slate-100/70 pb-32 font-sans text-slate-800">
       
       {/* 헤더 */}
       <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-30 px-6 py-4 flex justify-between items-center shadow-xs">

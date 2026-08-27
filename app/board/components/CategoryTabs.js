@@ -13,7 +13,7 @@ export default function CategoryTabs({
       <div className="flex gap-1.5 overflow-x-auto pb-1 border-b border-slate-200">
         <button
           onClick={() => setCategory('ALL')}
-          className={`px-4 py-2 rounded-xl text-xs font-black transition whitespace-nowrap ${
+          className={`px-4 py-2.5 rounded-xl text-sm font-black transition whitespace-nowrap ${
             category === 'ALL'
               ? 'bg-blue-600 text-white shadow-md'
               : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -23,7 +23,7 @@ export default function CategoryTabs({
         </button>
         <button
           onClick={() => setCategory('NOTICE_HOMEWORK')}
-          className={`px-4 py-2 rounded-xl text-xs font-black transition whitespace-nowrap ${
+          className={`px-4 py-2.5 rounded-xl text-sm font-black transition whitespace-nowrap ${
             category === 'NOTICE_HOMEWORK'
               ? 'bg-blue-600 text-white shadow-md'
               : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -33,7 +33,7 @@ export default function CategoryTabs({
         </button>
         <button
           onClick={() => setCategory('VIDEO')}
-          className={`px-4 py-2 rounded-xl text-xs font-black transition whitespace-nowrap ${
+          className={`px-4 py-2.5 rounded-xl text-sm font-black transition whitespace-nowrap ${
             category === 'VIDEO'
               ? 'bg-blue-600 text-white shadow-md'
               : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -43,7 +43,7 @@ export default function CategoryTabs({
         </button>
         <button
           onClick={() => setCategory('MATERIAL')}
-          className={`px-4 py-2 rounded-xl text-xs font-black transition whitespace-nowrap ${
+          className={`px-4 py-2.5 rounded-xl text-sm font-black transition whitespace-nowrap ${
             category === 'MATERIAL'
               ? 'bg-blue-600 text-white shadow-md'
               : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -57,7 +57,7 @@ export default function CategoryTabs({
       <div className="flex gap-2 overflow-x-auto pb-1 items-center">
         <button
           onClick={() => setSelectedClassId('PUBLIC')}
-          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 ${
+          className={`px-4 py-2 rounded-xl text-sm font-extrabold transition whitespace-nowrap flex items-center gap-1.5 ${
             selectedClassId === 'PUBLIC'
               ? 'bg-slate-800 text-white shadow-sm'
               : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
@@ -71,7 +71,7 @@ export default function CategoryTabs({
           <button
             key={c.id}
             onClick={() => setSelectedClassId(String(c.id))}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1 ${
+            className={`px-4 py-2 rounded-xl text-sm font-extrabold transition whitespace-nowrap flex items-center gap-1 ${
               String(selectedClassId) === String(c.id)
                 ? 'bg-indigo-600 text-white shadow-sm'
                 : 'bg-indigo-50 border border-indigo-100 text-indigo-700 hover:bg-indigo-100'

@@ -103,16 +103,16 @@ function BoardContent() {
     }
   };
 
-  const handleOpenCreateModal = () => {
-    setEditingPost(null);
-    setTitle('');
-    setContent('');
-    setDueDate('');
-    setVideoUrl('');
-    setFileUrl('');
-    setTargetClassId('');
-    setShowModal(true);
-  };
+const handleOpenCreateModal = () => {
+  setEditingPost(null);
+  setTitle('');
+  setContent('');
+  setDueDate('');
+  setVideoUrl('');
+  setFileUrl('');
+  setTargetClassId(''); // 👈 초기값을 빈 값(전체 공지)으로 세팅
+  setShowModal(true);
+};
 
   const handleOpenEditModal = (post) => {
     setEditingPost(post);
@@ -139,15 +139,15 @@ function BoardContent() {
     const validClassId = selectedClass ? selectedClass.id : null;
 
     const payload = {
-      author_id: user.id,
-      class_id: validClassId,
-      category,
-      title: title.trim(),
-      content: content.trim(),
-      due_date: dueDate || null,
-      video_url: videoUrl.trim() || null,
-      file_url: fileUrl.trim() || null,
-    };
+  author_id: user.id,
+  class_id: targetClassId ? targetClassId : null, // 👈 targetClassId가 있을 때만 해당 반 ID 전달
+  category,
+  title: title.trim(),
+  content: content.trim(),
+  due_date: dueDate || null,
+  video_url: videoUrl.trim() || null,
+  file_url: fileUrl.trim() || null,
+};
 
     if (editingPost) {
       const { error } = await supabase
@@ -360,19 +360,23 @@ function BoardContent() {
 
             <form onSubmit={handleSubmitPost} className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">대상 반</label>
-                  <select
-  value={targetClassId}
-  onChange={(e) => setTargetClassId(e.target.value)}
-  className="w-full p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-bold text-slate-800 focus:outline-none"
->
-  <option value="">📢 전체 공지 (반 선택 안 함)</option>
-  {classes.map((cls) => (
-    <option key={cls.id} value={cls.id}>📘 {cls.name}</option>
-  ))}
-</select>
-                </div>
+               <div>
+  <label className="block text-xs font-bold text-slate-600 mb-1">대상 반</label>
+  <select
+    value={targetClassId}
+    onChange={(e) => setTargetClassId(e.target.value)}
+    className="w-full p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-bold text-slate-800 focus:outline-none"
+  >
+    <option value="">📢 전체 공지 (반 선택 안 함)</option>
+    {classes.map((cls) => (
+      // 💡 cls.id가 실제 DB classes 테이블의 primary key ID여야 합니다.
+      <option key={cls.id} value={cls.id}>
+        📘 {cls.name}
+      </option>
+    ))}
+  </select>
+</div>
+               
 
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">카테고리</label>

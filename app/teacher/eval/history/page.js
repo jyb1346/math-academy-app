@@ -144,13 +144,22 @@ export default function EvalHistoryPage() {
     );
   };
 
+  // 🎯 선택된 반에 속한 학생 목록 (중복 배정 완벽 지원)
+  const filteredStudents = selectedClassId === 'ALL'
+    ? students
+    : students.filter((st) =>
+        classStudents.some(
+          (cs) => String(cs.class_id) === String(selectedClassId) && String(cs.student_id) === String(st.id)
+        )
+      );
+
   const filteredEvals = evaluations.filter((item) => {
     if (selectedStudentId !== 'ALL' && item.student_id !== selectedStudentId) {
       return false;
     }
     if (selectedClassId !== 'ALL') {
       const inClass = classStudents.some(
-        (cs) => cs.class_id === parseInt(selectedClassId) && cs.student_id === item.student_id
+        (cs) => String(cs.class_id) === String(selectedClassId) && cs.student_id === item.student_id
       );
       if (!inClass) return false;
     }
@@ -213,7 +222,7 @@ export default function EvalHistoryPage() {
                 className="w-full p-2.5 border rounded-xl text-xs bg-white font-bold text-slate-700"
               >
                 <option value="ALL">전체 학생 보기</option>
-                {students.map((st) => (
+                {filteredStudents.map((st) => (
                   <option key={st.id} value={st.id}>{st.name} ({st.email})</option>
                 ))}
               </select>

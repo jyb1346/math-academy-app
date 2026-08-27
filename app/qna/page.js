@@ -42,34 +42,34 @@ export default function QnaPage() {
     }
   }, []);
 
+  // 🎯 학생 및 선생님 정보 매핑을 위한 맵
+  const [usersMap, setUsersMap] = useState({});
+
   const fetchQuestions = async (currentUser) => {
     try {
       setLoading(true);
-      let query = supabase.from('qna').select('*, users!qna_student_id_fkey(name), teacher:users!qna_teacher_id_fkey(name)');
 
+      // 전체 사용자(학생 및 선생님) 이름/이메일 사전 로드
+      const { data: uData } = await supabase.from('users').select('id, name, email, role');
+      const uMap = {};
+      (uData || []).forEach((u) => {
+        uMap[u.id] = u;
+      });
+      setUsersMap(uMap);
+
+      // QnA 데이터 조회 (외래키 명칭에 의존하지 않고 안전하게 전체 조회)
+      let query = supabase.from('qna').select('*');
       if (currentUser.role === 'STUDENT') {
         query = query.eq('student_id', currentUser.id);
       } else {
         query = query.eq('teacher_id', currentUser.id);
       }
 
-      const { data, error } = await query.order('created_at', { ascending: false });
-
-      if (error) {
-        console.warn('QnA join fetch failed, trying fallback select:', error);
-        let fbQuery = supabase.from('qna').select('*');
-        if (currentUser.role === 'STUDENT') {
-          fbQuery = fbQuery.eq('student_id', currentUser.id);
-        } else {
-          fbQuery = fbQuery.eq('teacher_id', currentUser.id);
-        }
-        const { data: fbData } = await fbQuery.order('created_at', { ascending: false });
-        setQuestions(fbData || []);
-      } else {
-        setQuestions(data || []);
-      }
+      const { data: qData, error } = await query.order('created_at', { ascending: false });
+      if (error) throw error;
+      setQuestions(qData || []);
     } catch (err) {
-      console.error(err);
+      console.error('QnA fetch error:', err);
     } finally {
       setLoading(false);
     }
@@ -469,8 +469,10 @@ export default function QnaPage() {
             filteredQuestions.map((item) => {
               const questionImages = parseImages(item.question_image_url);
               const answerImages = parseImages(item.answer_image_url);
-              const studentName = item.users?.name || '학생';
-              const teacherName = item.teacher?.name || '담당 선생님';
+              const studentInfo = usersMap[item.student_id];
+              const studentName = studentInfo?.name ? `${studentInfo.name} 학생` : '학생';
+              const teacherInfo = usersMap[item.teacher_id];
+              const teacherName = teacherInfo?.name ? `${teacherInfo.name} 선생님` : '담당 선생님';
 
               const qState = answerState[item.id] || {};
               const isAnswerFormOpen = isTeacher && (item.status === 'PENDING' || qState.isEditing);
@@ -491,8 +493,8 @@ export default function QnaPage() {
                         >
                           {item.status === 'PENDING' ? '⏳ 답변 대기 중' : '✅ 답변 완료'}
                         </span>
-                        <span className="text-xs font-bold text-slate-700">
-                          👤 {studentName} 학생의 질문
+                        <span className="text-xs font-black bg-indigo-50 text-indigo-800 border border-indigo-200 px-2.5 py-0.5 rounded-full">
+                          👤 {studentName} {studentInfo?.email ? `(${studentInfo.email.split('@')[0]})` : ''}의 1:1 질문
                         </span>
                         <span className="text-[11px] text-slate-400 font-medium">
                           • {new Date(item.created_at).toLocaleString()}

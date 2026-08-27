@@ -62,6 +62,21 @@ function BoardMain() {
 
   const router = useRouter();
 
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const catParam = searchParams.get('category');
+    if (catParam === 'HOMEWORK' || catParam === 'NOTICE' || catParam === 'NOTICE_HOMEWORK') {
+      setCategory('NOTICE_HOMEWORK');
+    } else if (catParam === 'VIDEO') {
+      setCategory('VIDEO');
+    } else if (catParam === 'MATERIAL') {
+      setCategory('MATERIAL');
+    } else if (catParam === 'ALL') {
+      setCategory('ALL');
+    }
+  }, [searchParams]);
+
   useEffect(() => {
     setDueDate(new Date().toISOString().split('T')[0]);
 

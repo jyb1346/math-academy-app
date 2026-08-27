@@ -370,6 +370,32 @@ export default function TeacherDashboard() {
               </div>
             </div>
 
+            {/* 🎯 카드 C: 1:1 수학 질의응답 (Q&A) */}
+            <div
+              onClick={() => router.push('/qna')}
+              className="group relative bg-gradient-to-br from-amber-500 via-orange-600 to-amber-700 text-white p-7 rounded-3xl shadow-xl shadow-amber-950/10 cursor-pointer overflow-hidden transition-all duration-300 hover:scale-[1.01]"
+            >
+              <div className="absolute top-0 right-0 -mt-8 -mr-8 w-40 h-40 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
+
+              <div className="flex justify-between items-start">
+                <span className={`text-xs px-3.5 py-1 rounded-full font-black flex items-center gap-1.5 ${
+                  pendingQnaCount > 0
+                    ? 'bg-rose-600 text-white animate-pulse shadow-md'
+                    : 'bg-white/20 border border-white/20 text-white'
+                }`}>
+                  {pendingQnaCount > 0 ? `🚨 미답변 질문 ${pendingQnaCount}건` : '✅ 답변 완료'}
+                </span>
+                <span className="text-3xl text-white/60 group-hover:text-white group-hover:translate-x-1 transition-all">→</span>
+              </div>
+
+              <div className="mt-8 space-y-1">
+                <h2 className="text-2xl font-black text-white">1:1 질의응답 (Q&A)</h2>
+                <p className="text-xs text-amber-100 font-normal leading-relaxed">
+                  담당 학생들이 올린 문제 사진과 질문을 확인하고 1:1 풀이 답변을 남깁니다.
+                </p>
+              </div>
+            </div>
+
           </div>
 
           <div className="flex justify-end">

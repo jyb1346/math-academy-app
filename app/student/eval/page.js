@@ -28,7 +28,7 @@ export default function StudentEvalPage() {
   const fetchStudentEvaluations = async (studentId) => {
     try {
       const { data, error } = await supabase
-        .from('evaluations')
+        .from('daily_evaluations')
         .select('*')
         .eq('student_id', studentId)
         .order('eval_date', { ascending: false });
@@ -40,6 +40,29 @@ export default function StudentEvalPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const renderAttendanceBadge = (status, latenessMins) => {
+    if (status === 'LATE') {
+      const minsText = latenessMins >= 30 ? '30분 이상 지각' : `${latenessMins || 5}분 이내 지각`;
+      return (
+        <span className="bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold px-3 py-1 rounded-full">
+          ⏰ {minsText}
+        </span>
+      );
+    }
+    if (status === 'ABSENT') {
+      return (
+        <span className="bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold px-3 py-1 rounded-full">
+          🔴 결석
+        </span>
+      );
+    }
+    return (
+      <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold px-3 py-1 rounded-full">
+        🟢 정상 출석
+      </span>
+    );
   };
 
   if (loading) return (
@@ -83,27 +106,42 @@ export default function StudentEvalPage() {
         ) : (
           evaluations.map((ev) => (
             <div key={ev.id} className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
-              <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                <span className="font-extrabold text-slate-800 text-sm">📅 {ev.eval_date} 피드백 리포트</span>
-                <span className="bg-blue-50 text-blue-700 text-xs font-bold px-3 py-1 rounded-full border border-blue-100">
-                  출결: {ev.attendance || '출석'}
-                </span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="font-extrabold text-slate-800 text-sm">📅 {ev.eval_date} 학습 리포트</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {renderAttendanceBadge(ev.attendance_status, ev.lateness_minutes)}
+                  <button
+                    onClick={() => router.push(`/report/${ev.id}`)}
+                    className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs px-3 py-1 rounded-full border border-indigo-200 transition"
+                  >
+                    📊 상세 웹 리포트 보기 ↗
+                  </button>
+                </div>
               </div>
 
               {/* 6대 영역 점수 요약 */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 bg-slate-50 p-3 rounded-2xl border border-slate-200/60 text-xs font-bold text-slate-700">
-                <div>개념 이해: <span className="text-blue-600 font-black">{ev.score_concept || '-'}점</span></div>
-                <div>연산 속도: <span className="text-blue-600 font-black">{ev.score_calc || '-'}점</span></div>
-                <div>응용 문제: <span className="text-blue-600 font-black">{ev.score_app || '-'}점</span></div>
-                <div>숙제 수행: <span className="text-blue-600 font-black">{ev.score_hw || '-'}점</span></div>
-                <div>수업 태도: <span className="text-blue-600 font-black">{ev.score_attitude || '-'}점</span></div>
-                <div>오답 정리: <span className="text-blue-600 font-black">{ev.score_review || '-'}점</span></div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/60 text-xs font-bold text-slate-700">
+                <div>개념 이해: <span className="text-blue-600 font-black">{ev.concept_score ?? '-'}점</span></div>
+                <div>연산 정확: <span className="text-blue-600 font-black">{ev.calc_score ?? '-'}점</span></div>
+                <div>응용 해결: <span className="text-blue-600 font-black">{ev.app_score ?? '-'}점</span></div>
+                <div>수업 집중: <span className="text-blue-600 font-black">{ev.attitude_score ?? '-'}점</span></div>
+                <div>과제 완성: <span className="text-blue-600 font-black">{ev.homework_score ?? '-'}점</span></div>
+                <div>오답 끈기: <span className="text-blue-600 font-black">{ev.perseverance_score ?? '-'}점</span></div>
               </div>
 
-              {ev.comment && (
-                <div className="text-xs text-slate-700 leading-relaxed bg-slate-50/50 p-3.5 rounded-2xl border border-slate-100">
+              {ev.teacher_comment && (
+                <div className="text-xs text-slate-700 leading-relaxed bg-slate-50/60 p-3.5 rounded-2xl border border-slate-100">
                   <span className="font-bold text-slate-900 block mb-1">💬 선생님 코멘트:</span>
-                  {ev.comment}
+                  {ev.teacher_comment}
+                </div>
+              )}
+
+              {ev.parent_reply && (
+                <div className="text-xs text-emerald-800 leading-relaxed bg-emerald-50/60 p-3.5 rounded-2xl border border-emerald-100">
+                  <span className="font-bold text-emerald-950 block mb-1">✉️ 학부모 답장:</span>
+                  {ev.parent_reply}
                 </div>
               )}
             </div>

@@ -84,35 +84,51 @@ export default function StudentReportPage() {
   }
 
   const chartData = [
-    { subject: '출석/지각', A: evalData.score_tardiness, fullMark: 10 },
-    { subject: '숙제완성도', A: evalData.score_homework, fullMark: 10 },
-    { subject: '수업몰입도', A: evalData.score_focus, fullMark: 10 },
-    { subject: '개념이해도', A: evalData.score_concept, fullMark: 10 },
-    { subject: '수업난이도', A: evalData.score_difficulty, fullMark: 10 },
-    { subject: '테스트점수', A: evalData.score_test, fullMark: 10 },
+    { subject: '개념이해', A: evalData.concept_score ?? 8, fullMark: 10 },
+    { subject: '연산정확', A: evalData.calc_score ?? 8, fullMark: 10 },
+    { subject: '응용해결', A: evalData.app_score ?? 8, fullMark: 10 },
+    { subject: '수업집중', A: evalData.attitude_score ?? 8, fullMark: 10 },
+    { subject: '과제완성', A: evalData.homework_score ?? 8, fullMark: 10 },
+    { subject: '오답끈기', A: evalData.perseverance_score ?? 8, fullMark: 10 },
   ];
+
+  const renderAttendanceText = () => {
+    if (evalData.attendance_status === 'LATE') {
+      const mins = evalData.lateness_minutes >= 30 ? '30분 이상 지각' : `${evalData.lateness_minutes || 5}분 지각`;
+      return `⏰ ${mins}`;
+    }
+    if (evalData.attendance_status === 'ABSENT') {
+      return '🔴 결석';
+    }
+    return '🟢 정상 출석';
+  };
 
   return (
     <div className="min-h-screen bg-blue-50 py-8 px-4 flex flex-col items-center justify-center">
       <div className="max-w-md w-full bg-white rounded-3xl shadow-xl border border-blue-100 overflow-hidden space-y-2">
         
         {/* 상단 리포트 헤더 */}
-        <div className="bg-blue-600 text-white p-6 text-center space-y-1">
+        <div className="bg-blue-600 text-white p-6 text-center space-y-1.5">
           <span className="bg-blue-500/50 text-white text-xs px-3 py-1 rounded-full font-semibold">
             품수학 일일 학습 보고서
           </span>
-          <h2 className="text-2xl font-extrabold pt-2">
+          <h2 className="text-2xl font-extrabold pt-1">
             {evalData.users?.name || '학생'} 피드백
           </h2>
-          <p className="text-xs text-blue-100">
-            수업 일자: {evalData.eval_date}
-          </p>
+          <div className="flex items-center justify-center gap-2 pt-1">
+            <span className="text-xs text-blue-100">
+              📅 수업 일자: {evalData.eval_date}
+            </span>
+            <span className="bg-white/20 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full">
+              {renderAttendanceText()}
+            </span>
+          </div>
         </div>
 
         {/* 육각형 그래프 영역 */}
         <div className="p-4 flex flex-col items-center">
           <h3 className="text-sm font-bold text-gray-700 mt-2 mb-1 text-center">
-            📊 6가지 영역별 학습 분석
+            📊 6대 핵심 역량별 학습 분석
           </h3>
           <div className="w-full h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -130,6 +146,16 @@ export default function StudentReportPage() {
               </RadarChart>
             </ResponsiveContainer>
           </div>
+
+          {/* 6대 역량 수치 그리드 */}
+          <div className="w-full grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-2xl border border-slate-200/80 text-xs font-bold text-slate-700 mt-1">
+            <div className="text-center">개념: <span className="text-blue-600 font-extrabold">{evalData.concept_score ?? '-'}점</span></div>
+            <div className="text-center">연산: <span className="text-blue-600 font-extrabold">{evalData.calc_score ?? '-'}점</span></div>
+            <div className="text-center">응용: <span className="text-blue-600 font-extrabold">{evalData.app_score ?? '-'}점</span></div>
+            <div className="text-center">집중: <span className="text-blue-600 font-extrabold">{evalData.attitude_score ?? '-'}점</span></div>
+            <div className="text-center">과제: <span className="text-blue-600 font-extrabold">{evalData.homework_score ?? '-'}점</span></div>
+            <div className="text-center">끈기: <span className="text-blue-600 font-extrabold">{evalData.perseverance_score ?? '-'}점</span></div>
+          </div>
         </div>
 
         {/* 선생님 피드백 */}
@@ -138,7 +164,7 @@ export default function StudentReportPage() {
             Teacher's Feedback
           </h4>
           <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap bg-white p-4 rounded-xl border border-gray-200">
-            {evalData.comment || '오늘도 수고 많았습니다.'}
+            {evalData.teacher_comment || '오늘도 열심히 참여했습니다!'}
           </p>
         </div>
 

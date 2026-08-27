@@ -118,6 +118,14 @@ export default function TeacherDashboard() {
       .split('\n')
       .map((line) => line.trim());
 
+    const validPhones = phoneList.filter((p) => p.length > 0);
+    if (validPhones.length > 0 && nameList.length !== validPhones.length) {
+      const proceed = confirm(
+        `⚠️ 입력된 이름 개수(${nameList.length}명)와 전화번호 개수(${validPhones.length}개)가 서로 다릅니다.\n줄바꿈 순서대로 매칭되며, 번호가 부족한 학생은 빈 번호로 등록됩니다.\n\n계속 진행하시겠습니까?`
+      );
+      if (!proceed) return;
+    }
+
     if (nameList.length === 0) return alert('유효한 학생 이름이 없습니다.');
 
     try {

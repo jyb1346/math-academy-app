@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://math-academy-app.vercel.app"),
+  metadataBase: new URL("https://math-academy-app-kappa.vercel.app"),
   title: "품수학",
   description: "품수학 학원 학습 관리 및 알림",
   manifest: "/manifest.json",
@@ -26,23 +26,23 @@ export const metadata: Metadata = {
   openGraph: {
     title: "품수학 학원 전용 앱",
     description: "숙제 공지 및 1:1 질의응답 실시간 알림 서비스",
-    url: "https://math-academy-app.vercel.app",
+    url: "https://math-academy-app-kappa.vercel.app",
     siteName: "품수학",
     images: [
       {
-        url: "/icon-512.png",
-        width: 512,
-        height: 512,
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
         alt: "품수학 학원 로고",
       },
     ],
     type: "website",
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "품수학 학원 전용 앱",
     description: "숙제 공지 및 1:1 질의응답 실시간 알림 서비스",
-    images: ["/icon-512.png"],
+    images: ["/og-image.png"],
   },
   icons: {
     icon: [
@@ -65,6 +65,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="품수학" />
+        <meta property="og:image" content="https://math-academy-app-kappa.vercel.app/og-image.png" />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
       </head>
       <body className="min-h-full flex flex-col">

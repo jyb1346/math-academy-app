@@ -254,6 +254,42 @@ function BoardMain() {
     setEditHomeworkList(updated);
   };
 
+  // ⏰ 숙제 마감 임박 알림 수동 발송 (선생님 전용)
+  const handleSendManualReminder = async (post) => {
+    if (!confirm(`[${post.title}] 숙제 마감 알림을 해당 반 학생들에게 지금 즉시 발송하시겠습니까?`)) return;
+
+    try {
+      let targetUserIds = [];
+      if (post.class_id) {
+        targetUserIds = classStudents
+          .filter((cs) => String(cs.class_id) === String(post.class_id))
+          .map((cs) => cs.student_id);
+      } else {
+        targetUserIds = students.map((s) => s.id);
+      }
+
+      if (targetUserIds.length === 0) {
+        return alert('발송 대상 학생이 없습니다.');
+      }
+
+      const res = await fetch('/api/push/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userIds: targetUserIds,
+          title: `🚨 [숙제 마감 알림] ${post.title}`,
+          message: `제출 마감일: ${post.due_date || '기한 미지정'}. 잊지 말고 숙제를 확인해 주세요!`,
+          url: '/board?category=NOTICE_HOMEWORK',
+        }),
+      });
+
+      const data = await res.json();
+      alert(`📲 해당 반 학생들에게 마감 리마인드 알림이 발송되었습니다! (수신 기기: ${data.count || 0}대)`);
+    } catch (err) {
+      alert('알림 발송 실패: ' + err.message);
+    }
+  };
+
   const handleCreatePost = async (e) => {
     e.preventDefault();
     if (!title.trim()) return alert('제목을 입력해 주세요.');
@@ -291,7 +327,8 @@ function BoardMain() {
           .join('\n');
 
         const formLinkText = googleFormUrl.trim() ? `\n\n📋 구글 폼 링크: ${googleFormUrl.trim()}` : '';
-        finalContent = `${bookDetails}${formLinkText}\n\n📝 메모:\n${content}`;
+        const memoText = content.trim() ? `\n\n📝 메모:\n${content.trim()}` : '';
+        finalContent = `${bookDetails}${formLinkText}${memoText}`.trim();
       }
 
       if (filePublicUrl) {
@@ -404,7 +441,8 @@ function BoardMain() {
           .join('\n');
 
         const formLinkText = editGoogleFormUrl.trim() ? `\n\n📋 구글 폼 링크: ${editGoogleFormUrl.trim()}` : '';
-        finalContent = `${bookDetails}${formLinkText}\n\n📝 메모:\n${editContent}`;
+        const memoText = editContent.trim() ? `\n\n📝 메모:\n${editContent.trim()}` : '';
+        finalContent = `${bookDetails}${formLinkText}${memoText}`.trim();
       }
 
       const matchedClass = classes.find((c) => String(c.id) === String(editTargetClassId));
@@ -523,6 +561,16 @@ function BoardMain() {
         </div>
 
         <div className="flex items-center gap-2">
+                        {post.category === 'HOMEWORK' && (
+                          <button
+                            onClick={() => handleSendManualReminder(post)}
+                            className="text-xs bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-bold px-2.5 py-1 rounded-lg transition flex items-center gap-1 shadow-2xs"
+                            title="해당 반 학생들에게 마감 리마인드 알림 발송"
+                          >
+                            <span>⏰</span>
+                            <span className="hidden sm:inline">마감 알림 전송</span>
+                          </button>
+                        )}
           {/* 1:1 Q&A 바로가기 버튼 */}
           <button
             onClick={() => router.push('/qna')}
@@ -647,9 +695,26 @@ function BoardMain() {
                     )}
                   </div>
 
-                  {rawContent && (
+                  {/* 🎯 구글 폼 제출 대형 바로가기 버튼 */}
+                  {extractGoogleFormUrl(rawContent) && (
+                    <div className="pt-1">
+                      <a
+                        href={extractGoogleFormUrl(rawContent)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2.5 bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-700 hover:to-indigo-700 text-white px-5 py-3 rounded-2xl font-black text-sm sm:text-base shadow-md shadow-purple-600/20 transition transform hover:scale-[1.01]"
+                      >
+                        <span className="text-lg">📋</span>
+                        <span>구글 폼으로 숙제 제출하기</span>
+                        <span className="text-xs opacity-80">↗</span>
+                      </a>
+                    </div>
+                  )}
+
+                  {/* 🎯 빈 메모 및 링크가 깔끔하게 정리된 본문 */}
+                  {cleanContentForDisplay(rawContent) && (
                     <div className="text-base sm:text-lg text-slate-800 leading-relaxed sm:leading-loose whitespace-pre-wrap bg-slate-50/90 p-5 sm:p-6 rounded-2xl border border-slate-200 font-semibold">
-                      {rawContent}
+                      {cleanContentForDisplay(rawContent)}
                     </div>
                   )}
 
@@ -838,6 +903,33 @@ function BoardMain() {
       />
     </div>
   );
+}
+
+// 🔍 구글 폼 URL 추출 헬퍼
+function extractGoogleFormUrl(text) {
+  if (!text) return null;
+  const match = text.match(/📋 구글 폼 링크:\s*(\S+)/);
+  if (match) return match[1];
+  const formsMatch = text.match(/(https?:\/\/(?:docs\.google\.com\/forms|forms\.gle)\S*)/);
+  if (formsMatch) return formsMatch[1];
+  return null;
+}
+
+// 🔍 첨부파일 및 구글폼 링크, 빈 메모를 제거한 깔끔한 본문 렌더링 헬퍼
+function cleanContentForDisplay(text) {
+  if (!text) return '';
+  let cleaned = text
+    .replace(/📎 첨부파일:\s*\S+/g, '')
+    .replace(/📋 구글 폼 링크:\s*\S+/g, '')
+    .replace(/📝 메모:\s*$/g, '')
+    .replace(/📝 메모:\s*\n\s*$/g, '')
+    .trim();
+
+  // 만약 📝 메모: 뒤에 아무 글도 없으면 📝 메모: 자체를 삭제
+  if (cleaned.endsWith('📝 메모:')) {
+    cleaned = cleaned.replace(/\n*📝 메모:$/, '').trim();
+  }
+  return cleaned;
 }
 
 export default function BoardPage() {

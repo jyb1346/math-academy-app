@@ -132,19 +132,24 @@ export default function PostCreateForm({
           </div>
         )}
 
-        <div className="bg-emerald-50/60 p-3 rounded-xl border border-emerald-200/80 flex items-center justify-between">
-          <div>
-            <label className="block text-xs font-bold text-emerald-900">
-              📎 수업자료 및 첨부파일 등록 (JPG, PNG, PDF 지원)
-            </label>
-            <p className="text-[11px] text-emerald-700 mt-0.5">이미지 파일은 게시글에 바로 미리보기가 표시됩니다.</p>
+        <div className="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200/80">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5">
+              <span className="text-base">📎</span>
+              <div>
+                <label className="block text-xs sm:text-sm font-bold text-emerald-900 leading-tight">
+                  첨부파일 / 수업자료 <span className="text-[11px] font-medium text-emerald-700">(JPG, PNG, PDF)</span>
+                </label>
+                <p className="text-[10px] text-emerald-600">이미지 및 문서는 게시글에 바로 첨부됩니다.</p>
+              </div>
+            </div>
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              onChange={(e) => setAttachedFile(e.target.files[0] || null)}
+              className="text-xs font-semibold text-slate-600 file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-emerald-600 file:text-white hover:file:bg-emerald-700 cursor-pointer w-full sm:w-auto"
+            />
           </div>
-          <input
-            type="file"
-            accept="image/*,application/pdf"
-            onChange={(e) => setAttachedFile(e.target.files[0] || null)}
-            className="text-xs font-semibold text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-600 file:text-white hover:file:bg-emerald-700 cursor-pointer"
-          />
         </div>
 
         <textarea

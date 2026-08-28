@@ -10,7 +10,7 @@ export default function CategoryTabs({
   return (
     <div className="space-y-3">
       {/* 1. 카테고리 탭 (Q&A는 전용 1:1 메뉴로 분리되어 일반 게시판 3대 카테고리 유지) */}
-      <div className="flex gap-1.5 overflow-x-auto pb-1 border-b border-slate-200">
+      <div className="flex gap-1.5 overflow-x-auto pb-2 border-b border-slate-200 scrollbar-none">
         <button
           onClick={() => setCategory('ALL')}
           className={`px-4 py-2.5 rounded-xl text-sm font-black transition whitespace-nowrap ${
@@ -54,7 +54,7 @@ export default function CategoryTabs({
       </div>
 
       {/* 2. 반별 탭: '전체 반' 제거, [🌐 학원 전체 공지] 고정 탭 + [담당/소속 반 목록] */}
-      <div className="flex gap-2 overflow-x-auto pb-1 items-center">
+      <div className="flex gap-2 overflow-x-auto pt-1 pb-1 items-center scrollbar-none">
         <button
           onClick={() => setSelectedClassId('PUBLIC')}
           className={`px-4 py-2 rounded-xl text-sm font-extrabold transition whitespace-nowrap flex items-center gap-1.5 ${

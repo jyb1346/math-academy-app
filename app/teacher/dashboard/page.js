@@ -299,56 +299,77 @@ export default function TeacherDashboard() {
   return (
     <div className="min-h-screen bg-slate-100/70 pb-32 font-sans text-slate-800">
       
-      {/* 📘 헤더 */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-30 px-6 py-4 flex justify-between items-center shadow-xs">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-black text-lg shadow-md shadow-blue-500/20 cursor-pointer" onClick={() => router.push('/')}>
-            품
-          </div>
-          <div>
-            <h1 onClick={() => router.push('/')} className="text-base font-extrabold text-slate-800 cursor-pointer leading-tight">
-              품수학 학원 교무실
-            </h1>
-            <p className="text-[11px] text-slate-400 font-semibold flex items-center gap-1.5 mt-0.5">
-              <span className="bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-md text-[10px]">
-                📘 {isHeadTeacher ? '원장님 (내 수업 모드)' : '선생님'}
-              </span>
-              <span>{user?.name} 선생님 대시보드</span>
-            </p>
-          </div>
-        </div>
+      {/* 📘 헤더 (모바일 2단 분리형 - 글씨 꺾임 완전 해결) */}
+      <header className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-30 px-4 sm:px-6 py-3 sm:py-4 shadow-xs">
+        <div className="max-w-5xl mx-auto flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3">
+          
+          {/* 1층: 학원 로고 + 타이틀 (좌측) / 모바일 로그아웃 (우측) */}
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              <div
+                className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-black text-lg shadow-md shadow-blue-500/20 cursor-pointer shrink-0"
+                onClick={() => router.push('/')}
+              >
+                품
+              </div>
+              <div>
+                <h1 onClick={() => router.push('/')} className="text-base sm:text-lg font-extrabold text-slate-800 cursor-pointer leading-tight">
+                  품수학 학원 교무실
+                </h1>
+                <p className="text-[11px] text-slate-400 font-semibold flex items-center gap-1.5 mt-0.5">
+                  <span className="bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-md text-[10px]">
+                    📘 {isHeadTeacher ? '원장님 (내 수업 모드)' : '선생님'}
+                  </span>
+                  <span>{user?.name} 선생님 대시보드</span>
+                </p>
+              </div>
+            </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleShareKakaoLink}
-            className="text-xs bg-amber-300 hover:bg-amber-400 text-amber-950 font-black px-3.5 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5"
-            title="학부모/학생에게 카톡으로 앱 설치 링크 보내기"
-          >
-            <span>💬</span>
-            <span>카톡 앱 초대 링크</span>
-          </button>
-          {isHeadTeacher && (
+            {/* 모바일 전용 상단 우측 로그아웃 */}
             <button
-              onClick={() => router.push('/admin/dashboard')}
-              className="text-xs bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-bold px-3 py-2 rounded-xl transition"
+              onClick={() => { localStorage.removeItem('user'); router.push('/login'); }}
+              className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3 py-1.5 rounded-xl transition md:hidden"
             >
-              👑 원장 뷰
+              로그아웃
             </button>
-          )}
+          </div>
 
-          <button
-            onClick={() => setShowPasswordModal(true)}
-            className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-xl transition border border-slate-200"
-          >
-            🔒 비밀번호 변경
-          </button>
+          {/* 2층: 액션 버튼 그룹 (모바일에서 가로로 시원하게 배치) */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-0.5 pt-1 md:pt-0 scrollbar-none">
+            <button
+              onClick={handleShareKakaoLink}
+              className="text-xs bg-amber-300 hover:bg-amber-400 text-amber-950 font-black px-3.5 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0"
+              title="학부모/학생에게 카톡으로 앱 설치 링크 보내기"
+            >
+              <span>💬</span>
+              <span>카톡 앱 초대</span>
+            </button>
 
-          <button
-            onClick={() => { localStorage.removeItem('user'); router.push('/login'); }}
-            className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3 py-2 rounded-xl transition"
-          >
-            로그아웃
-          </button>
+            {isHeadTeacher && (
+              <button
+                onClick={() => router.push('/admin/dashboard')}
+                className="text-xs bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-bold px-3.5 py-2 rounded-xl transition whitespace-nowrap shrink-0"
+              >
+                👑 원장 뷰
+              </button>
+            )}
+
+            <button
+              onClick={() => setShowPasswordModal(true)}
+              className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3.5 py-2 rounded-xl transition border border-slate-200 whitespace-nowrap shrink-0"
+            >
+              🔒 비밀번호 변경
+            </button>
+
+            {/* 데스크톱 전용 로그아웃 */}
+            <button
+              onClick={() => { localStorage.removeItem('user'); router.push('/login'); }}
+              className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3.5 py-2 rounded-xl transition whitespace-nowrap hidden md:inline-block"
+            >
+              로그아웃
+            </button>
+          </div>
+
         </div>
       </header>
 

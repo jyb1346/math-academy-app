@@ -607,8 +607,8 @@ function BoardMain() {
 
       <main className="max-w-4xl mx-auto px-4 mt-6 space-y-6">
         
-        {/* 상단 탭 (4대 카테고리 + [🌐 학원 전체 공지] 고정 탭 + [담당/소속 반 목록]) */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+        {/* 상단 탭 (스크롤 시에도 화면 상단에 착 붙어 유지되는 Sticky 탭 바) */}
+        <div className="sticky top-[68px] z-20 bg-white/95 backdrop-blur-md p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 shadow-md shadow-slate-900/5">
           <CategoryTabs
             category={category}
             setCategory={setCategory}

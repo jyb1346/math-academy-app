@@ -27,36 +27,56 @@ export default function StudentDashboard() {
   return (
     <div className="min-h-screen bg-slate-100/70 pb-32 font-sans text-slate-800">
       
-      {/* 헤더 */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-30 px-6 py-4 flex justify-between items-center shadow-xs">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-black text-lg shadow-md shadow-blue-500/20 cursor-pointer" onClick={() => router.push('/')}>
-            품
-          </div>
-          <div>
-            <h1 onClick={() => router.push('/')} className="text-base font-extrabold text-slate-800 cursor-pointer leading-tight">
-              품수학 학원 학생 공간
-            </h1>
-            <p className="text-[11px] text-slate-400 font-semibold">
-              <span className="text-blue-600 font-bold">{user?.name} 학생</span> 환영합니다.
-            </p>
-          </div>
-        </div>
+      {/* 📘 학생 헤더 (모바일 2단 분리형 - 글씨 꺾임 완전 해결) */}
+      <header className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-30 px-4 sm:px-6 py-3 sm:py-4 shadow-xs">
+        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
+          
+          {/* 1층: 학원 로고 + 타이틀 (좌측) / 모바일 로그아웃 (우측) */}
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              <div
+                className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-black text-lg shadow-md shadow-blue-500/20 cursor-pointer shrink-0"
+                onClick={() => router.push('/')}
+              >
+                품
+              </div>
+              <div>
+                <h1 onClick={() => router.push('/')} className="text-base sm:text-lg font-extrabold text-slate-800 cursor-pointer leading-tight">
+                  품수학 학원 학생 공간
+                </h1>
+                <p className="text-[11px] text-slate-400 font-semibold mt-0.5">
+                  <span className="text-blue-600 font-bold">{user?.name} 학생</span> 환영합니다.
+                </p>
+              </div>
+            </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowPasswordModal(true)}
-            className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-xl transition border border-slate-200"
-          >
-            🔒 비밀번호 변경
-          </button>
+            {/* 모바일 전용 상단 우측 로그아웃 */}
+            <button
+              onClick={() => { localStorage.removeItem('user'); router.push('/login'); }}
+              className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3 py-1.5 rounded-xl transition sm:hidden"
+            >
+              로그아웃
+            </button>
+          </div>
 
-          <button
-            onClick={() => { localStorage.removeItem('user'); router.push('/login'); }}
-            className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3 py-2 rounded-xl transition"
-          >
-            로그아웃
-          </button>
+          {/* 2층: 액션 버튼 그룹 (비밀번호 변경 및 데스크톱 로그아웃) */}
+          <div className="flex items-center gap-2 justify-end pt-1 sm:pt-0">
+            <button
+              onClick={() => setShowPasswordModal(true)}
+              className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3.5 py-2 rounded-xl transition border border-slate-200 whitespace-nowrap"
+            >
+              🔒 비밀번호 변경
+            </button>
+
+            {/* 데스크톱 전용 로그아웃 */}
+            <button
+              onClick={() => { localStorage.removeItem('user'); router.push('/login'); }}
+              className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3.5 py-2 rounded-xl transition whitespace-nowrap hidden sm:inline-block"
+            >
+              로그아웃
+            </button>
+          </div>
+
         </div>
       </header>
 

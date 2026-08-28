@@ -20,17 +20,16 @@ export default function TeacherDashboard() {
   // 반 생성 폼
   const [newClassName, setNewClassName] = useState('');
 
-  // 📲 카카오톡 초대 및 앱 설치 안내 링크 복사/공유
+  // 📲 카카오톡 초대 및 앱 설치 안내 링크 복사/공유 (중복 URL 방지)
   const handleShareKakaoLink = async () => {
-    const appUrl = typeof window !== 'undefined' ? window.location.origin : 'https://math-academy-app.vercel.app';
+    const appUrl = typeof window !== 'undefined' ? window.location.origin : 'https://math-academy-app-kappa.vercel.app';
     const shareText = `[품수학 학원 공식 앱 안내]\n안녕하세요! 품수학 학원 전용 알림 앱입니다.\n아래 링크를 눌러 스마트폰 홈 화면에 추가하시면 반별 숙제 공지와 1:1 질문 풀이 알림을 실시간으로 확인하실 수 있습니다.\n\n🔗 품수학 앱 바로가기:\n${appUrl}`;
 
     if (typeof navigator !== 'undefined' && navigator.share) {
       try {
+        // text 안에 이미 주소가 포함되어 있으므로 url 속성을 생략하여 모바일 OS의 주소 2중 중복 병합 방지
         await navigator.share({
-          title: '품수학 학원 전용 앱',
           text: shareText,
-          url: appUrl,
         });
         return;
       } catch (err) {

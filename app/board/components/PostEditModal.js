@@ -58,7 +58,6 @@ export default function PostEditModal({
               <option value="NOTICE">📢 공지사항</option>
               <option value="VIDEO">🎬 복습 영상</option>
               <option value="MATERIAL">📄 수업 자료</option>
-              <option value="QNA">💬 질의응답</option>
             </select>
 
             {editCategory === 'HOMEWORK' && (

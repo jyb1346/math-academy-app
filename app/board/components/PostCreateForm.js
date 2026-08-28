@@ -56,7 +56,6 @@ export default function PostCreateForm({
             <option value="NOTICE">📢 공지사항</option>
             <option value="VIDEO">🎬 복습 영상</option>
             <option value="MATERIAL">📄 수업자료 (JPG/PDF)</option>
-            <option value="QNA">💬 질의응답</option>
           </select>
 
           {newCategory === 'HOMEWORK' && (

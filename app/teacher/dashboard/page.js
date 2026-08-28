@@ -1,4 +1,5 @@
 'use client';
+import TeacherLuckyBugModal from "@/components/TeacherLuckyBugModal";
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -16,6 +17,7 @@ export default function TeacherDashboard() {
 
   // 비밀번호 변경 모달 상태
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showLuckyBugModal, setShowLuckyBugModal] = useState(false);
 
   // 반 생성 폼
   const [newClassName, setNewClassName] = useState('');
@@ -336,6 +338,15 @@ export default function TeacherDashboard() {
 
           {/* 2층: 액션 버튼 그룹 (모바일에서 가로로 시원하게 배치) */}
           <div className="flex items-center gap-2 overflow-x-auto pb-0.5 pt-1 md:pt-0 scrollbar-none">
+            <button
+              onClick={() => setShowLuckyBugModal(true)}
+              className="text-xs bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 text-amber-950 font-black px-3.5 py-2 rounded-xl transition shadow-sm flex items-center gap-1.5 whitespace-nowrap shrink-0 animate-pulse border border-amber-300"
+              title="학생들 화면에 실시간으로 황금 벌레 출현시키기"
+            >
+              <span>🐛</span>
+              <span>돌발 벌레 소환</span>
+            </button>
+
             <button
               onClick={handleShareKakaoLink}
               className="text-xs bg-amber-300 hover:bg-amber-400 text-amber-950 font-black px-3.5 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0"

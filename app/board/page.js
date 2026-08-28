@@ -22,6 +22,32 @@ function extractFileUrl(text) {
   return null;
 }
 
+// 🔍 구글 폼 URL 추출 헬퍼
+function extractGoogleFormUrl(text) {
+  if (!text) return null;
+  const match = text.match(/📋 구글 폼 링크:\s*(\S+)/);
+  if (match) return match[1];
+  const formsMatch = text.match(/(https?:\/\/(?:docs\.google\.com\/forms|forms\.gle)\S*)/);
+  if (formsMatch) return formsMatch[1];
+  return null;
+}
+
+// 🔍 첨부파일 및 구글폼 링크, 빈 메모를 제거한 깔끔한 본문 렌더링 헬퍼
+function cleanContentForDisplay(text) {
+  if (!text) return '';
+  let cleaned = text
+    .replace(/📎 첨부파일:\s*\S+/g, '')
+    .replace(/📋 구글 폼 링크:\s*\S+/g, '')
+    .replace(/📝 메모:\s*$/g, '')
+    .replace(/📝 메모:\s*\n\s*$/g, '')
+    .trim();
+
+  if (cleaned.endsWith('📝 메모:')) {
+    cleaned = cleaned.replace(/\n*📝 메모:$/, '').trim();
+  }
+  return cleaned;
+}
+
 function BoardMain() {
   const [classes, setClasses] = useState([]);
   const [myClasses, setMyClasses] = useState([]);
@@ -265,7 +291,7 @@ function BoardMain() {
           .filter((cs) => String(cs.class_id) === String(post.class_id))
           .map((cs) => cs.student_id);
       } else {
-        targetUserIds = students.map((s) => s.id);
+        targetUserIds = allStudents.map((s) => s.id);
       }
 
       if (targetUserIds.length === 0) {
@@ -561,16 +587,6 @@ function BoardMain() {
         </div>
 
         <div className="flex items-center gap-2">
-                        {post.category === 'HOMEWORK' && (
-                          <button
-                            onClick={() => handleSendManualReminder(post)}
-                            className="text-xs bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-bold px-2.5 py-1 rounded-lg transition flex items-center gap-1 shadow-2xs"
-                            title="해당 반 학생들에게 마감 리마인드 알림 발송"
-                          >
-                            <span>⏰</span>
-                            <span className="hidden sm:inline">마감 알림 전송</span>
-                          </button>
-                        )}
           {/* 1:1 Q&A 바로가기 버튼 */}
           <button
             onClick={() => router.push('/qna')}
@@ -679,6 +695,16 @@ function BoardMain() {
 
                     {user?.role !== 'STUDENT' && (
                       <div className="flex items-center gap-2">
+                        {post.category === 'HOMEWORK' && (
+                          <button
+                            onClick={() => handleSendManualReminder(post)}
+                            className="text-xs bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-bold px-2.5 py-1 rounded-lg transition flex items-center gap-1 shadow-2xs"
+                            title="해당 반 학생들에게 마감 리마인드 알림 발송"
+                          >
+                            <span>⏰</span>
+                            <span className="hidden sm:inline">마감 알림 전송</span>
+                          </button>
+                        )}
                         <button
                           onClick={() => handleOpenEdit(post)}
                           className="text-xs text-slate-500 hover:text-indigo-600 font-bold px-2 py-1 rounded-lg bg-slate-50 border border-slate-200"
@@ -905,32 +931,6 @@ function BoardMain() {
   );
 }
 
-// 🔍 구글 폼 URL 추출 헬퍼
-function extractGoogleFormUrl(text) {
-  if (!text) return null;
-  const match = text.match(/📋 구글 폼 링크:\s*(\S+)/);
-  if (match) return match[1];
-  const formsMatch = text.match(/(https?:\/\/(?:docs\.google\.com\/forms|forms\.gle)\S*)/);
-  if (formsMatch) return formsMatch[1];
-  return null;
-}
-
-// 🔍 첨부파일 및 구글폼 링크, 빈 메모를 제거한 깔끔한 본문 렌더링 헬퍼
-function cleanContentForDisplay(text) {
-  if (!text) return '';
-  let cleaned = text
-    .replace(/📎 첨부파일:\s*\S+/g, '')
-    .replace(/📋 구글 폼 링크:\s*\S+/g, '')
-    .replace(/📝 메모:\s*$/g, '')
-    .replace(/📝 메모:\s*\n\s*$/g, '')
-    .trim();
-
-  // 만약 📝 메모: 뒤에 아무 글도 없으면 📝 메모: 자체를 삭제
-  if (cleaned.endsWith('📝 메모:')) {
-    cleaned = cleaned.replace(/\n*📝 메모:$/, '').trim();
-  }
-  return cleaned;
-}
 
 export default function BoardPage() {
   return (

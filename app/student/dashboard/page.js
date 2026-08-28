@@ -83,20 +83,7 @@ export default function StudentDashboard() {
       <main className="max-w-4xl mx-auto px-4 mt-8 space-y-6">
         <PushNotificationManager user={user} />
         
-        {/* 학생 환영 인사 카드 */}
-        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h2 className="text-lg font-black text-slate-800">👋 안녕하세요, {user?.name} 학생!</h2>
-            <p className="text-xs text-slate-400 mt-1">오늘의 학습 피드백, 숙제, 수업 자료 및 복습 영상을 확인해 보세요.</p>
-          </div>
 
-          <button
-            onClick={() => setShowPasswordModal(true)}
-            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-4 py-2.5 rounded-2xl text-xs transition border border-indigo-200 whitespace-nowrap"
-          >
-            🔒 비밀번호 변경
-          </button>
-        </div>
 
         {/* 🎓 학생 전용 5대 메뉴 카드 그리드 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

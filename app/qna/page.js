@@ -1,4 +1,5 @@
 'use client';
+import { compressImage } from '@/lib/imageCompressor';
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -93,7 +94,8 @@ export default function QnaPage() {
   // 파일들 업로드 헬퍼 함수
   const uploadFilesToStorage = async (files) => {
     const uploadedUrls = [];
-    for (const file of files) {
+    for (const rawFile of files) {
+      const file = await compressImage(rawFile);
       try {
         const fileExt = file.name.split('.').pop() || 'png';
         const fileName = `qna_${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;

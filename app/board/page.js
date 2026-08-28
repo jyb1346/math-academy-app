@@ -1,4 +1,5 @@
 'use client';
+import { compressImage } from '@/lib/imageCompressor';
 
 import { useState, useEffect, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -326,13 +327,14 @@ function BoardMain() {
 
       if (attachedFile) {
         try {
+          const fileToUpload = await compressImage(attachedFile);
           const fileExt = attachedFile.name.split('.').pop();
           const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
           const filePath = `board_files/${fileName}`;
 
           const { error: uploadError } = await supabase.storage
             .from('attachments')
-            .upload(filePath, attachedFile);
+            .upload(filePath, fileToUpload);
 
           if (!uploadError) {
             const { data: urlData } = supabase.storage

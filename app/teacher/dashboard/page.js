@@ -839,6 +839,24 @@ export default function TeacherDashboard() {
         </div>
       )}
 
+      {/* 🐛 모달 3: 돌발 황금 벌레 소환 모달 */}
+      {showLuckyBugModal && user && (
+        <TeacherLuckyBugModal
+          user={user}
+          classes={classes}
+          onClose={() => setShowLuckyBugModal(false)}
+        />
+      )}
+
+      {/* 🔒 모달 4: 비밀번호 변경 모달 */}
+      {showPasswordModal && user && (
+        <ChangePasswordModal
+          user={user}
+          onClose={() => setShowPasswordModal(false)}
+          onPasswordUpdated={(updatedUser) => setUser(updatedUser)}
+        />
+      )}
+
     </div>
   );
 }

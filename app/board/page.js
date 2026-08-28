@@ -186,7 +186,15 @@ function BoardMain() {
         const { data: fbData } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
         setPosts(fbData || []);
       } else {
-        setPosts(data || []);
+        const filtered = (data || []).filter((p) => {
+          try {
+            const m = JSON.parse(p.content || '{}');
+            return !m.isLuckyEvent;
+          } catch {
+            return true;
+          }
+        });
+        setPosts(filtered);
       }
     } catch (e) {
       console.error(e);

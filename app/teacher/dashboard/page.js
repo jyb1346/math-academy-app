@@ -464,17 +464,17 @@ export default function TeacherDashboard() {
         </section>
 
         {/* 🏫 2. 내 담당 반 관리 */}
-        <section className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-5">
-          <div className="flex justify-between items-center border-b border-slate-100 pb-4">
-            <div>
+        <section className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-4">
+            <div className="flex items-center justify-between sm:justify-start gap-3">
               <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
                 <span>🏫</span> 내 담당 반 관리
               </h2>
-              <p className="text-xs text-slate-400 mt-0.5">반을 개설하거나 내 반의 학생들을 지정해 일괄 배정하세요.</p>
+              <span className="bg-indigo-50 text-indigo-700 text-xs font-bold px-3 py-1 rounded-full border border-indigo-100 whitespace-nowrap shrink-0">
+                총 {classes.length}개 반
+              </span>
             </div>
-            <span className="bg-indigo-50 text-indigo-700 text-xs font-bold px-3 py-1 rounded-full border border-indigo-100">
-              총 {classes.length}개 반
-            </span>
+            <p className="text-xs text-slate-400">반을 개설하거나 내 반의 학생들을 지정해 일괄 배정하세요.</p>
           </div>
 
           <form onSubmit={handleCreateClass} className="flex gap-2">

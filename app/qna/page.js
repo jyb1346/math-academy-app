@@ -296,34 +296,34 @@ export default function QnaPage() {
     <div className="min-h-screen bg-slate-100/70 pb-32 font-sans text-slate-800">
       
       {/* 상단 헤더 */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-30 px-6 py-4 flex justify-between items-center shadow-xs">
+      <header className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-30 px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center shadow-xs">
         <div className="flex items-center gap-3">
           <div
             onClick={() => router.push(isTeacher ? '/teacher/dashboard' : '/student/dashboard')}
-            className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-600 text-white flex items-center justify-center font-black text-lg shadow-md shadow-amber-500/20 cursor-pointer"
+            className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-600 text-white flex items-center justify-center font-black text-lg shadow-md shadow-amber-500/20 cursor-pointer shrink-0"
           >
             품
           </div>
           <div>
             <h1
               onClick={() => router.push(isTeacher ? '/teacher/dashboard' : '/student/dashboard')}
-              className="text-base font-black text-slate-800 cursor-pointer hover:text-amber-600 transition"
+              className="text-base sm:text-lg font-black text-slate-800 cursor-pointer hover:text-amber-600 transition leading-tight"
             >
               1:1 수학 질의응답 (Q&A)
             </h1>
             <p className="text-[11px] text-slate-400 font-semibold mt-0.5">
               {isTeacher
-                ? `담당 학생들의 질문을 확인하고 1:1로 풀이 답변을 남겨주세요.`
-                : '담당 선생님과 나만 볼 수 있는 1:1 비공개 질문 공간입니다.'}
+                ? '담당 학생 1:1 질문 확인 및 풀이 답변'
+                : '선생님과 나만의 1:1 비공개 질문 공간'}
             </p>
           </div>
         </div>
 
         <button
           onClick={() => router.back()}
-          className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3.5 py-2 rounded-xl transition border border-slate-200"
+          className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3.5 py-2 rounded-xl transition border border-slate-200 whitespace-nowrap shrink-0"
         >
-          ← 이전 화면으로
+          ← 뒤로가기
         </button>
       </header>
 

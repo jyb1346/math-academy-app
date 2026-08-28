@@ -165,27 +165,42 @@ export default function TeacherEvalPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 pb-16">
-      <header className="bg-white border-b py-4 px-6 shadow-sm flex justify-between items-center">
-        <h1 onClick={() => router.push('/teacher/dashboard')} className="text-xl font-bold text-blue-600 cursor-pointer">
-          품수학 학원 교무실
-        </h1>
-        <button onClick={() => router.back()} className="text-sm text-gray-600 hover:underline">
+      <header className="bg-white/95 backdrop-blur-md border-b py-3 sm:py-4 px-4 sm:px-6 shadow-xs flex justify-between items-center sticky top-0 z-30">
+        <div className="flex items-center gap-2.5">
+          <div
+            onClick={() => router.push('/teacher/dashboard')}
+            className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-black text-sm shadow-md shadow-blue-500/20 cursor-pointer shrink-0"
+          >
+            품
+          </div>
+          <h1 onClick={() => router.push('/teacher/dashboard')} className="text-base sm:text-lg font-black text-slate-800 cursor-pointer">
+            품수학 학원 교무실
+          </h1>
+        </div>
+        <button
+          onClick={() => router.back()}
+          className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3.5 py-2 rounded-xl transition border border-slate-200 whitespace-nowrap shrink-0"
+        >
           ← 뒤로가기
         </button>
       </header>
 
       <main className="max-w-3xl mx-auto px-4 mt-6 space-y-6">
         <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
-          <div className="border-b pb-4 flex justify-between items-center">
+          <div className="border-b pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-bold text-slate-800">📝 일일 학습 피드백 및 성취도 입력</h2>
-              <p className="text-xs text-slate-400 mt-0.5">학생별 6대 학습 영역 성취도와 출결/지각 상태를 기록합니다.</p>
+              <h2 className="text-base sm:text-lg font-black text-slate-800 flex items-center gap-1.5">
+                <span>📝</span>
+                <span>일일 학습 피드백 작성</span>
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">학생별 6대 영역 성취도와 출결 상태를 기록합니다.</p>
             </div>
             <button
               onClick={() => router.push('/teacher/eval/history')}
-              className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-xl transition"
+              className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3.5 py-2 rounded-xl transition border border-slate-200 whitespace-nowrap self-start sm:self-auto shrink-0 flex items-center gap-1.5 shadow-2xs"
             >
-              📋 피드백 내역 보기
+              <span>📋</span>
+              <span>작성 내역 보기 →</span>
             </button>
           </div>
 

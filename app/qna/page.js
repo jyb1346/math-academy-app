@@ -11,7 +11,7 @@ export default function QnaPage() {
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('ALL'); // 'ALL' | 'PENDING' | 'ANSWERED'
 
-  // 학생: 질문 작성 폼 상태
+  // 학생: 최초 질문 작성 폼 상태
   const [title, setTitle] = useState('');
   const [questionText, setQuestionText] = useState('');
   const [selectedFiles, setSelectedFiles] = useState([]); // File[]
@@ -20,6 +20,9 @@ export default function QnaPage() {
 
   // 선생님: 답변 작성/수정 상태 (qnaId -> { text, files, filePreviews, isEditing, submitting })
   const [answerState, setAnswerState] = useState({});
+
+  // 💬 대화형 추가 질문 / 추가 답변 상태 (qnaId -> { text, files, filePreviews, isOpen, submitting })
+  const [followUpState, setFollowUpState] = useState({});
 
   // 🔍 사진 확대 뷰어 모달
   const [previewImageUrl, setPreviewImageUrl] = useState(null);
@@ -58,7 +61,7 @@ export default function QnaPage() {
       });
       setUsersMap(uMap);
 
-      // QnA 데이터 조회 (외래키 명칭에 의존하지 않고 안전하게 전체 조회)
+      // QnA 데이터 조회
       let query = supabase.from('qna').select('*');
       if (currentUser.role === 'STUDENT') {
         query = query.eq('student_id', currentUser.id);
@@ -76,7 +79,7 @@ export default function QnaPage() {
     }
   };
 
-  // 학생: 파일 선택 시 미리보기 생성
+  // 학생: 최초 질문 파일 선택 시 미리보기 생성
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
@@ -118,7 +121,7 @@ export default function QnaPage() {
     return uploadedUrls;
   };
 
-  // 🎯 학생: 1:1 질문 등록 (담당 선생님 자동 매칭)
+  // 🎯 학생: 1:1 최초 질문 등록
   const handleSubmitQuestion = async (e) => {
     e.preventDefault();
     if (!title.trim()) return alert('질문 제목을 입력해 주세요.');
@@ -127,7 +130,6 @@ export default function QnaPage() {
     setSubmittingQuestion(true);
 
     try {
-      // 1. 학생의 담당 선생님(teacher_id) 자동 조회
       const { data: studentInfo } = await supabase
         .from('users')
         .select('teacher_id')
@@ -136,10 +138,8 @@ export default function QnaPage() {
 
       const assignedTeacherId = studentInfo?.teacher_id || null;
 
-      // 2. 다중 사진 업로드
       const imageUrls = await uploadFilesToStorage(selectedFiles);
 
-      // 3. QnA 레코드 삽입
       const payload = {
         student_id: user.id,
         teacher_id: assignedTeacherId,
@@ -147,12 +147,12 @@ export default function QnaPage() {
         question: questionText.trim(),
         question_image_url: imageUrls.length > 0 ? JSON.stringify(imageUrls) : null,
         status: 'PENDING',
+        replies: [],
       };
 
       const { error } = await supabase.from('qna').insert([payload]);
       if (error) throw error;
 
-      // 🔔 담당 선생님께 1:1 질문 푸시 알림
       if (assignedTeacherId) {
         try {
           fetch('/api/push/send', {
@@ -197,7 +197,7 @@ export default function QnaPage() {
     }
   };
 
-  // 🎯 선생님: 답변 등록 / 수정
+  // 🎯 선생님: 1차 답변 등록 / 수정
   const handleSubmitAnswer = async (qnaItem) => {
     const state = answerState[qnaItem.id] || {};
     const text = state.text !== undefined ? state.text : (qnaItem.answer || '');
@@ -210,11 +210,9 @@ export default function QnaPage() {
     }));
 
     try {
-      // 신규 추가된 파일들 업로드
       const newFiles = state.files || [];
       const newUrls = await uploadFilesToStorage(newFiles);
 
-      // 기존 이미지 URL 파싱
       let existingUrls = [];
       if (qnaItem.answer_image_url) {
         try {
@@ -235,7 +233,6 @@ export default function QnaPage() {
       const { error } = await supabase.from('qna').update(payload).eq('id', qnaItem.id);
       if (error) throw error;
 
-      // 🔔 학생에게 답변 완료 푸시 알림
       if (qnaItem.student_id) {
         try {
           fetch('/api/push/send', {
@@ -244,7 +241,7 @@ export default function QnaPage() {
             body: JSON.stringify({
               userIds: [qnaItem.student_id],
               title: `[1:1 답변 등록] ${user.name} 선생님의 풀이`,
-              message: `'${qnaItem.title}' 질문에 대한 답변이 등록되었습니다.`,
+              message: `'${qnaItem.title}' 질문에 대한 풀이 답변이 등록되었습니다.`,
               url: '/qna',
             }),
           }).catch((e) => console.warn('Answer push warning:', e));
@@ -269,7 +266,102 @@ export default function QnaPage() {
     }
   };
 
-  // 이미지 파싱 유틸 (JSON 배열 또는 단일 URL 문자열 지원)
+  // 💬 대화형 추가 질문 / 추가 답변 등록 핸들러
+  const handleSubmitFollowUp = async (qnaItem) => {
+    const state = followUpState[qnaItem.id] || {};
+    const text = (state.text || '').trim();
+    const files = state.files || [];
+
+    if (!text && files.length === 0) {
+      return alert('추가 질문이나 답변 내용을 입력해 주세요.');
+    }
+
+    setFollowUpState((prev) => ({
+      ...prev,
+      [qnaItem.id]: { ...(prev[qnaItem.id] || {}), submitting: true },
+    }));
+
+    try {
+      const uploadedUrls = await uploadFilesToStorage(files);
+      const isStudent = user.role === 'STUDENT';
+
+      const newReply = {
+        id: `reply_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        sender_id: user.id,
+        sender_name: user.name || (isStudent ? '학생' : '선생님'),
+        sender_role: user.role,
+        content: text,
+        images: uploadedUrls,
+        created_at: new Date().toISOString(),
+      };
+
+      let existingReplies = [];
+      if (Array.isArray(qnaItem.replies)) {
+        existingReplies = qnaItem.replies;
+      } else if (typeof qnaItem.replies === 'string') {
+        try {
+          existingReplies = JSON.parse(qnaItem.replies) || [];
+        } catch {
+          existingReplies = [];
+        }
+      }
+
+      const updatedReplies = [...existingReplies, newReply];
+      const nextStatus = isStudent ? 'PENDING' : 'ANSWERED';
+
+      const updatePayload = {
+        replies: updatedReplies,
+        status: nextStatus,
+        answered_at: isStudent ? qnaItem.answered_at : new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from('qna')
+        .update(updatePayload)
+        .eq('id', qnaItem.id);
+
+      if (error) throw error;
+
+      // 푸시 알림 발송
+      const targetUserId = isStudent ? qnaItem.teacher_id : qnaItem.student_id;
+      if (targetUserId) {
+        try {
+          fetch('/api/push/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userIds: [targetUserId],
+              title: isStudent
+                ? `[1:1 추가 질문] ${user.name} 학생의 재질문`
+                : `[1:1 추가 답변] ${user.name} 선생님의 추가 풀이`,
+              message: text ? (text.length > 40 ? text.substring(0, 40) + '...' : text) : '사진이 첨부되었습니다.',
+              url: '/qna',
+            }),
+          }).catch((e) => console.warn('Follow-up push warning:', e));
+        } catch (e) {
+          console.warn('Push error:', e);
+        }
+      }
+
+      alert(isStudent ? '추가 질문이 선생님께 성공적으로 전달되었습니다!' : '추가 풀이가 학생에게 전달되었습니다!');
+
+      setFollowUpState((prev) => ({
+        ...prev,
+        [qnaItem.id]: { text: '', files: [], filePreviews: [], submitting: false, isOpen: false },
+      }));
+
+      fetchQuestions(user);
+    } catch (err) {
+      console.error('Follow-up error:', err);
+      alert('전송 실패: ' + err.message);
+      setFollowUpState((prev) => ({
+        ...prev,
+        [qnaItem.id]: { ...(prev[qnaItem.id] || {}), submitting: false },
+      }));
+    }
+  };
+
+  // 이미지 파싱 유틸
   const parseImages = (imgStr) => {
     if (!imgStr) return [];
     try {
@@ -280,9 +372,20 @@ export default function QnaPage() {
     }
   };
 
+  // 스레드 댓글 목록 파싱 유틸
+  const parseReplies = (repliesData) => {
+    if (!repliesData) return [];
+    if (Array.isArray(repliesData)) return repliesData;
+    try {
+      const parsed = JSON.parse(repliesData);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
+
   const isTeacher = user?.role === 'TEACHER' || user?.role === 'HEAD_TEACHER';
 
-  // 필터링 적용 목록
   const filteredQuestions = questions.filter((q) => {
     if (filterStatus === 'PENDING') return q.status === 'PENDING';
     if (filterStatus === 'ANSWERED') return q.status === 'ANSWERED';
@@ -460,7 +563,7 @@ export default function QnaPage() {
         </div>
 
         {/* 질문 목록 */}
-        <div className="space-y-4">
+        <div className="space-y-6">
           {filteredQuestions.length === 0 ? (
             <div className="bg-white p-12 rounded-3xl text-center border border-slate-200/80 space-y-2">
               <span className="text-3xl">💡</span>
@@ -471,16 +574,18 @@ export default function QnaPage() {
             filteredQuestions.map((item) => {
               const questionImages = parseImages(item.question_image_url);
               const answerImages = parseImages(item.answer_image_url);
+              const repliesList = parseReplies(item.replies);
               const studentInfo = usersMap[item.student_id];
               const studentName = studentInfo?.name ? `${studentInfo.name} 학생` : '학생';
               const teacherInfo = usersMap[item.teacher_id];
               const teacherName = teacherInfo?.name ? `${teacherInfo.name} 선생님` : '담당 선생님';
 
               const qState = answerState[item.id] || {};
-              const isAnswerFormOpen = isTeacher && (item.status === 'PENDING' || qState.isEditing);
+              const isAnswerFormOpen = isTeacher && (!item.answer || qState.isEditing);
+              const currentFollowUp = followUpState[item.id] || {};
 
               return (
-                <div key={item.id} className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+                <div key={item.id} className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-5">
                   
                   {/* 상단 뱃지 & 날짜 */}
                   <div className="flex justify-between items-start border-b border-slate-100 pb-3">
@@ -493,7 +598,9 @@ export default function QnaPage() {
                               : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                           }`}
                         >
-                          {item.status === 'PENDING' ? '⏳ 답변 대기 중' : '✅ 답변 완료'}
+                          {item.status === 'PENDING'
+                            ? (repliesList.length > 0 ? '⏳ 추가 질문 대기 중' : '⏳ 1차 답변 대기 중')
+                            : '✅ 답변 완료'}
                         </span>
                         <span className="text-xs font-black bg-indigo-50 text-indigo-800 border border-indigo-200 px-2.5 py-0.5 rounded-full">
                           👤 {studentName} {studentInfo?.email ? `(${studentInfo.email.split('@')[0]})` : ''}의 1:1 질문
@@ -505,7 +612,7 @@ export default function QnaPage() {
                       <h3 className="text-base font-extrabold text-slate-800 pt-1">{item.title}</h3>
                     </div>
 
-                    {!isTeacher && item.status === 'PENDING' && (
+                    {!isTeacher && item.status === 'PENDING' && !item.answer && (
                       <button
                         onClick={() => handleDeleteQuestion(item.id, item.title)}
                         className="text-xs text-rose-500 hover:underline font-bold px-2 py-1"
@@ -515,35 +622,41 @@ export default function QnaPage() {
                     )}
                   </div>
 
-                  {/* 질문 본문 */}
-                  <div className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                    {item.question}
+                  {/* ────────────────── 1. 최초 질문 영역 ────────────────── */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
+                      <span>🙋‍♂️</span>
+                      <span>학생 질문 내용:</span>
+                    </div>
+                    <div className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap bg-slate-50 p-4 rounded-2xl border border-slate-100 font-medium">
+                      {item.question}
+                    </div>
+
+                    {/* 질문 다중 사진 갤러리 */}
+                    {questionImages.length > 0 && (
+                      <div className="space-y-1 pt-1">
+                        <span className="text-[11px] font-bold text-slate-500">📷 첨부된 문제 사진 ({questionImages.length}장):</span>
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          {questionImages.map((imgUrl, idx) => (
+                            <div
+                              key={idx}
+                              onClick={() => setPreviewImageUrl(imgUrl)}
+                              className="relative w-24 h-24 rounded-2xl overflow-hidden border border-slate-200 cursor-pointer group shadow-xs hover:border-amber-400 transition"
+                            >
+                              <img src={imgUrl} alt="문제 사진" className="w-full h-full object-cover group-hover:scale-105 transition" />
+                              <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] font-bold transition">
+                                확대보기 🔍
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  {/* 질문 다중 사진 갤러리 */}
-                  {questionImages.length > 0 && (
-                    <div className="space-y-1">
-                      <span className="text-[11px] font-bold text-slate-500">📷 첨부된 문제 사진 ({questionImages.length}장):</span>
-                      <div className="flex flex-wrap gap-2 pt-1">
-                        {questionImages.map((imgUrl, idx) => (
-                          <div
-                            key={idx}
-                            onClick={() => setPreviewImageUrl(imgUrl)}
-                            className="relative w-24 h-24 rounded-2xl overflow-hidden border border-slate-200 cursor-pointer group shadow-xs hover:border-amber-400 transition"
-                          >
-                            <img src={imgUrl} alt="문제 사진" className="w-full h-full object-cover group-hover:scale-105 transition" />
-                            <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] font-bold transition">
-                              확대보기 🔍
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ────────────────── 선생님 답변 영역 ────────────────── */}
+                  {/* ────────────────── 2. 선생님 1차 답변 영역 ────────────────── */}
                   {item.answer && !qState.isEditing ? (
-                    <div className="bg-gradient-to-br from-indigo-50/70 to-blue-50/70 p-5 rounded-2xl border border-indigo-100 space-y-3 mt-4">
+                    <div className="bg-gradient-to-br from-indigo-50/80 to-blue-50/70 p-5 rounded-2xl border border-indigo-100 space-y-3">
                       <div className="flex justify-between items-center">
                         <div className="flex items-center gap-2">
                           <span className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-black">
@@ -572,7 +685,7 @@ export default function QnaPage() {
                         )}
                       </div>
 
-                      <p className="text-xs text-slate-800 leading-relaxed whitespace-pre-wrap bg-white/80 p-4 rounded-xl border border-indigo-100">
+                      <p className="text-xs text-slate-800 leading-relaxed whitespace-pre-wrap bg-white/90 p-4 rounded-xl border border-indigo-100 font-medium">
                         {item.answer}
                       </p>
 
@@ -598,8 +711,8 @@ export default function QnaPage() {
                       )}
                     </div>
                   ) : isAnswerFormOpen ? (
-                    /* 선생님 전용: 답변 작성/수정 폼 */
-                    <div className="bg-indigo-50/60 p-5 rounded-2xl border border-indigo-200/80 space-y-3 mt-4">
+                    /* 선생님 전용: 1차 답변 작성/수정 폼 */
+                    <div className="bg-indigo-50/60 p-5 rounded-2xl border border-indigo-200/80 space-y-3">
                       <div className="flex justify-between items-center">
                         <h4 className="text-xs font-black text-indigo-950 flex items-center gap-1.5">
                           <span>✍️</span>
@@ -630,7 +743,7 @@ export default function QnaPage() {
                             [item.id]: { ...(prev[item.id] || {}), text: val },
                           }));
                         }}
-                        className="w-full p-3 bg-white border border-indigo-200 rounded-xl text-xs text-slate-800 h-28 focus:outline-none focus:border-indigo-600"
+                        className="w-full p-3 bg-white border border-indigo-200 rounded-xl text-xs text-slate-800 h-28 focus:outline-none focus:border-indigo-600 font-medium"
                       />
 
                       {/* 답변 사진 추가 */}
@@ -684,6 +797,239 @@ export default function QnaPage() {
                       </div>
                     </div>
                   ) : null}
+
+                  {/* ────────────────── 3. 대화형 연속 추가 질문/답변 스레드 타임라인 ────────────────── */}
+                  {repliesList.length > 0 && (
+                    <div className="space-y-3 pt-2 border-t border-slate-100">
+                      <span className="text-[11px] font-bold text-slate-400 block">
+                        💬 추가 질의응답 내역 ({repliesList.length}개):
+                      </span>
+
+                      {repliesList.map((reply) => {
+                        const isReplyStudent = reply.sender_role === 'STUDENT';
+                        const replyImages = parseImages(reply.images);
+
+                        return (
+                          <div
+                            key={reply.id}
+                            className={`p-4 rounded-2xl border space-y-2.5 transition ${
+                              isReplyStudent
+                                ? 'bg-amber-50/60 border-amber-200/80'
+                                : 'bg-indigo-50/60 border-indigo-200/80'
+                            }`}
+                          >
+                            <div className="flex justify-between items-center">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`w-6 h-6 rounded-full text-white flex items-center justify-center text-[10px] font-black ${
+                                    isReplyStudent ? 'bg-amber-500' : 'bg-indigo-600'
+                                  }`}
+                                >
+                                  {isReplyStudent ? '질문' : '해설'}
+                                </span>
+                                <span
+                                  className={`text-xs font-black ${
+                                    isReplyStudent ? 'text-amber-950' : 'text-indigo-950'
+                                  }`}
+                                >
+                                  {isReplyStudent
+                                    ? `💬 ${reply.sender_name || '학생'}의 추가 질문`
+                                    : `🎓 ${reply.sender_name || '선생님'}의 추가 해설`}
+                                </span>
+                              </div>
+                              <span
+                                className={`text-[10px] font-medium ${
+                                  isReplyStudent ? 'text-amber-700' : 'text-indigo-700'
+                                }`}
+                              >
+                                {reply.created_at ? new Date(reply.created_at).toLocaleString() : ''}
+                              </span>
+                            </div>
+
+                            {reply.content && (
+                              <p className="text-xs text-slate-800 leading-relaxed whitespace-pre-wrap bg-white/90 p-3.5 rounded-xl border border-slate-100 font-medium">
+                                {reply.content}
+                              </p>
+                            )}
+
+                            {replyImages.length > 0 && (
+                              <div className="flex flex-wrap gap-2 pt-1">
+                                {replyImages.map((imgUrl, rIdx) => (
+                                  <div
+                                    key={rIdx}
+                                    onClick={() => setPreviewImageUrl(imgUrl)}
+                                    className="relative w-20 h-20 rounded-xl overflow-hidden border border-slate-200 cursor-pointer shadow-xs hover:scale-105 transition"
+                                  >
+                                    <img src={imgUrl} alt="추가 사진" className="w-full h-full object-cover" />
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* ────────────────── 4. 추가 질문 / 추가 답변 작성창 ────────────────── */}
+                  {item.answer && !qState.isEditing && (
+                    <div className="pt-2">
+                      {!currentFollowUp.isOpen ? (
+                        <button
+                          onClick={() =>
+                            setFollowUpState((prev) => ({
+                              ...prev,
+                              [item.id]: { ...(prev[item.id] || {}), isOpen: true },
+                            }))
+                          }
+                          className={`w-full py-3 rounded-2xl text-xs font-black flex items-center justify-center gap-1.5 transition border shadow-2xs ${
+                            !isTeacher
+                              ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-200'
+                              : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border-indigo-200'
+                          }`}
+                        >
+                          <span>💬</span>
+                          <span>
+                            {!isTeacher
+                              ? '선생님 풀이에 추가 질문(재질문) 남기기'
+                              : '학생에게 추가 풀이 / 힌트 남기기'}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-normal ml-1">▼</span>
+                        </button>
+                      ) : (
+                        <div
+                          className={`p-4 rounded-2xl border space-y-3 animate-in fade-in ${
+                            !isTeacher ? 'bg-amber-50/70 border-amber-200' : 'bg-indigo-50/70 border-indigo-200'
+                          }`}
+                        >
+                          <div className="flex justify-between items-center">
+                            <h4 className="text-xs font-black flex items-center gap-1.5 text-slate-800">
+                              <span>💬</span>
+                              <span>
+                                {!isTeacher ? '선생님께 추가 질문 작성하기' : '학생에게 추가 해설 작성하기'}
+                              </span>
+                            </h4>
+                            <button
+                              onClick={() =>
+                                setFollowUpState((prev) => ({
+                                  ...prev,
+                                  [item.id]: { ...(prev[item.id] || {}), isOpen: false },
+                                }))
+                              }
+                              className="text-xs font-bold text-slate-400 hover:text-slate-600"
+                            >
+                              ✕ 접기
+                            </button>
+                          </div>
+
+                          <textarea
+                            placeholder={
+                              !isTeacher
+                                ? '어느 부분이 여전히 이해가 안 가는지 추가 질문을 남겨주세요.'
+                                : '추가로 설명해 줄 개념이나 식 전개 과정을 적어주세요.'
+                            }
+                            value={currentFollowUp.text || ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setFollowUpState((prev) => ({
+                                ...prev,
+                                [item.id]: { ...(prev[item.id] || {}), text: val },
+                              }));
+                            }}
+                            className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 h-24 focus:outline-none focus:border-amber-500 font-medium"
+                          />
+
+                          {/* 사진 첨부 버튼 */}
+                          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+                            <label className="text-[11px] font-bold text-slate-600">
+                              📸 사진 첨부 (연습장/문제/해설 사진)
+                            </label>
+                            <label className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer transition text-center shadow-2xs">
+                              + 사진 추가
+                              <input
+                                type="file"
+                                multiple
+                                accept="image/*"
+                                onChange={(e) => {
+                                  const files = Array.from(e.target.files || []);
+                                  if (files.length === 0) return;
+                                  const previews = files.map((f) => URL.createObjectURL(f));
+                                  setFollowUpState((prev) => ({
+                                    ...prev,
+                                    [item.id]: {
+                                      ...(prev[item.id] || {}),
+                                      files: [...(prev[item.id]?.files || []), ...files],
+                                      filePreviews: [...(prev[item.id]?.filePreviews || []), ...previews],
+                                    },
+                                  }));
+                                }}
+                                className="hidden"
+                              />
+                            </label>
+                          </div>
+
+                          {/* 사진 미리보기 */}
+                          {(currentFollowUp.filePreviews || []).length > 0 && (
+                            <div className="flex flex-wrap gap-2 pt-1">
+                              {(currentFollowUp.filePreviews || []).map((prev, pIdx) => (
+                                <div key={pIdx} className="relative w-16 h-16 rounded-xl overflow-hidden border border-slate-300 group shadow-xs">
+                                  <img src={prev} alt="사진 미리보기" className="w-full h-full object-cover" />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setFollowUpState((prevS) => {
+                                        const cur = prevS[item.id] || {};
+                                        return {
+                                          ...prevS,
+                                          [item.id]: {
+                                            ...cur,
+                                            files: (cur.files || []).filter((_, i) => i !== pIdx),
+                                            filePreviews: (cur.filePreviews || []).filter((_, i) => i !== pIdx),
+                                          },
+                                        };
+                                      });
+                                    }}
+                                    className="absolute top-1 right-1 w-4 h-4 bg-rose-600 text-white text-[9px] font-black rounded-full flex items-center justify-center shadow"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          <div className="flex justify-end gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setFollowUpState((prev) => ({
+                                  ...prev,
+                                  [item.id]: { text: '', files: [], filePreviews: [], isOpen: false },
+                                }))
+                              }
+                              className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200 transition"
+                            >
+                              취소
+                            </button>
+                            <button
+                              type="button"
+                              disabled={currentFollowUp.submitting}
+                              onClick={() => handleSubmitFollowUp(item)}
+                              className={`px-5 py-2 text-white rounded-xl text-xs font-black shadow-md transition disabled:bg-slate-400 ${
+                                !isTeacher
+                                  ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/20'
+                                  : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20'
+                              }`}
+                            >
+                              {currentFollowUp.submitting
+                                ? '전송 중...'
+                                : (!isTeacher ? '추가 질문 보내기 🚀' : '추가 해설 등록하기 ✨')}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                 </div>
               );

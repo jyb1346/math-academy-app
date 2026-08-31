@@ -104,6 +104,9 @@ function BoardMain() {
   const [editGoogleFormUrl, setEditGoogleFormUrl] = useState('');
   const [editYoutubeUrl, setEditYoutubeUrl] = useState('');
   const [editHomeworkList, setEditHomeworkList] = useState([]);
+  const [editExistingAttachment, setEditExistingAttachment] = useState(null);
+  const [editNewFile, setEditNewFile] = useState(null);
+  const [editUploading, setEditUploading] = useState(false);
 
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);

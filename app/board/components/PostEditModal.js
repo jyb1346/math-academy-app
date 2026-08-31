@@ -97,7 +97,7 @@ export default function PostEditModal({
                 className="w-full p-2.5 border rounded-2xl text-xs bg-indigo-50/70 border-indigo-200 font-bold text-indigo-900"
               >
                 <optgroup label="📘 내 담당 반 목록">
-                  {myClasses.map((c) => (
+                  {(myClasses || []).map((c) => (
                     <option key={c.id} value={c.id}>🎯 [{c.name}] 전용</option>
                   ))}
                 </optgroup>
@@ -151,7 +151,7 @@ export default function PostEditModal({
                 </button>
               </div>
 
-              {editHomeworkList.map((item, index) => (
+              {(editHomeworkList || []).map((item, index) => (
                 <div key={index} className="flex gap-2 items-center">
                   <input
                     type="text"
@@ -248,7 +248,7 @@ export default function PostEditModal({
                 <div className="flex items-center gap-2 overflow-hidden">
                   <span className="text-base">📄</span>
                   <span className="font-bold text-slate-800 truncate max-w-[220px]">
-                    {editExistingAttachment.name}
+                    {editExistingAttachment?.name || "첨부파일"}
                   </span>
                   <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-semibold">
                     (현재 파일)

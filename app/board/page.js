@@ -21,9 +21,15 @@ function extractAttachment(text) {
   if (match) {
     const url = match[1];
     let name = match[2]?.trim();
-    if (!name) {
-      const rawName = url.split('/').pop() || '첨부파일';
-      name = decodeURIComponent(rawName.replace(/^\d+_[a-z0-9]+_?/, '') || '첨부파일');
+    if (!name || name.startsWith('.') || name === '첨부파일') {
+      const rawName = decodeURIComponent(url.split('/').pop() || '');
+      const ext = rawName.split('.').pop() || 'pdf';
+      const stripped = rawName.replace(/^\d+_[a-z0-9]+_/, '').replace(/^\d+_/, '').replace(/\.[^/.]+$/, '');
+      if (stripped && !/^[a-z0-9]{8,15}$/i.test(stripped)) {
+        name = `${stripped}.${ext}`;
+      } else {
+        name = `첨부파일.${ext}`;
+      }
     }
     return { url, name };
   }

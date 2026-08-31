@@ -14,13 +14,27 @@ function getYouTubeId(url) {
   return match ? match[1] : null;
 }
 
-function extractFileUrl(text) {
+// 🔍 첨부파일(URL 및 원본 파일명) 추출 헬퍼
+function extractAttachment(text) {
   if (!text) return null;
-  const match = text.match(/📎 첨부파일(?: 링크)?:\s*(\S+)/);
-  if (match) return match[1];
+  const match = text.match(/📎 첨부파일(?: 링크)?:\s*(\S+)(?:\s*\|\s*([^\n]+))?/);
+  if (match) {
+    const url = match[1];
+    let name = match[2]?.trim();
+    if (!name) {
+      const rawName = url.split('/').pop() || '첨부파일';
+      name = decodeURIComponent(rawName.replace(/^\d+_[a-z0-9]+_?/, '') || '첨부파일');
+    }
+    return { url, name };
+  }
   const driveMatch = text.match(/(https?:\/\/drive\.google\.com\/\S+)/);
-  if (driveMatch) return driveMatch[1];
+  if (driveMatch) return { url: driveMatch[1], name: '구글 드라이브 수업자료' };
   return null;
+}
+
+function extractFileUrl(text) {
+  const att = extractAttachment(text);
+  return att ? att.url : null;
 }
 
 // 🔍 구글 폼 URL 추출 헬퍼

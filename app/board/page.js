@@ -102,6 +102,7 @@ function BoardMain() {
   const [editTargetClassId, setEditTargetClassId] = useState('');
   const [editDueDate, setEditDueDate] = useState('');
   const [editGoogleFormUrl, setEditGoogleFormUrl] = useState('');
+  const [editYoutubeUrl, setEditYoutubeUrl] = useState('');
   const [editHomeworkList, setEditHomeworkList] = useState([]);
 
   const [user, setUser] = useState(null);
@@ -458,14 +459,21 @@ function BoardMain() {
     setEditDueDate(post.due_date || new Date().toISOString().split('T')[0]);
 
     const postContent = post.content || '';
+
+    // 1. 구글 폼 링크 추출
     const formMatch = postContent.match(/📋 구글 폼 링크:\s*(\S+)/);
     setEditGoogleFormUrl(formMatch ? formMatch[1] : '');
 
-    // 첨부파일 추출
+    // 2. 유튜브 영상 링크 추출
+    const ytMatch = postContent.match(/(https?:\/\/(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/|v\/)|youtu\.be\/)[\w-]{11}[^\s]*)/);
+    setEditYoutubeUrl(ytMatch ? ytMatch[1] : '');
+
+    // 3. 첨부파일 추출
     const att = extractAttachment(postContent);
     setEditExistingAttachment(att);
     setEditNewFile(null);
 
+    // 4. 숙제 교재 목록 파싱
     const lines = postContent.split('\n');
     const parsedBooks = [];
     lines.forEach((line) => {
@@ -476,11 +484,16 @@ function BoardMain() {
         }
       }
     });
-
     setEditHomeworkList(parsedBooks.length > 0 ? parsedBooks : [{ bookTitle: '', range: '' }]);
 
-    // 첨부파일이나 링크를 제외한 순수 메모만 입력창에 채우기
+    // 5. 순수 본문 내용/메모 추출
     let pureContent = cleanContentForDisplay(postContent);
+    
+    // 유튜브 URL 제거
+    if (ytMatch) {
+      pureContent = pureContent.replace(ytMatch[1], '').trim();
+    }
+
     const memoIndex = pureContent.indexOf('📝 메모:\n');
     if (memoIndex !== -1) {
       setEditContent(pureContent.substring(memoIndex + 7));
@@ -524,7 +537,8 @@ function BoardMain() {
         originalFileName = editExistingAttachment.name;
       }
 
-      let finalContent = editContent;
+      let finalContent = '';
+
       if (editCategory === 'HOMEWORK') {
         const bookDetails = editHomeworkList
           .filter((item) => item.bookTitle.trim() !== '')
@@ -534,6 +548,13 @@ function BoardMain() {
         const formLinkText = editGoogleFormUrl.trim() ? `\n\n📋 구글 폼 링크: ${editGoogleFormUrl.trim()}` : '';
         const memoText = editContent.trim() ? `\n\n📝 메모:\n${editContent.trim()}` : '';
         finalContent = `${bookDetails}${formLinkText}${memoText}`.trim();
+      } else if (editCategory === 'VIDEO') {
+        const ytLink = editYoutubeUrl.trim();
+        const descText = editContent.trim() ? `\n\n${editContent.trim()}` : '';
+        finalContent = `${ytLink}${descText}`.trim();
+      } else {
+        // NOTICE 또는 MATERIAL
+        finalContent = editContent.trim();
       }
 
       if (filePublicUrl) {
@@ -982,28 +1003,37 @@ function BoardMain() {
       )}
 
       {/* 수정 모달 */}
-      <PostEditModal
-        editingPost={editingPost}
-        setEditingPost={setEditingPost}
-        myClasses={myClasses}
-        editTargetClassId={editTargetClassId}
-        setEditTargetClassId={setEditTargetClassId}
-        editCategory={editCategory}
-        setEditCategory={setEditCategory}
-        editDueDate={editDueDate}
-        setEditDueDate={setEditDueDate}
-        editTitle={editTitle}
-        setEditTitle={setEditTitle}
-        editContent={editContent}
-        setEditContent={setEditContent}
-        editGoogleFormUrl={editGoogleFormUrl}
-        setEditGoogleFormUrl={setEditGoogleFormUrl}
-        editHomeworkList={editHomeworkList}
-        handleEditAddBook={handleEditAddBook}
-        handleEditRemoveBook={handleEditRemoveBook}
-        handleEditBookChange={handleEditBookChange}
-        handleUpdatePost={handleUpdatePost}
-      />
+      {editingPost && (
+        <PostEditModal
+          editingPost={editingPost}
+          setEditingPost={setEditingPost}
+          myClasses={myClasses}
+          editTargetClassId={editTargetClassId}
+          setEditTargetClassId={setEditTargetClassId}
+          editCategory={editCategory}
+          setEditCategory={setEditCategory}
+          editDueDate={editDueDate}
+          setEditDueDate={setEditDueDate}
+          editTitle={editTitle}
+          setEditTitle={setEditTitle}
+          editContent={editContent}
+          setEditContent={setEditContent}
+          editYoutubeUrl={editYoutubeUrl}
+          setEditYoutubeUrl={setEditYoutubeUrl}
+          editGoogleFormUrl={editGoogleFormUrl}
+          setEditGoogleFormUrl={setEditGoogleFormUrl}
+          editHomeworkList={editHomeworkList}
+          handleEditAddBook={handleEditAddBook}
+          handleEditRemoveBook={handleEditRemoveBook}
+          handleEditBookChange={handleEditBookChange}
+          editExistingAttachment={editExistingAttachment}
+          setEditExistingAttachment={setEditExistingAttachment}
+          editNewFile={editNewFile}
+          setEditNewFile={setEditNewFile}
+          editUploading={editUploading}
+          handleUpdatePost={handleUpdatePost}
+        />
+      )}
     </div>
   );
 }

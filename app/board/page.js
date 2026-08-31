@@ -37,7 +37,7 @@ function extractGoogleFormUrl(text) {
 function cleanContentForDisplay(text) {
   if (!text) return '';
   let cleaned = text
-    .replace(/📎 첨부파일:\s*\S+/g, '')
+    .replace(/📎 첨부파일(?: 링크)?:\s*\S+(?:\s*\|\s*[^\n]+)?/g, '')
     .replace(/📋 구글 폼 링크:\s*\S+/g, '')
     .replace(/📝 메모:\s*$/g, '')
     .replace(/📝 메모:\s*\n\s*$/g, '')

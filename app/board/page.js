@@ -368,7 +368,7 @@ function BoardMain() {
       }
 
       if (filePublicUrl) {
-        finalContent += `\n\n📎 첨부파일: ${filePublicUrl}`;
+        finalContent += `\n\n📎 첨부파일: ${filePublicUrl} | ${attachedFile.name}`;
       }
 
       // 💡 UUID 안전 매핑: classes에 존재하는 ID만 전달
@@ -441,6 +441,11 @@ function BoardMain() {
     const formMatch = postContent.match(/📋 구글 폼 링크:\s*(\S+)/);
     setEditGoogleFormUrl(formMatch ? formMatch[1] : '');
 
+    // 첨부파일 추출
+    const att = extractAttachment(postContent);
+    setEditExistingAttachment(att);
+    setEditNewFile(null);
+
     const lines = postContent.split('\n');
     const parsedBooks = [];
     lines.forEach((line) => {
@@ -454,13 +459,15 @@ function BoardMain() {
 
     setEditHomeworkList(parsedBooks.length > 0 ? parsedBooks : [{ bookTitle: '', range: '' }]);
 
-    const memoIndex = postContent.indexOf('📝 메모:\n');
+    // 첨부파일이나 링크를 제외한 순수 메모만 입력창에 채우기
+    let pureContent = cleanContentForDisplay(postContent);
+    const memoIndex = pureContent.indexOf('📝 메모:\n');
     if (memoIndex !== -1) {
-      setEditContent(postContent.substring(memoIndex + 7));
+      setEditContent(pureContent.substring(memoIndex + 7));
     } else if (parsedBooks.length > 0) {
       setEditContent('');
     } else {
-      setEditContent(postContent);
+      setEditContent(pureContent);
     }
   };
 
@@ -469,6 +476,34 @@ function BoardMain() {
     if (!editTitle.trim()) return alert('제목을 입력해 주세요.');
 
     try {
+      setEditUploading(true);
+
+      // 1. 새 첨부파일이 선택된 경우 업로드 진행
+      let filePublicUrl = null;
+      let originalFileName = '';
+
+      if (editNewFile) {
+        const fileToUpload = await compressImage(editNewFile);
+        const fileExt = editNewFile.name.split('.').pop();
+        const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const filePath = `board_files/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('attachments')
+          .upload(filePath, fileToUpload);
+
+        if (uploadError) {
+          throw new Error('첨부파일 업로드 실패: ' + uploadError.message);
+        }
+
+        const { data: urlData } = supabase.storage.from('attachments').getPublicUrl(filePath);
+        filePublicUrl = urlData?.publicUrl;
+        originalFileName = editNewFile.name;
+      } else if (editExistingAttachment) {
+        filePublicUrl = editExistingAttachment.url;
+        originalFileName = editExistingAttachment.name;
+      }
+
       let finalContent = editContent;
       if (editCategory === 'HOMEWORK') {
         const bookDetails = editHomeworkList
@@ -479,6 +514,10 @@ function BoardMain() {
         const formLinkText = editGoogleFormUrl.trim() ? `\n\n📋 구글 폼 링크: ${editGoogleFormUrl.trim()}` : '';
         const memoText = editContent.trim() ? `\n\n📝 메모:\n${editContent.trim()}` : '';
         finalContent = `${bookDetails}${formLinkText}${memoText}`.trim();
+      }
+
+      if (filePublicUrl) {
+        finalContent += `\n\n📎 첨부파일: ${filePublicUrl} | ${originalFileName}`;
       }
 
       const matchedClass = classes.find((c) => String(c.id) === String(editTargetClassId));
@@ -500,6 +539,8 @@ function BoardMain() {
       fetchPosts();
     } catch (err) {
       alert(`수정 실패: ${err.message}`);
+    } finally {
+      setEditUploading(false);
     }
   };
 
@@ -677,7 +718,7 @@ function BoardMain() {
               const authorName = post.users?.name || '선생님';
               const rawContent = post.content || '';
               const ytId = getYouTubeId(rawContent);
-              const fileUrl = extractFileUrl(rawContent);
+              const attachment = extractAttachment(rawContent);
 
               const { confirmedList, unconfirmedList } = getPostConfirmStats(post);
               const isStudentConfirmed = user?.role === 'STUDENT' && confirmations[post.id]?.has(user.id);
@@ -776,15 +817,21 @@ function BoardMain() {
                         </span>
                       )}
 
-                      {fileUrl && (
+                      {attachment && (
                         <a
-                          href={fileUrl}
+                          href={attachment.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-4 py-2 rounded-xl font-black transition text-sm sm:text-base shadow-xs"
+                          className="inline-flex items-center gap-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 px-3.5 py-2 rounded-xl font-black transition text-xs sm:text-sm shadow-xs group max-w-full"
+                          title="클릭하여 파일 다운로드 / 열기"
                         >
-                          <span>📁 첨부 파일</span>
-                          <span>↗</span>
+                          <span className="text-base">📄</span>
+                          <span className="truncate max-w-[170px] sm:max-w-[280px] text-emerald-950 underline underline-offset-2">
+                            {attachment.name}
+                          </span>
+                          <span className="bg-emerald-200/80 text-emerald-900 text-[10px] sm:text-[11px] px-2 py-0.5 rounded-lg shrink-0 font-bold">
+                            받기 ⬇️
+                          </span>
                         </a>
                       )}
                     </div>

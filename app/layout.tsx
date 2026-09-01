@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import KakaoInAppHandler from "@/components/KakaoInAppHandler";
 import LuckyBugOverlay from "@/components/LuckyBugOverlay";
+import TestServerBanner from "@/components/TestServerBanner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -72,6 +73,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
       </head>
       <body className="min-h-full flex flex-col">
+        <TestServerBanner />
         <KakaoInAppHandler />
         <LuckyBugOverlay />
         {children}

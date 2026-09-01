@@ -769,31 +769,31 @@ function BoardMain() {
 
               return (
                 <div key={post.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-                  <div className="flex justify-between items-start">
-                    <div className="space-y-1">
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="space-y-1 flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className={isPublic ? 'text-xs sm:text-sm font-black px-3.5 py-1 rounded-full border bg-slate-100 text-slate-700 border-slate-200' : 'text-xs sm:text-sm font-black px-3.5 py-1 rounded-full border bg-indigo-50 text-indigo-700 border-indigo-100'}>
+                        <span className={isPublic ? 'text-xs sm:text-sm font-black px-3.5 py-1 rounded-full border bg-slate-100 text-slate-700 border-slate-200 whitespace-nowrap' : 'text-xs sm:text-sm font-black px-3.5 py-1 rounded-full border bg-indigo-50 text-indigo-700 border-indigo-100 whitespace-nowrap'}>
                           {isPublic ? '🌐 학원 전체 공지' : ('🎯 [' + matchedClassName + ']')}
                         </span>
-                        <span className="bg-slate-100 text-slate-600 text-xs sm:text-sm font-black px-3.5 py-1 rounded-full">
+                        <span className="bg-slate-100 text-slate-600 text-xs sm:text-sm font-black px-3.5 py-1 rounded-full whitespace-nowrap">
                           {post.category === 'NOTICE' && '📢 일반 공지'}
                           {post.category === 'HOMEWORK' && '📝 숙제 공지'}
                           {post.category === 'VIDEO' && '🎥 복습 영상'}
                           {post.category === 'MATERIAL' && '📁 수업 자료'}
                         </span>
-                        <span className="text-sm text-slate-500 font-bold ml-1">
+                        <span className="text-xs sm:text-sm text-slate-500 font-bold ml-1 whitespace-nowrap">
                           작성자: {authorName} • {new Date(post.created_at).toLocaleDateString()}
                         </span>
                       </div>
-                      <h3 className="text-xl sm:text-2xl font-black text-slate-900 pt-1 leading-snug tracking-tight">{post.title}</h3>
+                      <h3 className="text-lg sm:text-2xl font-black text-slate-900 pt-1 leading-snug tracking-tight break-words">{post.title}</h3>
                     </div>
 
                     {user?.role !== 'STUDENT' && (
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap">
                         {post.category === 'HOMEWORK' && (
                           <button
                             onClick={() => handleSendManualReminder(post)}
-                            className="text-xs bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-bold px-2.5 py-1 rounded-lg transition flex items-center gap-1 shadow-2xs"
+                            className="text-xs bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-bold px-2.5 py-1 rounded-lg transition flex items-center gap-1 shadow-2xs shrink-0 whitespace-nowrap"
                             title="해당 반 학생들에게 마감 리마인드 알림 발송"
                           >
                             <span>⏰</span>
@@ -802,13 +802,13 @@ function BoardMain() {
                         )}
                         <button
                           onClick={() => handleOpenEdit(post)}
-                          className="text-xs text-slate-500 hover:text-indigo-600 font-bold px-2 py-1 rounded-lg bg-slate-50 border border-slate-200"
+                          className="text-xs text-slate-600 hover:text-indigo-600 font-bold px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 shrink-0 whitespace-nowrap transition"
                         >
                           수정
                         </button>
                         <button
                           onClick={() => handleDeletePost(post.id, post.title)}
-                          className="text-xs text-rose-500 hover:underline font-bold px-2 py-1"
+                          className="text-xs text-rose-500 hover:text-rose-700 font-bold px-2 py-1 shrink-0 whitespace-nowrap transition"
                         >
                           삭제
                         </button>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import { getActiveLuckyEvent, catchLuckyBug } from '@/lib/luckyBugService';
+import { getActiveLuckyEvent, getRecentFinishedLuckyEvent, catchLuckyBug } from '@/lib/luckyBugService';
 
 export default function LuckyBugOverlay() {
   const [user, setUser] = useState(null);
@@ -51,8 +51,8 @@ export default function LuckyBugOverlay() {
       const classIds = (csData || []).map((cs) => String(cs.class_id));
       setStudentClasses(classIds);
 
-      // 2. 현재 활성화된 벌레 이벤트가 있는지 확인
-      checkActiveEvent(classIds);
+      // 2. 현재 활성화된 벌레 이벤트 확인 또는 최근 마감 안내 확인
+      await checkActiveEvent(classIds, studentUser.id);
 
       // 3. 실시간 Supabase Realtime 채널 구독
       const channel = supabase
@@ -74,7 +74,9 @@ export default function LuckyBugOverlay() {
         .on('broadcast', { event: 'BUG_FINISHED' }, (payload) => {
           const { eventId } = payload.payload || {};
           setActiveEvent((prev) => {
-            if (prev && prev.id === eventId) {
+            if (prev && (!eventId || prev.id === eventId)) {
+              setMissedAlert('💨 [황금 벌레 마감] 방금 선착순 마감되어 벌레가 날아갔습니다! 다음 기회를 노려보세요! ⚡');
+              setTimeout(() => setMissedAlert(null), 5000);
               return null;
             }
             return prev;
@@ -88,11 +90,24 @@ export default function LuckyBugOverlay() {
     }
   };
 
-  const checkActiveEvent = async (classIds) => {
+  const checkActiveEvent = async (classIds, studentId) => {
     const event = await getActiveLuckyEvent(classIds);
     if (event) {
       setActiveEvent(event);
       startBugMovement();
+    } else if (studentId) {
+      // 활성화된 벌레가 없으면 최근 마감된 이벤트가 있는지 확인
+      const finishedEvent = await getRecentFinishedLuckyEvent(classIds, studentId);
+      if (finishedEvent) {
+        const sessionKey = `seen_finished_bug_${finishedEvent.id}`;
+        if (typeof window !== 'undefined' && !sessionStorage.getItem(sessionKey)) {
+          sessionStorage.setItem(sessionKey, 'true');
+          setMissedAlert(
+            `💨 [황금 벌레 마감] 앗! 이번 황금 벌레는 다른 친구가 먼저 잡았습니다! 다음 돌발 이벤트를 기대해 보세요! ⚡`
+          );
+          setTimeout(() => setMissedAlert(null), 6000);
+        }
+      }
     }
   };
 
@@ -137,9 +152,9 @@ export default function LuckyBugOverlay() {
         }
       } else {
         // 이미 2명이 마감된 경우
-        setMissedAlert(res.message || '앗! 아쉽게도 방금 마감되었습니다!');
+        setMissedAlert(res.message || '앗! 아쉽게도 방금 마감되었습니다! 다음 기회를 노려보세요! 💨');
         setActiveEvent(null);
-        setTimeout(() => setMissedAlert(null), 4000);
+        setTimeout(() => setMissedAlert(null), 5000);
       }
     } catch (err) {
       console.error('Catch error:', err);
@@ -197,11 +212,11 @@ export default function LuckyBugOverlay() {
         </div>
       )}
 
-      {/* 💥 2. 아쉽게 마감 알림 토스트 */}
+      {/* 💥 2. 아쉽게 마감 안내 알림 (프리미엄 하단 토스트) */}
       {missedAlert && (
-        <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50 bg-slate-900/95 text-white px-5 py-3 rounded-2xl shadow-2xl border border-slate-700 text-xs font-bold flex items-center gap-2 animate-fade-in">
-          <span>💨</span>
-          <span>{missedAlert}</span>
+        <div className="fixed bottom-20 sm:bottom-24 left-1/2 transform -translate-x-1/2 z-50 bg-slate-950/95 text-white px-5 sm:px-6 py-3.5 rounded-2xl shadow-2xl border border-amber-500/40 text-xs sm:text-sm font-black flex items-center gap-3 animate-fade-in backdrop-blur-md max-w-md w-[92%] sm:w-auto text-center justify-center">
+          <span className="text-xl shrink-0 animate-bounce">💨</span>
+          <span className="leading-snug">{missedAlert}</span>
         </div>
       )}
 

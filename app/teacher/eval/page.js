@@ -60,7 +60,7 @@ export default function TeacherEvalPage() {
       } else {
         const { data: stData } = await supabase
           .from('users')
-          .select('id, name, email')
+          .select('id, name, email, parent_phone')
           .eq('role', 'STUDENT')
           .eq('teacher_id', currentUser.id);
         setStudents(stData || []);
@@ -77,7 +77,7 @@ export default function TeacherEvalPage() {
     try {
       const { data: csData } = await supabase
         .from('class_students')
-        .select('student_id, users(id, name, email)')
+        .select('student_id, users(id, name, email, parent_phone)')
         .eq('class_id', classId);
 
       if (csData) {
@@ -129,9 +129,11 @@ export default function TeacherEvalPage() {
         teacher_comment: teacherComment,
       };
 
+      let evalId = null;
+
       if (existingEval) {
         const confirmOverwrite = confirm(
-          `⚠️ [${studentName}] 학생의 ${evalDate} 날짜 피드백이 이미 작성되어 있습니다.\n\n새로 작성한 내용으로 수정(덮어쓰기)하시겠습니까?\n'취소'를 누르면 기존 피드백이 유지됩니다.`
+          `⚠️ [${studentName}] 학생의 ${evalDate} 날짜 피드백이 이미 작성되어 있습니다.\n\n새로 작성한 내용으로 수정(덮어쓰기)하고 학부모님께 알림을 재발송하시겠습니까?\n'취소'를 누르면 기존 피드백이 유지됩니다.`
         );
 
         if (!confirmOverwrite) {
@@ -145,16 +147,51 @@ export default function TeacherEvalPage() {
           .eq('id', existingEval.id);
 
         if (updateError) throw updateError;
-        alert(`[${studentName}] 학생의 ${evalDate} 피드백이 성공적으로 수정(덮어쓰기)되었습니다!`);
+        evalId = existingEval.id;
       } else {
-        const { error: insertError } = await supabase
+        const { data: insertedData, error: insertError } = await supabase
           .from('daily_evaluations')
-          .insert([payload]);
+          .insert([payload])
+          .select('id')
+          .single();
 
         if (insertError) throw insertError;
-        alert(`[${studentName}] 학생의 일일 피드백이 등록되었습니다!`);
+        evalId = insertedData?.id;
       }
 
+      // 📲 학부모님께 카카오톡/문자 피드백 리포트 링크 자동 발송
+      let messageNotice = '';
+      if (evalId && selectedStudent?.parent_phone) {
+        try {
+          const res = await fetch('/api/solapi/send-eval', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              evalId,
+              studentId: selectedStudentId,
+              studentName: selectedStudent.name,
+              evalDate,
+              parentPhone: selectedStudent.parent_phone,
+              teacherName: user?.name,
+            }),
+          });
+          const sendResult = await res.json();
+          if (sendResult.success) {
+            messageNotice = `\n\n📲 학부모님(${selectedStudent.parent_phone})께 피드백 리포트 링크가 성공적으로 발송되었습니다!`;
+          } else if (sendResult.skipped) {
+            messageNotice = `\n\n⚠️ ${sendResult.message}`;
+          } else if (sendResult.error) {
+            messageNotice = `\n\n⚠️ 알림 발송 안내: ${sendResult.error}`;
+          }
+        } catch (sendErr) {
+          console.warn('Solapi send warning:', sendErr);
+          messageNotice = '\n\n⚠️ 피드백은 저장되었으나 메시지 발송 중 오류가 발생했습니다.';
+        }
+      } else if (!selectedStudent?.parent_phone) {
+        messageNotice = '\n\nℹ️ 학생의 학부모 연락처가 등록되지 않아 알림 발송은 제외되었습니다.';
+      }
+
+      alert(`[${studentName}] 학생의 ${evalDate} 피드백이 성공적으로 저장되었습니다!${messageNotice}`);
       setTeacherComment('');
     } catch (err) {
       alert(`저장 실패: ${err.message}`);

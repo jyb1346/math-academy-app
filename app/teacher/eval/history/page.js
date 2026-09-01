@@ -55,7 +55,7 @@ export default function EvalHistoryPage() {
 
       const { data: evalData, error } = await supabase
         .from('daily_evaluations')
-        .select('*, users!daily_evaluations_student_id_fkey(name, email)')
+        .select('*, users!daily_evaluations_student_id_fkey(name, email, parent_phone)')
         .eq('teacher_id', currentUser.id)
         .order('eval_date', { ascending: false });
 
@@ -67,6 +67,57 @@ export default function EvalHistoryPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  
+  const [sendingId, setSendingId] = useState(null);
+
+  const handleResendNotification = async (item) => {
+    const studentName = item.users?.name || '해당';
+    const parentPhone = item.users?.parent_phone;
+
+    if (!parentPhone) {
+      return alert(`[${studentName}] 학생의 등록된 학부모 연락처가 없습니다.\n학생 정보 관리에서 학부모 연락처를 먼저 등록해 주세요.`);
+    }
+
+    if (!confirm(`[${studentName}] 학생의 학부모님(${parentPhone})께 ${item.eval_date} 일일 피드백 리포트 링크를 전송하시겠습니까?`)) {
+      return;
+    }
+
+    setSendingId(item.id);
+    try {
+      const res = await fetch('/api/solapi/send-eval', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          evalId: item.id,
+          studentId: item.student_id,
+          studentName,
+          evalDate: item.eval_date,
+          parentPhone,
+          teacherName: user?.name,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(`✅ [${studentName}] 학부모님(${parentPhone})께 피드백 리포트 알림이 성공적으로 발송되었습니다!`);
+      } else {
+        alert(`발송 실패: ${data.error || data.message}`);
+      }
+    } catch (err) {
+      alert(`발송 오류: ${err.message}`);
+    } finally {
+      setSendingId(null);
+    }
+  };
+
+  const handleCopyReportLink = (evalId) => {
+    const url = `${window.location.origin}/report/${evalId}`;
+    navigator.clipboard.writeText(url).then(() => {
+      alert(`📋 학부모 리포트 링크가 복사되었습니다!\n\n${url}`);
+    }).catch(() => {
+      prompt('아래 주소를 복사해 주세요:', url);
+    });
   };
 
   const handleDeleteEval = async (id, studentName, evalDate) => {
@@ -268,12 +319,30 @@ export default function EvalHistoryPage() {
                         
                         {renderAttendanceBadge(item.attendance_status, item.lateness_minutes)}
                       </div>
-                      <button
-                        onClick={() => handleDeleteEval(item.id, item.users?.name, item.eval_date)}
-                        className="text-rose-500 hover:underline font-bold"
-                      >
-                        삭제
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleCopyReportLink(item.id)}
+                          className="px-2.5 py-1 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition"
+                          title="학부모 리포트 웹 주소 복사"
+                        >
+                          🔗 링크 복사
+                        </button>
+                        <button
+                          onClick={() => handleResendNotification(item)}
+                          disabled={sendingId === item.id}
+                          className="px-2.5 py-1 text-xs font-black text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition flex items-center gap-1 shadow-2xs disabled:opacity-50"
+                          title="학부모님 휴대폰으로 알림톡/문자 전송"
+                        >
+                          <span>📲</span>
+                          <span>{sendingId === item.id ? '발송 중...' : '학부모 알림 발송'}</span>
+                        </button>
+                        <button
+                          onClick={() => handleDeleteEval(item.id, item.users?.name, item.eval_date)}
+                          className="text-rose-500 hover:underline font-bold px-1"
+                        >
+                          삭제
+                        </button>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">

@@ -361,15 +361,30 @@ export default function QnaPage() {
     }
   };
 
-  // 이미지 파싱 유틸
-  const parseImages = (imgStr) => {
-    if (!imgStr) return [];
-    try {
-      const parsed = JSON.parse(imgStr);
-      return Array.isArray(parsed) ? parsed : [parsed];
-    } catch {
-      return [imgStr];
+  // 이미지 파싱 유틸 (배열, JSON 문자열, 단일 URL 등 모든 형식 완벽 지원)
+  const parseImages = (imgInput) => {
+    if (!imgInput) return [];
+    if (Array.isArray(imgInput)) {
+      return imgInput.filter((url) => typeof url === 'string' && url.trim().length > 0);
     }
+    if (typeof imgInput === 'string') {
+      const trimmed = imgInput.trim();
+      if (!trimmed || trimmed === '[]' || trimmed === 'null' || trimmed === '""') return [];
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((url) => typeof url === 'string' && url.trim().length > 0);
+        }
+        if (typeof parsed === 'string' && parsed.trim().length > 0) {
+          return [parsed.trim()];
+        }
+      } catch {
+        if (trimmed.startsWith('http')) {
+          return [trimmed];
+        }
+      }
+    }
+    return [];
   };
 
   // 스레드 댓글 목록 파싱 유틸

@@ -52,22 +52,19 @@ ${name} 학생의 ${date} 일일 학습 피드백${teacher}이 등록되었습�
 ▶ 피드백 리포트 바로가기:
 ${reportUrl}`;
 
-    // Solapi 카카오 옵션 (환경변수에 설정된 경우 알림톡 발송)
-    const pfId = process.env.SOLAPI_KAKAO_PFID;
-    const templateId = process.env.SOLAPI_KAKAO_TEMPLATE_ID;
-    let kakaoOptions = null;
+    // Solapi 카카오 알림톡 옵션 (기본 카카오 채널 및 승인된 템플릿 연동)
+    const pfId = process.env.SOLAPI_KAKAO_PFID || 'KA01PF260831093804945uPxRUYsn8qj';
+    const templateId = process.env.SOLAPI_KAKAO_TEMPLATE_ID || 'KA01TP260901085150042icX0U1Jrpr1';
 
-    if (pfId && templateId) {
-      kakaoOptions = {
-        pfId,
-        templateId,
-        variables: {
-          '#{이름}': name,
-          '#{날짜}': date,
-          '#{링크}': reportUrl,
-        },
-      };
-    }
+    const kakaoOptions = {
+      pfId,
+      templateId,
+      variables: {
+        '#{이름}': name,
+        '#{날짜}': date,
+        '#{링크}': reportUrl,
+      },
+    };
 
     const result = await sendSolapiMessage({
       to: cleanTo,

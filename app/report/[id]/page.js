@@ -207,7 +207,7 @@ export default function StudentReportPage() {
               onChange={(e) => setReplyText(e.target.value)}
               placeholder="선생님께 전달할 감사 인사나 문의사항을 입력해 주세요."
               rows={3}
-              className="w-full p-3.5 border border-slate-200/80 rounded-2xl text-xs font-semibold bg-slate-50 focus:outline-none focus:border-indigo-500"
+              className="w-full p-3.5 border border-slate-300 rounded-2xl text-xs font-semibold bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-inner"
             />
             <button
               type="submit"

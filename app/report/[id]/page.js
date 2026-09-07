@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useParams, useRouter } from 'next/navigation';
 import HexagonRadarChart from '@/components/HexagonRadarChart';
+import { parseTeacherCommentAndWeeklyScore } from '@/lib/evalUtils';
 
 export default function StudentReportPage() {
   const { id } = useParams();
@@ -132,6 +133,11 @@ export default function StudentReportPage() {
     return '🟢 정상 출석';
   };
 
+  const { weeklyScore, comment: cleanComment } = parseTeacherCommentAndWeeklyScore(
+    evalData.teacher_comment,
+    evalData.weekly_test_score
+  );
+
   return (
     <div className="min-h-screen bg-slate-100/80 py-6 px-4 flex flex-col items-center justify-center font-sans">
       <div className="max-w-md w-full bg-white rounded-3xl shadow-xl border border-slate-200/80 overflow-hidden space-y-4">
@@ -186,13 +192,39 @@ export default function StudentReportPage() {
           </div>
         </div>
 
+        {/* 📝 주간 테스트 성적 카드 (입력된 경우에만 렌더링, 미입력 시 숨김) */}
+        {weeklyScore && (
+          <div className="mx-5 my-1 bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 rounded-2xl p-4 text-white shadow-lg shadow-indigo-600/15 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-lg shadow-inner">
+                  📝
+                </div>
+                <div>
+                  <span className="text-[10.5px] font-bold text-indigo-200 block uppercase tracking-wide">Weekly Test</span>
+                  <h4 className="text-sm font-black text-white">주간 테스트 결과</h4>
+                </div>
+              </div>
+              <div className="bg-white text-indigo-950 px-3.5 py-1.5 rounded-xl shadow-md text-right border border-indigo-100 flex items-baseline gap-1">
+                <span className="text-[11px] font-bold text-slate-500">점수:</span>
+                <span className="text-base sm:text-lg font-black text-indigo-600">
+                  {weeklyScore.endsWith('점') || weeklyScore.includes('/') ? weeklyScore : `${weeklyScore}점`}
+                </span>
+              </div>
+            </div>
+            <p className="text-[11px] text-indigo-100/90 font-medium pt-0.5">
+              💡 이번 주 학습 단원 이해도 점검 및 주간 성취도 평가 점수입니다.
+            </p>
+          </div>
+        )}
+
         {/* 선생님 피드백 */}
         <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 space-y-2">
           <h4 className="text-xs font-black text-indigo-700 uppercase tracking-wider flex items-center gap-1">
             <span>✍️</span> 선생님 피드백 코멘트
           </h4>
           <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-            {evalData.teacher_comment || '오늘도 집중력 있게 성실히 학습에 임했습니다!'}
+            {cleanComment || '오늘도 집중력 있게 성실히 학습에 임했습니다!'}
           </p>
         </div>
 

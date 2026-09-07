@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
+import { formatTeacherCommentWithWeeklyScore } from '@/lib/evalUtils';
 
 export default function TeacherEvalPage() {
   const [user, setUser] = useState(null);
@@ -23,6 +24,7 @@ export default function TeacherEvalPage() {
   const [homeworkScore, setHomeworkScore] = useState(8);
   const [perseveranceScore, setPerseveranceScore] = useState(8);
 
+  const [weeklyTestScore, setWeeklyTestScore] = useState('');
   const [teacherComment, setTeacherComment] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -114,6 +116,8 @@ export default function TeacherEvalPage() {
 
       if (checkError) throw checkError;
 
+      const combinedComment = formatTeacherCommentWithWeeklyScore(teacherComment, weeklyTestScore);
+
       const payload = {
         teacher_id: user.id,
         student_id: selectedStudentId,
@@ -126,7 +130,7 @@ export default function TeacherEvalPage() {
         attitude_score: parseInt(attitudeScore),
         homework_score: parseInt(homeworkScore),
         perseverance_score: parseInt(perseveranceScore),
-        teacher_comment: teacherComment,
+        teacher_comment: combinedComment,
       };
 
       let evalId = null;
@@ -193,6 +197,7 @@ export default function TeacherEvalPage() {
 
       alert(`[${studentName}] 학생의 ${evalDate} 피드백이 성공적으로 저장되었습니다!${messageNotice}`);
       setTeacherComment('');
+      setWeeklyTestScore('');
     } catch (err) {
       alert(`저장 실패: ${err.message}`);
     }
@@ -411,6 +416,38 @@ export default function TeacherEvalPage() {
                   />
                 </div>
               </div>
+            </div>
+
+                        {/* 📝 주간 테스트 점수 (선택 입력) */}
+            <div className="bg-indigo-50/70 p-4 rounded-2xl border border-indigo-200/80 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-extrabold text-indigo-950 flex items-center gap-1.5">
+                  <span>📝</span>
+                  <span>주간 테스트 점수</span>
+                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100/90 px-2 py-0.5 rounded-full">
+                    선택 입력
+                  </span>
+                </label>
+                {weeklyTestScore && (
+                  <button
+                    type="button"
+                    onClick={() => setWeeklyTestScore('')}
+                    className="text-[11px] font-bold text-slate-400 hover:text-rose-500 underline"
+                  >
+                    점수 지우기
+                  </button>
+                )}
+              </div>
+              <input
+                type="text"
+                value={weeklyTestScore}
+                onChange={(e) => setWeeklyTestScore(e.target.value)}
+                placeholder="예: 95점 또는 24/25 (평일이거나 테스트를 안 본 날은 빈칸으로 둡니다)"
+                className="w-full p-2.5 border border-indigo-200 rounded-xl text-xs font-bold text-indigo-950 bg-white placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 shadow-2xs"
+              />
+              <p className="text-[10.5px] text-indigo-700/80 font-medium">
+                💡 점수를 입력하면 학부모 리포트에 주간 테스트 결과 카드가 생성되며, <strong>빈칸으로 두시면 리포트에 아무것도 표시되지 않습니다.</strong>
+              </p>
             </div>
 
             <div className="space-y-1">

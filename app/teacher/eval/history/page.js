@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import HexagonRadarChart from '@/components/HexagonRadarChart';
+import { parseTeacherCommentAndWeeklyScore } from '@/lib/evalUtils';
 
 export default function EvalHistoryPage() {
   const [user, setUser] = useState(null);
@@ -306,6 +307,10 @@ export default function EvalHistoryPage() {
             ) : (
               filteredEvals.map((item) => {
                 const twoWeekAvgScores = getTwoWeekAvgScores(item.student_id, item.eval_date);
+                const { weeklyScore, comment: cleanComment } = parseTeacherCommentAndWeeklyScore(
+                  item.teacher_comment,
+                  item.weekly_test_score
+                );
 
                 return (
                   <div key={item.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
@@ -318,6 +323,12 @@ export default function EvalHistoryPage() {
                         </span>
                         
                         {renderAttendanceBadge(item.attendance_status, item.lateness_minutes)}
+
+                        {weeklyScore && (
+                          <span className="bg-indigo-50 text-indigo-800 border border-indigo-200 text-xs font-black px-2.5 py-0.5 rounded-full shadow-2xs">
+                            📝 주간테스트: {weeklyScore.endsWith('점') || weeklyScore.includes('/') ? weeklyScore : `${weeklyScore}점`}
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         <button
@@ -364,7 +375,7 @@ export default function EvalHistoryPage() {
                         <div className="bg-blue-50/60 p-4 rounded-xl border border-blue-100 space-y-1">
                           <span className="text-xs font-bold text-blue-800 block">✍️ 선생님 학습 총평</span>
                           <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed font-medium">
-                            {item.teacher_comment || '작성된 코멘트가 없습니다.'}
+                            {cleanComment || '작성된 코멘트가 없습니다.'}
                           </p>
                         </div>
 

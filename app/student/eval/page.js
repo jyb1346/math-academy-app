@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import HexagonRadarChart from '@/components/HexagonRadarChart';
+import { parseTeacherCommentAndWeeklyScore } from '@/lib/evalUtils';
 
 export default function StudentEvalPage() {
   const [user, setUser] = useState(null);
@@ -143,12 +144,21 @@ export default function StudentEvalPage() {
         ) : (
           evaluations.map((ev) => {
             const twoWeekAvg = getTwoWeekAvgScores(ev.eval_date);
+            const { weeklyScore, comment: cleanComment } = parseTeacherCommentAndWeeklyScore(
+              ev.teacher_comment,
+              ev.weekly_test_score
+            );
 
             return (
               <div key={ev.id} className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-5">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-black text-slate-800 text-base">📅 {ev.eval_date} 학습 리포트</span>
+                    {weeklyScore && (
+                      <span className="bg-indigo-50 text-indigo-800 border border-indigo-200 text-xs font-black px-2.5 py-0.5 rounded-full shadow-2xs">
+                        📝 주간테스트: {weeklyScore.endsWith('점') || weeklyScore.includes('/') ? weeklyScore : `${weeklyScore}점`}
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     {renderAttendanceBadge(ev.attendance_status, ev.lateness_minutes)}
@@ -190,10 +200,10 @@ export default function StudentEvalPage() {
                       <div className="text-center">끈기: <span className="text-blue-600 font-black">{ev.perseverance_score ?? '-'}점</span></div>
                     </div>
 
-                    {ev.teacher_comment && (
+                    {cleanComment && (
                       <div className="text-xs text-slate-700 leading-relaxed bg-blue-50/50 p-4 rounded-2xl border border-blue-100/80 space-y-1">
                         <span className="font-bold text-blue-900 block">✍️ 선생님 코멘트:</span>
-                        <p className="whitespace-pre-wrap">{ev.teacher_comment}</p>
+                        <p className="whitespace-pre-wrap">{cleanComment}</p>
                       </div>
                     )}
 

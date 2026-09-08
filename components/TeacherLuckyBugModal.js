@@ -9,6 +9,8 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
   const [selectedClassId, setSelectedClassId] = useState(''); // '' = 전체
   const [targetCount, setTargetCount] = useState(2);
   const [rewardText, setRewardText] = useState('선착순 깜짝 선물 🎁 (간식/기프티콘)');
+  const [speedMode, setSpeedMode] = useState('FAST'); // 'NORMAL' | 'FAST' | 'EXTREME'
+  const [escapeGimmick, setEscapeGimmick] = useState(true); // boolean
   const [spawning, setSpawning] = useState(false);
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -54,6 +56,8 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
         classId: selectedClassId || null,
         targetCount: Number(targetCount) || 2,
         rewardText: rewardText.trim(),
+        speedMode,
+        escapeGimmick,
       });
 
       if (!result.success) throw new Error(result.error);
@@ -70,6 +74,8 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
             classId: selectedClassId || null,
             targetCount: Number(targetCount),
             rewardText: rewardText.trim(),
+            speedMode,
+            escapeGimmick,
           },
         });
       }
@@ -89,16 +95,18 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
           ? classes.find((c) => String(c.id) === String(selectedClassId))?.name || '우리 반'
           : '학원 전체';
 
-        fetch('/api/push/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userIds: targetUserIds.length > 0 ? targetUserIds : undefined,
-            title: `🚨 [${classNameLabel} 돌발 이벤트] 황금 벌레 출현! 🐛`,
-            message: `선착순 ${targetCount}명! 지금 바로 접속해서 화면의 황금 벌레를 잡으세요! (${rewardText})`,
-            url: '/student/dashboard',
-          }),
-        }).catch((e) => console.warn('Push send warning:', e));
+                    const speedBadge = speedMode === 'EXTREME' ? '🌪️ 광속' : speedMode === 'FAST' ? '⚡ 빠름' : '🟢 보통';
+            const gimmickBadge = escapeGimmick ? ' • 💨 도망자' : '';
+            fetch('/api/push/send', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                userIds: targetUserIds.length > 0 ? targetUserIds : undefined,
+                title: `🚨 [${classNameLabel} 돌발] 황금 벌레 출현! 🐛`,
+                message: `선착순 ${targetCount}명! [${speedBadge}${gimmickBadge}] 화면의 황금 벌레를 잡으세요! (${rewardText})`,
+                url: '/student/dashboard',
+              }),
+            }).catch((e) => console.warn('Push send warning:', e));
       } catch (pushErr) {
         console.warn('Lucky push error:', pushErr);
       }
@@ -257,6 +265,80 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
                   onChange={(e) => setRewardText(e.target.value)}
                   className="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold text-slate-800"
                 />
+              </div>
+
+                            {/* ⚡ 속도 / 난이도 3단계 선택 */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  ⚡ 벌레 이동 속도 (난이도 선택)
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSpeedMode('NORMAL')}
+                    className={`p-2.5 rounded-xl text-xs font-black transition border flex flex-col items-center gap-0.5 ${
+                      speedMode === 'NORMAL'
+                        ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>🟢 1단계: 보통</span>
+                    <span className={`text-[10px] font-normal ${speedMode === 'NORMAL' ? 'text-emerald-100' : 'text-slate-400'}`}>
+                      1.5초 (편안함)
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSpeedMode('FAST')}
+                    className={`p-2.5 rounded-xl text-xs font-black transition border flex flex-col items-center gap-0.5 ${
+                      speedMode === 'FAST'
+                        ? 'bg-amber-500 text-white border-amber-600 shadow-sm'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>🟡 2단계: 빠름 ⚡</span>
+                    <span className={`text-[10px] font-bold ${speedMode === 'FAST' ? 'text-amber-100' : 'text-amber-600'}`}>
+                      0.6초 (추천)
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSpeedMode('EXTREME')}
+                    className={`p-2.5 rounded-xl text-xs font-black transition border flex flex-col items-center gap-0.5 ${
+                      speedMode === 'EXTREME'
+                        ? 'bg-rose-600 text-white border-rose-700 shadow-sm'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>🔴 3단계: 광속 🌪️</span>
+                    <span className={`text-[10px] font-normal ${speedMode === 'EXTREME' ? 'text-rose-100' : 'text-slate-400'}`}>
+                      0.25초 (순간이동)
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 💨 도망치기 특수 기믹 토글 */}
+              <div className="bg-indigo-50/70 p-3.5 rounded-2xl border border-indigo-200/80">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={escapeGimmick}
+                    onChange={(e) => setEscapeGimmick(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                  />
+                  <div className="space-y-0.5">
+                    <span className="text-xs font-extrabold text-indigo-950 flex items-center gap-1.5">
+                      <span>💨</span>
+                      <span>손대면 도망치기 기믹 (도망자 AI)</span>
+                    </span>
+                    <p className="text-[11px] text-indigo-700/80 leading-snug">
+                      학생이 벌레에 손을 대면 <strong>2~3번 재빠르게 도망치다가 😵 지쳐서 1.8초 동안 멈춥니다.</strong> (스릴 만점!)
+                    </p>
+                  </div>
+                </label>
               </div>
 
               {/* 안내 문구 */}

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { formatTeacherCommentWithWeeklyScore } from '@/lib/evalUtils';
+import { formatTeacherCommentWithWeeklyScore, parseTeacherCommentAndWeeklyScore } from '@/lib/evalUtils';
 
 export default function TeacherEvalPage() {
   const [user, setUser] = useState(null);
@@ -11,6 +11,11 @@ export default function TeacherEvalPage() {
   const [selectedClassId, setSelectedClassId] = useState('');
   const [students, setStudents] = useState([]);
   const [selectedStudentId, setSelectedStudentId] = useState('');
+
+  // 직전 피드백 비교 상태
+  const [prevEval, setPrevEval] = useState(null);
+  const [loadingPrevEval, setLoadingPrevEval] = useState(false);
+  const [copySuccessToast, setCopySuccessToast] = useState(false);
 
   // 평가 항목 상태
   const [evalDate, setEvalDate] = useState(new Date().toISOString().split('T')[0]);
@@ -45,6 +50,77 @@ export default function TeacherEvalPage() {
     setUser(parsedUser);
     fetchData(parsedUser);
   }, []);
+
+  // 선택된 학생이나 날짜가 변경될 때 직전 피드백 기록 조회
+  useEffect(() => {
+    if (selectedStudentId) {
+      fetchPreviousEval(selectedStudentId, evalDate);
+    } else {
+      setPrevEval(null);
+    }
+  }, [selectedStudentId, evalDate]);
+
+  const fetchPreviousEval = async (studentId, currentDate) => {
+    try {
+      setLoadingPrevEval(true);
+      const { data, error } = await supabase
+        .from('daily_evaluations')
+        .select('*')
+        .eq('student_id', studentId)
+        .neq('eval_date', currentDate)
+        .order('eval_date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      setPrevEval(data || null);
+    } catch (err) {
+      console.error('fetchPreviousEval error:', err);
+      setPrevEval(null);
+    } finally {
+      setLoadingPrevEval(false);
+    }
+  };
+
+  const handleCopyPrevScores = () => {
+    if (!prevEval) return;
+    setConceptScore(prevEval.concept_score ?? 8);
+    setCalcScore(prevEval.calc_score ?? 8);
+    setAppScore(prevEval.app_score ?? 8);
+    setAttitudeScore(prevEval.attitude_score ?? 8);
+    setHomeworkScore(prevEval.homework_score ?? 8);
+    setPerseveranceScore(prevEval.perseverance_score ?? 8);
+    setAttendanceStatus(prevEval.attendance_status || 'ATTEND');
+    if (prevEval.lateness_minutes) {
+      setLatenessMinutes(prevEval.lateness_minutes);
+    }
+    setCopySuccessToast(true);
+    setTimeout(() => setCopySuccessToast(false), 3000);
+  };
+
+  const renderScoreDiffBadge = (currentScore, prevScore) => {
+    if (prevScore === undefined || prevScore === null) return null;
+    const diff = Number(currentScore) - Number(prevScore);
+    if (diff > 0) {
+      return (
+        <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-100/90 px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
+          <span>▲</span>+{diff} (직전 {prevScore})
+        </span>
+      );
+    }
+    if (diff < 0) {
+      return (
+        <span className="text-[10px] font-extrabold text-rose-700 bg-rose-100/90 px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
+          <span>▼</span>{diff} (직전 {prevScore})
+        </span>
+      );
+    }
+    return (
+      <span className="text-[10px] font-bold text-slate-500 bg-slate-200/80 px-1.5 py-0.5 rounded-md">
+        - 동일 (직전 {prevScore})
+      </span>
+    );
+  };
 
   const fetchData = async (currentUser) => {
     try {
@@ -183,71 +259,59 @@ export default function TeacherEvalPage() {
           if (sendResult.success) {
             messageNotice = `\n\n📲 학부모님(${selectedStudent.parent_phone})께 피드백 리포트 링크가 성공적으로 발송되었습니다!`;
           } else if (sendResult.skipped) {
-            messageNotice = `\n\n⚠️ ${sendResult.message}`;
-          } else if (sendResult.error) {
-            messageNotice = `\n\n⚠️ 알림 발송 안내: ${sendResult.error}`;
+            messageNotice = `\n\nℹ️ ${sendResult.message}`;
+          } else {
+            messageNotice = `\n\n⚠️ 알림 발송 안내: ${sendResult.error || '발송 실패'}`;
           }
-        } catch (sendErr) {
-          console.warn('Solapi send warning:', sendErr);
-          messageNotice = '\n\n⚠️ 피드백은 저장되었으나 메시지 발송 중 오류가 발생했습니다.';
+        } catch (msgErr) {
+          console.error('Solapi send error:', msgErr);
+          messageNotice = `\n\n⚠️ 알림 발송 오류: ${msgErr.message}`;
         }
       } else if (!selectedStudent?.parent_phone) {
-        messageNotice = '\n\nℹ️ 학생의 학부모 연락처가 등록되지 않아 알림 발송은 제외되었습니다.';
+        messageNotice = '\n\n(등록된 학부모 연락처가 없어 알림 발송은 건너뛰었습니다.)';
       }
 
       alert(`[${studentName}] 학생의 ${evalDate} 피드백이 성공적으로 저장되었습니다!${messageNotice}`);
       setTeacherComment('');
       setWeeklyTestScore('');
+      fetchPreviousEval(selectedStudentId, evalDate);
     } catch (err) {
-      alert(`저장 실패: ${err.message}`);
+      console.error(err);
+      alert('피드백 저장에 실패했습니다.');
     }
   };
 
   if (loading) return <div className="p-8 text-center font-bold">로딩 중...</div>;
 
+  const prevParsed = prevEval
+    ? parseTeacherCommentAndWeeklyScore(prevEval.teacher_comment, prevEval.weekly_test_score)
+    : { weeklyScore: null, comment: '' };
+
   return (
     <div className="min-h-screen bg-slate-50 pb-16">
-      <header className="bg-white/95 backdrop-blur-md border-b py-3 sm:py-4 px-4 sm:px-6 shadow-xs flex justify-between items-center sticky top-0 z-30">
-        <div className="flex items-center gap-2.5">
-          <div
-            onClick={() => router.push('/teacher/dashboard')}
-            className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-black text-sm shadow-md shadow-blue-500/20 cursor-pointer shrink-0"
-          >
-            품
-          </div>
-          <h1 onClick={() => router.push('/teacher/dashboard')} className="text-base sm:text-lg font-black text-slate-800 cursor-pointer">
-            품수학 학원 교무실
-          </h1>
+      <header className="bg-white border-b py-4 px-6 shadow-sm flex justify-between items-center">
+        <h1 onClick={() => router.push('/teacher/dashboard')} className="text-xl font-bold text-blue-600 cursor-pointer">
+          품수학 학원 교무실
+        </h1>
+        <div className="flex gap-2">
+          <button onClick={() => router.push('/teacher/eval/history')} className="text-xs bg-indigo-50 text-indigo-700 font-bold px-3 py-1.5 rounded-lg border border-indigo-200 hover:bg-indigo-100 transition">
+            📋 피드백 이력 관리
+          </button>
+          <button onClick={() => router.back()} className="text-sm text-gray-600 hover:underline">
+            ← 뒤로가기
+          </button>
         </div>
-        <button
-          onClick={() => router.back()}
-          className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3.5 py-2 rounded-xl transition border border-slate-200 whitespace-nowrap shrink-0"
-        >
-          ← 뒤로가기
-        </button>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 mt-6 space-y-6">
+      <main className="max-w-3xl mx-auto px-4 mt-6">
         <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
-          <div className="border-b pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base sm:text-lg font-black text-slate-800 flex items-center gap-1.5">
-                <span>📝</span>
-                <span>일일 학습 피드백 작성</span>
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">학생별 6대 영역 성취도와 출결 상태를 기록합니다.</p>
-            </div>
-            <button
-              onClick={() => router.push('/teacher/eval/history')}
-              className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3.5 py-2 rounded-xl transition border border-slate-200 whitespace-nowrap self-start sm:self-auto shrink-0 flex items-center gap-1.5 shadow-2xs"
-            >
-              <span>📋</span>
-              <span>작성 내역 보기 →</span>
-            </button>
+          <div className="border-b pb-4">
+            <h2 className="text-lg font-bold text-slate-800">✍️ 일일 학습 피드백 작성</h2>
+            <p className="text-xs text-slate-500 mt-1">학생의 오늘 6대 역량 점수와 출결, 코멘트를 작성합니다.</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {/* 1. 반 / 학생 / 수업일자 선택 */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1">🏫 담당 반 선택</label>
@@ -290,6 +354,98 @@ export default function TeacherEvalPage() {
               </div>
             </div>
 
+            {/* 🔍 2. 선택된 학생의 직전 피드백 비교 요약 카드 */}
+            {loadingPrevEval ? (
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-center text-xs font-bold text-slate-400 animate-pulse">
+                선택 학생의 직전 피드백 기록을 조회하는 중...
+              </div>
+            ) : prevEval ? (
+              <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-white p-4 sm:p-5 rounded-2xl shadow-md border border-slate-700/80 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-700/80 pb-2.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="bg-indigo-500 text-white text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">
+                      직전 수업 기록
+                    </span>
+                    <h4 className="text-xs sm:text-sm font-black text-slate-100">
+                      📅 {prevEval.eval_date} 수업 피드백
+                    </h4>
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-600">
+                      {prevEval.attendance_status === 'LATE'
+                        ? `⏰ ${prevEval.lateness_minutes || 5}분 지각`
+                        : prevEval.attendance_status === 'ABSENT'
+                        ? '🔴 결석'
+                        : '🟢 정상 출석'}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleCopyPrevScores}
+                    className="bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-extrabold px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 shadow-sm self-start sm:self-auto"
+                    title="직전 점수를 오늘 슬라이더에 1초 만에 그대로 적용합니다"
+                  >
+                    <span>📋</span>
+                    <span>직전 점수 그대로 불러오기</span>
+                  </button>
+                </div>
+
+                {/* 6대 영역 직전 점수 요약 그리드 */}
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 text-center text-[11px] font-bold">
+                  <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700">
+                    <span className="text-slate-400 text-[10px] block">개념</span>
+                    <span className="text-blue-400 font-black text-xs">{prevEval.concept_score}점</span>
+                  </div>
+                  <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700">
+                    <span className="text-slate-400 text-[10px] block">연산</span>
+                    <span className="text-blue-400 font-black text-xs">{prevEval.calc_score}점</span>
+                  </div>
+                  <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700">
+                    <span className="text-slate-400 text-[10px] block">응용</span>
+                    <span className="text-blue-400 font-black text-xs">{prevEval.app_score}점</span>
+                  </div>
+                  <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700">
+                    <span className="text-slate-400 text-[10px] block">집중</span>
+                    <span className="text-blue-400 font-black text-xs">{prevEval.attitude_score}점</span>
+                  </div>
+                  <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700">
+                    <span className="text-slate-400 text-[10px] block">과제</span>
+                    <span className="text-blue-400 font-black text-xs">{prevEval.homework_score}점</span>
+                  </div>
+                  <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700">
+                    <span className="text-slate-400 text-[10px] block">끈기</span>
+                    <span className="text-blue-400 font-black text-xs">{prevEval.perseverance_score}점</span>
+                  </div>
+                </div>
+
+                {/* 직전 총평 코멘트 & 주간테스트 요약 */}
+                <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/60 text-xs space-y-1">
+                  {prevParsed.weeklyScore && (
+                    <div className="text-indigo-300 font-extrabold flex items-center gap-1 pb-0.5">
+                      <span>📝 직전 주간테스트:</span>
+                      <span className="text-amber-300 font-black">{prevParsed.weeklyScore}</span>
+                    </div>
+                  )}
+                  <p className="text-slate-300 font-medium leading-relaxed">
+                    <span className="text-slate-400 font-bold mr-1">💬 직전 코멘트:</span>
+                    {prevParsed.comment || '작성된 코멘트가 없었습니다.'}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs font-bold text-slate-500 flex items-center gap-2">
+                <span>ℹ️</span>
+                <span>선택된 학생의 이전 피드백 기록이 없습니다. (첫 피드백 작성)</span>
+              </div>
+            )}
+
+            {copySuccessToast && (
+              <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-xs font-black text-emerald-800 flex items-center gap-2 animate-fade-in">
+                <span>✅</span>
+                <span>직전 피드백의 출석 상태와 6대 영역 점수를 성공적으로 불러왔습니다!</span>
+              </div>
+            )}
+
+            {/* 3. 출결 상태 선택 */}
             <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-200/80 space-y-3">
               <span className="text-xs font-extrabold text-amber-900 block">⏰ 출석 및 지각 상태 기록</span>
               <div className="flex flex-wrap gap-2 items-center">
@@ -346,14 +502,25 @@ export default function TeacherEvalPage() {
               </div>
             </div>
 
+            {/* 4. 6대 영역 점수 슬라이더 */}
             <div className="space-y-4 pt-2">
-              <h3 className="text-xs font-bold text-slate-700">📊 6대 성취도 영역 (각 1~10점)</h3>
+              <div className="flex justify-between items-center">
+                <h3 className="text-xs font-bold text-slate-700">📊 6대 성취도 영역 (각 1~10점)</h3>
+                {prevEval && (
+                  <span className="text-[11px] font-bold text-slate-400">
+                    ※ 직전 대비 증감(▲/▼)이 점수 옆에 자동 표시됩니다.
+                  </span>
+                )}
+              </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1">
-                  <div className="flex justify-between text-xs font-bold">
-                    <span>📘 개념 이해도</span>
-                    <span className="text-blue-600 font-black">{conceptScore}점</span>
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1.5">
+                  <div className="flex justify-between items-center text-xs font-bold">
+                    <span className="text-slate-700">📘 개념 이해도</span>
+                    <div className="flex items-center gap-1.5">
+                      {renderScoreDiffBadge(conceptScore, prevEval?.concept_score)}
+                      <span className="text-blue-600 font-black">{conceptScore}점</span>
+                    </div>
                   </div>
                   <input
                     type="range" min="1" max="10" value={conceptScore}
@@ -361,10 +528,13 @@ export default function TeacherEvalPage() {
                   />
                 </div>
 
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1">
-                  <div className="flex justify-between text-xs font-bold">
-                    <span>🔢 연산/계산 정확도</span>
-                    <span className="text-blue-600 font-black">{calcScore}점</span>
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1.5">
+                  <div className="flex justify-between items-center text-xs font-bold">
+                    <span className="text-slate-700">🔢 연산/계산 정확도</span>
+                    <div className="flex items-center gap-1.5">
+                      {renderScoreDiffBadge(calcScore, prevEval?.calc_score)}
+                      <span className="text-blue-600 font-black">{calcScore}점</span>
+                    </div>
                   </div>
                   <input
                     type="range" min="1" max="10" value={calcScore}
@@ -372,10 +542,13 @@ export default function TeacherEvalPage() {
                   />
                 </div>
 
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1">
-                  <div className="flex justify-between text-xs font-bold">
-                    <span>💡 응용/심화 해결력</span>
-                    <span className="text-blue-600 font-black">{appScore}점</span>
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1.5">
+                  <div className="flex justify-between items-center text-xs font-bold">
+                    <span className="text-slate-700">💡 응용/심화 해결력</span>
+                    <div className="flex items-center gap-1.5">
+                      {renderScoreDiffBadge(appScore, prevEval?.app_score)}
+                      <span className="text-blue-600 font-black">{appScore}점</span>
+                    </div>
                   </div>
                   <input
                     type="range" min="1" max="10" value={appScore}
@@ -383,10 +556,13 @@ export default function TeacherEvalPage() {
                   />
                 </div>
 
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1">
-                  <div className="flex justify-between text-xs font-bold">
-                    <span>👀 수업 태도/집중도</span>
-                    <span className="text-blue-600 font-black">{attitudeScore}점</span>
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1.5">
+                  <div className="flex justify-between items-center text-xs font-bold">
+                    <span className="text-slate-700">👀 수업 태도/집중도</span>
+                    <div className="flex items-center gap-1.5">
+                      {renderScoreDiffBadge(attitudeScore, prevEval?.attitude_score)}
+                      <span className="text-blue-600 font-black">{attitudeScore}점</span>
+                    </div>
                   </div>
                   <input
                     type="range" min="1" max="10" value={attitudeScore}
@@ -394,10 +570,13 @@ export default function TeacherEvalPage() {
                   />
                 </div>
 
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1">
-                  <div className="flex justify-between text-xs font-bold">
-                    <span>📚 과제 완성도</span>
-                    <span className="text-blue-600 font-black">{homeworkScore}점</span>
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1.5">
+                  <div className="flex justify-between items-center text-xs font-bold">
+                    <span className="text-slate-700">📚 과제 완성도</span>
+                    <div className="flex items-center gap-1.5">
+                      {renderScoreDiffBadge(homeworkScore, prevEval?.homework_score)}
+                      <span className="text-blue-600 font-black">{homeworkScore}점</span>
+                    </div>
                   </div>
                   <input
                     type="range" min="1" max="10" value={homeworkScore}
@@ -405,10 +584,13 @@ export default function TeacherEvalPage() {
                   />
                 </div>
 
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1">
-                  <div className="flex justify-between text-xs font-bold">
-                    <span>🔥 오답 복습 및 끈기</span>
-                    <span className="text-blue-600 font-black">{perseveranceScore}점</span>
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1.5">
+                  <div className="flex justify-between items-center text-xs font-bold">
+                    <span className="text-slate-700">🔥 오답 복습 및 끈기</span>
+                    <div className="flex items-center gap-1.5">
+                      {renderScoreDiffBadge(perseveranceScore, prevEval?.perseverance_score)}
+                      <span className="text-blue-600 font-black">{perseveranceScore}점</span>
+                    </div>
                   </div>
                   <input
                     type="range" min="1" max="10" value={perseveranceScore}
@@ -418,7 +600,7 @@ export default function TeacherEvalPage() {
               </div>
             </div>
 
-                        {/* 📝 주간 테스트 점수 (선택 입력) */}
+            {/* 5. 📝 주간 테스트 점수 (선택 입력) */}
             <div className="bg-indigo-50/70 p-4 rounded-2xl border border-indigo-200/80 space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-extrabold text-indigo-950 flex items-center gap-1.5">
@@ -450,6 +632,7 @@ export default function TeacherEvalPage() {
               </p>
             </div>
 
+            {/* 6. 선생님 총평 코멘트 */}
             <div className="space-y-1">
               <label className="block text-xs font-bold text-slate-700">✍️ 선생님 총평 코멘트</label>
               <textarea

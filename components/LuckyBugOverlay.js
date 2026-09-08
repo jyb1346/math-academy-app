@@ -6,15 +6,20 @@ import { getActiveLuckyEvent, getRecentFinishedLuckyEvent, catchLuckyBug } from 
 
 export default function LuckyBugOverlay() {
   const [user, setUser] = useState(null);
-  const [studentClasses, setStudentClasses] = useState([]);
   const [activeEvent, setActiveEvent] = useState(null);
   const [catching, setCatching] = useState(false);
   const [winModal, setWinModal] = useState(null); // { rank, rewardText, message }
   const [missedAlert, setMissedAlert] = useState(null);
-  const [bugPosition, setBugPosition] = useState({ top: 30, left: 40 });
+  const [bugPosition, setBugPosition] = useState({ top: 30, left: 40, rotate: 0 });
+
+  // 💨 특수 기믹 상태 (도망 횟수 및 지침 상태)
+  const [escapeCount, setEscapeCount] = useState(0);
+  const [isTired, setIsTired] = useState(false);
+  const [gimmickBubble, setGimmickBubble] = useState(null);
 
   const channelRef = useRef(null);
   const moveTimerRef = useRef(null);
+  const tiredTimerRef = useRef(null);
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -34,9 +39,8 @@ export default function LuckyBugOverlay() {
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
       }
-      if (moveTimerRef.current) {
-        clearInterval(moveTimerRef.current);
-      }
+      if (moveTimerRef.current) clearInterval(moveTimerRef.current);
+      if (tiredTimerRef.current) clearTimeout(tiredTimerRef.current);
     };
   }, []);
 
@@ -49,7 +53,6 @@ export default function LuckyBugOverlay() {
         .eq('student_id', studentUser.id);
 
       const classIds = (csData || []).map((cs) => String(cs.class_id));
-      setStudentClasses(classIds);
 
       // 2. 현재 활성화된 벌레 이벤트 확인 또는 최근 마감 안내 확인
       await checkActiveEvent(classIds, studentUser.id);
@@ -58,17 +61,23 @@ export default function LuckyBugOverlay() {
       const channel = supabase
         .channel('poom-lucky-events')
         .on('broadcast', { event: 'BUG_SPAWNED' }, (payload) => {
-          const { eventId, classId, targetCount, rewardText } = payload.payload || {};
+          const { eventId, classId, targetCount, rewardText, speedMode, escapeGimmick } = payload.payload || {};
           // 내 반 또는 전체 대상인지 확인
           if (!classId || classIds.includes(String(classId))) {
-            setActiveEvent({
+            const newEv = {
               id: eventId,
               classId,
               targetCount,
               rewardText,
-            });
+              speedMode: speedMode || 'FAST',
+              escapeGimmick: escapeGimmick !== false,
+            };
+            setActiveEvent(newEv);
+            setEscapeCount(0);
+            setIsTired(false);
+            setGimmickBubble(null);
             playChimeSound();
-            startBugMovement();
+            startBugMovement(newEv.speedMode);
           }
         })
         .on('broadcast', { event: 'BUG_FINISHED' }, (payload) => {
@@ -94,7 +103,10 @@ export default function LuckyBugOverlay() {
     const event = await getActiveLuckyEvent(classIds);
     if (event) {
       setActiveEvent(event);
-      startBugMovement();
+      setEscapeCount(0);
+      setIsTired(false);
+      setGimmickBubble(null);
+      startBugMovement(event.speedMode);
     } else if (studentId) {
       // 활성화된 벌레가 없으면 최근 마감된 이벤트가 있는지 확인
       const finishedEvent = await getRecentFinishedLuckyEvent(classIds, studentId);
@@ -111,20 +123,74 @@ export default function LuckyBugOverlay() {
     }
   };
 
-  // 벌레가 화면 안에서 꼬물꼬물 움직이도록 하는 타이머
-  const startBugMovement = () => {
+  // ⚡ 속도별 이동 주기 (1단계 보통 1.5s / 2단계 빠름 0.6s / 3단계 광속 0.25s)
+  const getIntervalMs = (mode) => {
+    if (mode === 'EXTREME') return 250; // 3단계: 광속 순간이동
+    if (mode === 'NORMAL') return 1500; // 1단계: 보통
+    return 600; // 2단계: 빠름 (기본값)
+  };
+
+  const startBugMovement = (speedMode = 'FAST') => {
     if (moveTimerRef.current) clearInterval(moveTimerRef.current);
 
+    const interval = getIntervalMs(speedMode);
+
     moveTimerRef.current = setInterval(() => {
-      const randomTop = Math.floor(Math.random() * 65) + 15; // 15% ~ 80%
-      const randomLeft = Math.floor(Math.random() * 70) + 10; // 10% ~ 80%
-      setBugPosition({ top: randomTop, left: randomLeft });
-    }, 2800);
+      const randomTop = Math.floor(Math.random() * 68) + 14; // 14% ~ 82%
+      const randomLeft = Math.floor(Math.random() * 74) + 12; // 12% ~ 86%
+      const randomRotate = Math.floor(Math.random() * 50) - 25; // -25deg ~ +25deg
+      setBugPosition({ top: randomTop, left: randomLeft, rotate: randomRotate });
+    }, interval);
+  };
+
+  // 💨 도망치기 기믹 핸들러 (2~3회 도망 후 지침 시스템)
+  const handleEscapeAttempt = (e) => {
+    if (!activeEvent?.escapeGimmick || isTired || catching) return;
+
+    // 만약 마우스 호버나 빠른 접근 시
+    if (escapeCount < 2) {
+      e.stopPropagation();
+      setEscapeCount((prev) => prev + 1);
+
+      // 즉시 새로운 랜덤 위치로 슝 튕겨 도망감!
+      const randomTop = Math.floor(Math.random() * 68) + 14;
+      const randomLeft = Math.floor(Math.random() * 74) + 12;
+      const randomRotate = Math.floor(Math.random() * 60) - 30;
+      setBugPosition({ top: randomTop, left: randomLeft, rotate: randomRotate });
+
+      setGimmickBubble('💨 앗 들켰다!');
+      setTimeout(() => setGimmickBubble(null), 700);
+
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate([40]);
+      }
+    } else {
+      // 3번째 시도: 벌레가 지쳐서 멈춤! (1.8초 동안 꼼짝 못함)
+      setIsTired(true);
+      setGimmickBubble('😵 헥헥... 지쳤다!');
+      if (moveTimerRef.current) clearInterval(moveTimerRef.current);
+
+      if (tiredTimerRef.current) clearTimeout(tiredTimerRef.current);
+      tiredTimerRef.current = setTimeout(() => {
+        setIsTired(false);
+        setEscapeCount(0);
+        setGimmickBubble(null);
+        startBugMovement(activeEvent?.speedMode);
+      }, 1800);
+    }
   };
 
   // 벌레 터치(잡기) 핸들러
-  const handleCatch = async () => {
+  const handleCatch = async (e) => {
+    e.stopPropagation();
     if (!activeEvent || !user || catching) return;
+
+    // 도망 기믹이 켜져 있고 아직 지치지 않은 상태에서 첫 터치일 경우
+    if (activeEvent?.escapeGimmick && !isTired && escapeCount < 2) {
+      handleEscapeAttempt(e);
+      return;
+    }
+
     setCatching(true);
 
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
@@ -180,34 +246,104 @@ export default function LuckyBugOverlay() {
     } catch (e) {}
   };
 
+  const getTransitionStyle = () => {
+    if (isTired) return 'transition-all duration-300 ease-out';
+    if (activeEvent?.speedMode === 'EXTREME') return 'transition-all duration-150 ease-out';
+    if (activeEvent?.speedMode === 'NORMAL') return 'transition-all duration-600 ease-out';
+    return 'transition-all duration-300 ease-out';
+  };
+
   return (
     <>
       {/* 🐛 1. 화면 위를 떠다니는 황금 벌레 */}
       {activeEvent && (
         <div
           onClick={handleCatch}
+          onMouseEnter={activeEvent.escapeGimmick && !isTired ? handleEscapeAttempt : undefined}
           style={{
             top: `${bugPosition.top}%`,
             left: `${bugPosition.left}%`,
+            transform: `translate(-50%, -50%) rotate(${isTired ? 0 : bugPosition.rotate || 0}deg)`,
           }}
-          className="fixed z-50 cursor-pointer select-none transition-all duration-1000 ease-out transform -translate-x-1/2 -translate-y-1/2 hover:scale-125 active:scale-95 animate-bounce"
+          className={`fixed z-50 cursor-pointer select-none ${getTransitionStyle()} ${
+            isTired ? 'scale-125 animate-pulse' : 'hover:scale-110 active:scale-95'
+          }`}
         >
           {/* 황금빛 발광 효과 */}
           <div className="relative group">
-            <div className="absolute -inset-3 bg-amber-400/60 rounded-full blur-md animate-pulse"></div>
-            <div className="relative bg-gradient-to-tr from-amber-400 via-yellow-300 to-amber-500 border-2 border-yellow-200 shadow-2xl rounded-full w-16 h-16 sm:w-20 sm:h-20 flex flex-col items-center justify-center text-center p-1">
-              <span className="text-2xl sm:text-3xl animate-spin" style={{ animationDuration: '6s' }}>
-                🐛
-              </span>
-              <span className="text-[9px] sm:text-[10px] font-black text-amber-950 leading-none mt-0.5 bg-yellow-100/90 px-1.5 py-0.5 rounded-full shadow-2xs whitespace-nowrap">
-                터치해서 잡기!
+            {/* 광속/빠름 모드 번개/후광 오라 */}
+            <div
+              className={`absolute -inset-3 rounded-full blur-md animate-pulse ${
+                isTired
+                  ? 'bg-rose-400/80 animate-ping'
+                  : activeEvent.speedMode === 'EXTREME'
+                  ? 'bg-rose-500/70'
+                  : 'bg-amber-400/60'
+              }`}
+            ></div>
+
+            <div
+              className={`relative border-2 shadow-2xl rounded-full w-16 h-16 sm:w-20 sm:h-20 flex flex-col items-center justify-center text-center p-1 ${
+                isTired
+                  ? 'bg-gradient-to-tr from-rose-400 via-yellow-200 to-amber-300 border-rose-300'
+                  : activeEvent.speedMode === 'EXTREME'
+                  ? 'bg-gradient-to-tr from-rose-500 via-amber-400 to-yellow-300 border-yellow-100'
+                  : 'bg-gradient-to-tr from-amber-400 via-yellow-300 to-amber-500 border-yellow-200'
+              }`}
+            >
+              {/* 캐릭터 아이콘 & 이펙트 */}
+              <div className="relative">
+                <span
+                  className={`text-2xl sm:text-3xl inline-block ${
+                    isTired ? 'animate-bounce' : 'animate-spin'
+                  }`}
+                  style={{ animationDuration: isTired ? '0.5s' : activeEvent.speedMode === 'EXTREME' ? '1s' : '3s' }}
+                >
+                  {isTired ? '😵' : '🐛'}
+                </span>
+
+                {/* 빠른 속도일 때 바람 이펙트 */}
+                {!isTired && activeEvent.speedMode === 'EXTREME' && (
+                  <span className="absolute -left-3 -top-1 text-xs animate-ping">⚡</span>
+                )}
+                {!isTired && activeEvent.speedMode === 'FAST' && (
+                  <span className="absolute -left-3 -top-1 text-xs opacity-80">💨</span>
+                )}
+              </div>
+
+              {/* 하단 탭 안내 뱃지 */}
+              <span
+                className={`text-[9px] sm:text-[10px] font-black leading-none mt-0.5 px-1.5 py-0.5 rounded-full shadow-2xs whitespace-nowrap ${
+                  isTired
+                    ? 'bg-rose-600 text-white animate-bounce'
+                    : 'bg-yellow-100/95 text-amber-950'
+                }`}
+              >
+                {isTired ? '지금 잡기! 🎯' : '터치해서 잡기!'}
               </span>
             </div>
 
-            {/* 머리 위 말풍선 */}
-            <div className="absolute -top-7 left-1/2 transform -translate-x-1/2 bg-rose-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full whitespace-nowrap shadow-md animate-pulse">
-              선착순 {activeEvent.targetCount}명! ⚡
-            </div>
+            {/* 도망치기 / 지침 실시간 말풍선 */}
+            {gimmickBubble && (
+              <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white text-[11px] font-black px-2.5 py-1 rounded-full whitespace-nowrap shadow-xl border border-amber-400 animate-bounce">
+                {gimmickBubble}
+              </div>
+            )}
+
+            {/* 머리 위 난이도 & 선착순 말풍선 */}
+            {!gimmickBubble && (
+              <div className="absolute -top-7 left-1/2 transform -translate-x-1/2 bg-rose-600 text-white text-[9.5px] sm:text-[10px] font-black px-2 py-0.5 rounded-full whitespace-nowrap shadow-md flex items-center gap-1">
+                <span>
+                  {activeEvent.speedMode === 'EXTREME'
+                    ? '🌪️ 광속'
+                    : activeEvent.speedMode === 'NORMAL'
+                    ? '🟢 보통'
+                    : '⚡ 빠름'}
+                </span>
+                <span>•</span>
+                <span>선착순 {activeEvent.targetCount}명!</span>
+              </div>
+            )}
           </div>
         </div>
       )}

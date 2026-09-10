@@ -3,13 +3,12 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useParams, useRouter } from 'next/navigation';
-import HexagonRadarChart from '@/components/HexagonRadarChart';
-import { parseTeacherCommentAndTestScore } from '@/lib/evalUtils';
+import EvaluationBarChart from '@/components/EvaluationBarChart';
+import { parseEvaluationRecord } from '@/lib/evalUtils';
 
 export default function StudentReportPage() {
   const { id } = useParams();
   const [evalData, setEvalData] = useState(null);
-  const [twoWeekAvg, setTwoWeekAvg] = useState(null);
   const [loading, setLoading] = useState(true);
   
   // 학부모 답장 상태
@@ -34,50 +33,6 @@ export default function StudentReportPage() {
       setEvalData(data);
       if (data?.parent_reply) {
         setReplyText(data.parent_reply);
-      }
-
-      // 🎯 학생의 최근 2주 평균 데이터 조회 및 계산
-      if (data?.student_id && data?.eval_date) {
-        const { data: allEvals } = await supabase
-          .from('daily_evaluations')
-          .select('*')
-          .eq('student_id', data.student_id)
-          .order('eval_date', { ascending: false });
-
-        if (allEvals && allEvals.length > 0) {
-          const targetDate = new Date(data.eval_date);
-          const twoWeeksAgo = new Date(targetDate);
-          twoWeeksAgo.setDate(targetDate.getDate() - 14);
-
-          const studentTwoWeekEvals = allEvals.filter((e) => {
-            const evalDateObj = new Date(e.eval_date);
-            return evalDateObj >= twoWeeksAgo && evalDateObj <= targetDate;
-          });
-
-          if (studentTwoWeekEvals.length > 0) {
-            const total = studentTwoWeekEvals.reduce(
-              (acc, curr) => ({
-                concept: acc.concept + (curr.concept_score || 0),
-                calc: acc.calc + (curr.calc_score || 0),
-                app: acc.app + (curr.app_score || 0),
-                attitude: acc.attitude + (curr.attitude_score || 0),
-                homework: acc.homework + (curr.homework_score || 0),
-                perseverance: acc.perseverance + (curr.perseverance_score || 0),
-              }),
-              { concept: 0, calc: 0, app: 0, attitude: 0, homework: 0, perseverance: 0 }
-            );
-
-            const count = studentTwoWeekEvals.length;
-            setTwoWeekAvg({
-              concept: Number((total.concept / count).toFixed(1)),
-              calc: Number((total.calc / count).toFixed(1)),
-              app: Number((total.app / count).toFixed(1)),
-              attitude: Number((total.attitude / count).toFixed(1)),
-              homework: Number((total.homework / count).toFixed(1)),
-              perseverance: Number((total.perseverance / count).toFixed(1)),
-            });
-          }
-        }
       }
     } catch (err) {
       console.error(err);
@@ -133,10 +88,7 @@ export default function StudentReportPage() {
     return '🟢 정상 출석';
   };
 
-  const { testType, testScore, comment: cleanComment } = parseTeacherCommentAndTestScore(
-    evalData.teacher_comment,
-    evalData.weekly_test_score
-  );
+  const parsed = parseEvaluationRecord(evalData);
 
   return (
     <div className="min-h-screen bg-slate-100/80 py-6 px-4 flex flex-col items-center justify-center font-sans">
@@ -160,78 +112,51 @@ export default function StudentReportPage() {
           </div>
         </div>
 
-        {/* 🎯 육각형 그래프 영역 (당일 성취도 + 최근 2주 평균 동시 표기) */}
-        <div className="px-5 py-2 flex flex-col items-center space-y-3">
-          <h3 className="text-sm font-black text-slate-800 text-center flex items-center gap-1.5">
-            <span>📊</span>
-            <span>6대 핵심 역량별 학습 분석</span>
-          </h3>
-
-          <div className="w-full flex justify-center">
-            <HexagonRadarChart
-              scores={{
-                concept: evalData.concept_score,
-                calc: evalData.calc_score,
-                app: evalData.app_score,
-                attitude: evalData.attitude_score,
-                homework: evalData.homework_score,
-                perseverance: evalData.perseverance_score,
-              }}
-              twoWeekAvgScores={twoWeekAvg}
-            />
-          </div>
-
-          {/* 6대 역량 수치 그리드 */}
-          <div className="w-full grid grid-cols-3 gap-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 text-xs font-bold text-slate-700">
-            <div className="text-center">개념: <span className="text-blue-600 font-black">{(evalData.concept_score ?? '-') + '점'}</span></div>
-            <div className="text-center">연산: <span className="text-blue-600 font-black">{(evalData.calc_score ?? '-') + '점'}</span></div>
-            <div className="text-center">응용: <span className="text-blue-600 font-black">{(evalData.app_score ?? '-') + '점'}</span></div>
-            <div className="text-center">집중: <span className="text-blue-600 font-black">{(evalData.attitude_score ?? '-') + '점'}</span></div>
-            <div className="text-center">과제: <span className="text-blue-600 font-black">{(evalData.homework_score ?? '-') + '점'}</span></div>
-            <div className="text-center">끈기: <span className="text-blue-600 font-black">{(evalData.perseverance_score ?? '-') + '점'}</span></div>
-          </div>
+        {/* 🎯 학습 성취도 분석 영역 (가로 막대 게이지 바 차트) */}
+        <div className="px-5 py-2">
+          <EvaluationBarChart items={parsed.items} />
         </div>
 
         {/* 📝 시험 성적 결과 카드 (입력된 경우에만 렌더링, 미입력 시 숨김) */}
-        {testScore && (
+        {parsed.testScore && (
           <div className="mx-5 my-1 bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 rounded-2xl p-4 text-white shadow-lg shadow-indigo-600/15 space-y-2 animate-fade-in">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-lg shadow-inner">
-                  {testType === '단원평가' ? '📘' : testType === '일일테스트' ? '⚡' : testType === '모의고사' ? '🎯' : testType === '주간테스트' ? '📝' : '✍️'}
+                  {parsed.testType === '단원평가' ? '📘' : parsed.testType === '일일테스트' ? '⚡' : parsed.testType === '모의고사' ? '🎯' : parsed.testType === '주간테스트' ? '📝' : '✍️'}
                 </div>
                 <div>
                   <span className="text-[10px] font-bold text-indigo-200 block uppercase tracking-wide">
-                    {testType === '단원평가'
+                    {parsed.testType === '단원평가'
                       ? 'Unit Test'
-                      : testType === '일일테스트'
+                      : parsed.testType === '일일테스트'
                       ? 'Daily Test'
-                      : testType === '모의고사'
+                      : parsed.testType === '모의고사'
                       ? 'Mock Exam'
-                      : testType === '주간테스트'
+                      : parsed.testType === '주간테스트'
                       ? 'Weekly Test'
                       : 'Evaluation Result'}
                   </span>
-                  <h4 className="text-sm font-black text-white">{testType} 결과</h4>
+                  <h4 className="text-sm font-black text-white">{parsed.testType} 결과</h4>
                 </div>
               </div>
               <div className="bg-white text-indigo-950 px-3.5 py-1.5 rounded-xl shadow-md text-right border border-indigo-100 flex items-baseline gap-1">
                 <span className="text-[11px] font-bold text-slate-500">점수:</span>
                 <span className="text-base sm:text-lg font-black text-indigo-600">
-                  {testScore.endsWith('점') || testScore.includes('/') || testScore.includes('등급') ? testScore : `${testScore}점`}
+                  {parsed.testScore.endsWith('점') || parsed.testScore.includes('/') || parsed.testScore.includes('등급') ? parsed.testScore : `${parsed.testScore}점`}
                 </span>
               </div>
             </div>
             <p className="text-[11px] text-indigo-100/90 font-medium pt-0.5">
-              {testType === '단원평가'
+              {parsed.testType === '단원평가'
                 ? '💡 해당 단원의 핵심 개념 이해도 및 심화 문제 해결력을 점검한 단원평가 결과입니다.'
-                : testType === '일일테스트'
+                : parsed.testType === '일일테스트'
                 ? '💡 오늘 수업 내용의 당일 이해도와 기본 계산 정확도를 점검한 일일 테스트 결과입니다.'
-                : testType === '모의고사'
+                : parsed.testType === '모의고사'
                 ? '💡 실전 시험 대비 모의고사 성취도 및 성적 평가 결과입니다.'
-                : testType === '주간테스트'
+                : parsed.testType === '주간테스트'
                 ? '💡 이번 주 학습 단원 이해도 점검 및 주간 성취도 평가 점수입니다.'
-                : `💡 ${testType} 성취도 평가 결과입니다.`}
+                : `💡 ${parsed.testType} 성취도 평가 결과입니다.`}
             </p>
           </div>
         )}
@@ -242,7 +167,7 @@ export default function StudentReportPage() {
             <span>✍️</span> 선생님 피드백 코멘트
           </h4>
           <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-            {cleanComment || '오늘도 집중력 있게 성실히 학습에 임했습니다!'}
+            {parsed.comment || '오늘도 집중력 있게 성실히 학습에 임했습니다!'}
           </p>
         </div>
 

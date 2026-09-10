@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import HexagonRadarChart from '@/components/HexagonRadarChart';
-import { parseTeacherCommentAndTestScore } from '@/lib/evalUtils';
+import EvaluationBarChart from '@/components/EvaluationBarChart';
+import { parseEvaluationRecord } from '@/lib/evalUtils';
 
 export default function StudentEvalPage() {
   const [user, setUser] = useState(null);
@@ -42,42 +42,6 @@ export default function StudentEvalPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  // 🎯 학생 본인의 최근 2주 평균 점수 계산 함수
-  const getTwoWeekAvgScores = (targetDateStr) => {
-    const targetDate = new Date(targetDateStr);
-    const twoWeeksAgo = new Date(targetDate);
-    twoWeeksAgo.setDate(targetDate.getDate() - 14);
-
-    const studentTwoWeekEvals = evaluations.filter((e) => {
-      const evalDateObj = new Date(e.eval_date);
-      return evalDateObj >= twoWeeksAgo && evalDateObj <= targetDate;
-    });
-
-    if (studentTwoWeekEvals.length === 0) return null;
-
-    const total = studentTwoWeekEvals.reduce(
-      (acc, curr) => ({
-        concept: acc.concept + (curr.concept_score || 0),
-        calc: acc.calc + (curr.calc_score || 0),
-        app: acc.app + (curr.app_score || 0),
-        attitude: acc.attitude + (curr.attitude_score || 0),
-        homework: acc.homework + (curr.homework_score || 0),
-        perseverance: acc.perseverance + (curr.perseverance_score || 0),
-      }),
-      { concept: 0, calc: 0, app: 0, attitude: 0, homework: 0, perseverance: 0 }
-    );
-
-    const count = studentTwoWeekEvals.length;
-    return {
-      concept: Number((total.concept / count).toFixed(1)),
-      calc: Number((total.calc / count).toFixed(1)),
-      app: Number((total.app / count).toFixed(1)),
-      attitude: Number((total.attitude / count).toFixed(1)),
-      homework: Number((total.homework / count).toFixed(1)),
-      perseverance: Number((total.perseverance / count).toFixed(1)),
-    };
   };
 
   const renderAttendanceBadge = (status, latenessMins) => {
@@ -123,7 +87,7 @@ export default function StudentEvalPage() {
               일일 학습 피드백 내역
             </h1>
             <p className="text-[11px] text-slate-400 font-semibold mt-0.5">
-              일일 6대 역량 육각형 성취도 그래프 및 피드백
+              일일 학습 영역별 성취도 막대 그래프 및 피드백
             </p>
           </div>
         </div>
@@ -143,20 +107,16 @@ export default function StudentEvalPage() {
           </div>
         ) : (
           evaluations.map((ev) => {
-            const twoWeekAvg = getTwoWeekAvgScores(ev.eval_date);
-            const { testType, testScore, comment: cleanComment } = parseTeacherCommentAndTestScore(
-              ev.teacher_comment,
-              ev.weekly_test_score
-            );
+            const parsed = parseEvaluationRecord(ev);
 
             return (
               <div key={ev.id} className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-5">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-black text-slate-800 text-base">📅 {ev.eval_date} 학습 리포트</span>
-                    {weeklyScore && (
+                    {parsed.testScore && (
                       <span className="bg-indigo-50 text-indigo-800 border border-indigo-200 text-xs font-black px-2.5 py-0.5 rounded-full shadow-2xs">
-                        📝 주간테스트: {weeklyScore.endsWith('점') || weeklyScore.includes('/') ? weeklyScore : `${weeklyScore}점`}
+                        📝 {parsed.testType}: {parsed.testScore.endsWith('점') || parsed.testScore.includes('/') || parsed.testScore.includes('등급') ? parsed.testScore : `${parsed.testScore}점`}
                       </span>
                     )}
                   </div>
@@ -171,51 +131,26 @@ export default function StudentEvalPage() {
                   </div>
                 </div>
 
-                {/* 🎯 육각형 그래프 및 영역별 상세 점수 */}
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
-                  
-                  {/* 좌측: 육각형 레이더 차트 */}
-                  <div className="md:col-span-5 flex justify-center">
-                    <HexagonRadarChart
-                      scores={{
-                        concept: ev.concept_score,
-                        calc: ev.calc_score,
-                        app: ev.app_score,
-                        attitude: ev.attitude_score,
-                        homework: ev.homework_score,
-                        perseverance: ev.perseverance_score,
-                      }}
-                      twoWeekAvgScores={twoWeekAvg}
-                    />
-                  </div>
+                {/* 🎯 가로 막대 성취도 차트 */}
+                <EvaluationBarChart items={parsed.items} />
 
-                  {/* 우측: 6대 지표 수치 그리드 & 코멘트 */}
-                  <div className="md:col-span-7 space-y-4">
-                    <div className="grid grid-cols-3 gap-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/70 text-xs font-bold text-slate-700">
-                      <div className="text-center">개념: <span className="text-blue-600 font-black">{ev.concept_score ?? '-'}점</span></div>
-                      <div className="text-center">연산: <span className="text-blue-600 font-black">{ev.calc_score ?? '-'}점</span></div>
-                      <div className="text-center">응용: <span className="text-blue-600 font-black">{ev.app_score ?? '-'}점</span></div>
-                      <div className="text-center">집중: <span className="text-blue-600 font-black">{ev.attitude_score ?? '-'}점</span></div>
-                      <div className="text-center">과제: <span className="text-blue-600 font-black">{ev.homework_score ?? '-'}점</span></div>
-                      <div className="text-center">끈기: <span className="text-blue-600 font-black">{ev.perseverance_score ?? '-'}점</span></div>
+                {/* 코멘트 & 답장 */}
+                <div className="space-y-3">
+                  {parsed.comment && (
+                    <div className="text-xs text-slate-700 leading-relaxed bg-blue-50/50 p-4 rounded-2xl border border-blue-100/80 space-y-1">
+                      <span className="font-bold text-blue-900 block">✍️ 선생님 코멘트:</span>
+                      <p className="whitespace-pre-wrap">{parsed.comment}</p>
                     </div>
+                  )}
 
-                    {cleanComment && (
-                      <div className="text-xs text-slate-700 leading-relaxed bg-blue-50/50 p-4 rounded-2xl border border-blue-100/80 space-y-1">
-                        <span className="font-bold text-blue-900 block">✍️ 선생님 코멘트:</span>
-                        <p className="whitespace-pre-wrap">{cleanComment}</p>
-                      </div>
-                    )}
-
-                    {ev.parent_reply && (
-                      <div className="text-xs text-emerald-800 leading-relaxed bg-emerald-50/70 p-4 rounded-2xl border border-emerald-200 space-y-1">
-                        <span className="font-bold text-emerald-950 block">✉️ 학부모 답장:</span>
-                        <p className="whitespace-pre-wrap">{ev.parent_reply}</p>
-                      </div>
-                    )}
-                  </div>
-
+                  {ev.parent_reply && (
+                    <div className="text-xs text-emerald-800 leading-relaxed bg-emerald-50/70 p-4 rounded-2xl border border-emerald-200 space-y-1">
+                      <span className="font-bold text-emerald-950 block">✉️ 학부모 답장:</span>
+                      <p className="whitespace-pre-wrap">{ev.parent_reply}</p>
+                    </div>
+                  )}
                 </div>
+
               </div>
             );
           })

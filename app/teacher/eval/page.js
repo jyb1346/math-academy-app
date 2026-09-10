@@ -3,7 +3,11 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { formatTeacherCommentWithTestScore, parseTeacherCommentAndTestScore } from '@/lib/evalUtils';
+import {
+  DEFAULT_EVAL_KEYS,
+  formatTeacherCommentWithTestScoreAndItems,
+  parseEvaluationRecord,
+} from '@/lib/evalUtils';
 
 export default function TeacherEvalPage() {
   const [user, setUser] = useState(null);
@@ -22,12 +26,28 @@ export default function TeacherEvalPage() {
   const [attendanceStatus, setAttendanceStatus] = useState('ATTEND');
   const [latenessMinutes, setLatenessMinutes] = useState(5);
 
-  const [conceptScore, setConceptScore] = useState(8);
-  const [calcScore, setCalcScore] = useState(8);
-  const [appScore, setAppScore] = useState(8);
-  const [attitudeScore, setAttitudeScore] = useState(8);
-  const [homeworkScore, setHomeworkScore] = useState(8);
-  const [perseveranceScore, setPerseveranceScore] = useState(8);
+  // 🎯 기본 6개 항목 활성화 여부 및 점수
+  const [activeDefaultKeys, setActiveDefaultKeys] = useState([
+    'concept',
+    'calc',
+    'app',
+    'attitude',
+    'homework',
+    'perseverance',
+  ]);
+  const [defaultScores, setDefaultScores] = useState({
+    concept: 8,
+    calc: 8,
+    app: 8,
+    attitude: 8,
+    homework: 8,
+    perseverance: 8,
+  });
+
+  // ✨ 커스텀 추가 항목 상태: [{ id, name, score }]
+  const [customItems, setCustomItems] = useState([]);
+  const [newCustomName, setNewCustomName] = useState('');
+  const [showAddCustomInput, setShowAddCustomInput] = useState(false);
 
   // 📝 시험 성적 및 종류 상태 (단원평가, 일일테스트, 주간테스트, 모의고사, 기타)
   const [testType, setTestType] = useState('단원평가');
@@ -88,18 +108,44 @@ export default function TeacherEvalPage() {
 
   const handleCopyPrevScores = () => {
     if (!prevEval) return;
-    setConceptScore(prevEval.concept_score ?? 8);
-    setCalcScore(prevEval.calc_score ?? 8);
-    setAppScore(prevEval.app_score ?? 8);
-    setAttitudeScore(prevEval.attitude_score ?? 8);
-    setHomeworkScore(prevEval.homework_score ?? 8);
-    setPerseveranceScore(prevEval.perseverance_score ?? 8);
+    const prevParsed = parseEvaluationRecord(prevEval);
+
+    // 1. 기본 항목 중 직전에 활성화되었던 항목 및 점수 복사
+    const prevActiveKeys = [];
+    const newScores = { ...defaultScores };
+    DEFAULT_EVAL_KEYS.forEach((def) => {
+      const val = prevEval[def.dbCol];
+      if (val !== null && val !== undefined) {
+        prevActiveKeys.push(def.key);
+        newScores[def.key] = Number(val);
+      }
+    });
+
+    if (prevActiveKeys.length > 0) {
+      setActiveDefaultKeys(prevActiveKeys);
+      setDefaultScores(newScores);
+    }
+
+    // 2. 커스텀 항목 복사
+    if (prevParsed.customItems && prevParsed.customItems.length > 0) {
+      setCustomItems(
+        prevParsed.customItems.map((c, idx) => ({
+          id: `custom_${Date.now()}_${idx}`,
+          name: c.name,
+          score: Number(c.score) || 8,
+        }))
+      );
+    } else {
+      setCustomItems([]);
+    }
+
+    // 3. 출결 상태 복사
     setAttendanceStatus(prevEval.attendance_status || 'ATTEND');
     if (prevEval.lateness_minutes) {
       setLatenessMinutes(prevEval.lateness_minutes);
     }
 
-    const prevParsed = parseTeacherCommentAndTestScore(prevEval.teacher_comment, prevEval.weekly_test_score);
+    // 4. 시험 종류 및 점수 복사
     if (prevParsed.testScore) {
       if (['단원평가', '일일테스트', '주간테스트', '모의고사'].includes(prevParsed.testType)) {
         setTestType(prevParsed.testType);
@@ -113,6 +159,36 @@ export default function TeacherEvalPage() {
 
     setCopySuccessToast(true);
     setTimeout(() => setCopySuccessToast(false), 3000);
+  };
+
+  const toggleDefaultKey = (key) => {
+    setActiveDefaultKeys((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    );
+  };
+
+  const handleAddCustomItem = () => {
+    const trimmed = newCustomName.trim();
+    if (!trimmed) return alert('항목 이름을 입력해 주세요.');
+    if (customItems.some((c) => c.name === trimmed)) {
+      return alert('이미 추가된 항목 이름입니다.');
+    }
+    setCustomItems((prev) => [
+      ...prev,
+      { id: `custom_${Date.now()}`, name: trimmed, score: 8 },
+    ]);
+    setNewCustomName('');
+    setShowAddCustomInput(false);
+  };
+
+  const handleRemoveCustomItem = (id) => {
+    setCustomItems((prev) => prev.filter((c) => c.id !== id));
+  };
+
+  const handleCustomScoreChange = (id, newScore) => {
+    setCustomItems((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, score: Number(newScore) } : c))
+    );
   };
 
   const renderScoreDiffBadge = (currentScore, prevScore) => {
@@ -196,6 +272,10 @@ export default function TeacherEvalPage() {
     e.preventDefault();
     if (!selectedStudentId) return alert('학생을 선택해 주세요.');
 
+    if (activeDefaultKeys.length === 0 && customItems.length === 0) {
+      return alert('최소 1개 이상의 평가 항목을 선택해 주세요.');
+    }
+
     const selectedStudent = students.find((s) => s.id === selectedStudentId);
     const studentName = selectedStudent ? selectedStudent.name : '해당';
 
@@ -209,9 +289,14 @@ export default function TeacherEvalPage() {
 
       if (checkError) throw checkError;
 
-      // 최종 적용할 시험 종류 (기타 선택 시 직접 입력한 명칭 사용)
       const effectiveTestType = testType === '기타' ? (customTestType.trim() || '기타평가') : testType;
-      const combinedComment = formatTeacherCommentWithTestScore(teacherComment, testScore, effectiveTestType);
+
+      const combinedComment = formatTeacherCommentWithTestScoreAndItems({
+        comment: teacherComment,
+        testScore,
+        testType: effectiveTestType,
+        customItems,
+      });
 
       const payload = {
         teacher_id: user.id,
@@ -219,12 +304,12 @@ export default function TeacherEvalPage() {
         eval_date: evalDate,
         attendance_status: attendanceStatus,
         lateness_minutes: attendanceStatus === 'LATE' ? parseInt(latenessMinutes) : 0,
-        concept_score: parseInt(conceptScore),
-        calc_score: parseInt(calcScore),
-        app_score: parseInt(appScore),
-        attitude_score: parseInt(attitudeScore),
-        homework_score: parseInt(homeworkScore),
-        perseverance_score: parseInt(perseveranceScore),
+        concept_score: activeDefaultKeys.includes('concept') ? parseInt(defaultScores.concept) : null,
+        calc_score: activeDefaultKeys.includes('calc') ? parseInt(defaultScores.calc) : null,
+        app_score: activeDefaultKeys.includes('app') ? parseInt(defaultScores.app) : null,
+        attitude_score: activeDefaultKeys.includes('attitude') ? parseInt(defaultScores.attitude) : null,
+        homework_score: activeDefaultKeys.includes('homework') ? parseInt(defaultScores.homework) : null,
+        perseverance_score: activeDefaultKeys.includes('perseverance') ? parseInt(defaultScores.perseverance) : null,
         teacher_comment: combinedComment,
       };
 
@@ -303,9 +388,7 @@ export default function TeacherEvalPage() {
 
   if (loading) return <div className="p-8 text-center font-bold">로딩 중...</div>;
 
-  const prevParsed = prevEval
-    ? parseTeacherCommentAndTestScore(prevEval.teacher_comment, prevEval.weekly_test_score)
-    : { testType: '단원평가', testScore: null, comment: '' };
+  const prevParsed = prevEval ? parseEvaluationRecord(prevEval) : null;
 
   return (
     <div className="min-h-screen bg-slate-50 pb-16">
@@ -327,7 +410,7 @@ export default function TeacherEvalPage() {
         <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
           <div className="border-b pb-4">
             <h2 className="text-lg font-bold text-slate-800">✍️ 일일 학습 피드백 작성</h2>
-            <p className="text-xs text-slate-500 mt-1">학생의 오늘 6대 역량 점수와 출결, 시험 성적 및 코멘트를 작성합니다.</p>
+            <p className="text-xs text-slate-500 mt-1">오늘 수업에 맞게 평가할 항목을 선택하고 점수와 출결, 시험 결과를 기록합니다.</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -379,7 +462,7 @@ export default function TeacherEvalPage() {
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-center text-xs font-bold text-slate-400 animate-pulse">
                 선택 학생의 직전 피드백 기록을 조회하는 중...
               </div>
-            ) : prevEval ? (
+            ) : prevEval && prevParsed ? (
               <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-white p-4 sm:p-5 rounded-2xl shadow-md border border-slate-700/80 space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-700/80 pb-2.5">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -402,39 +485,21 @@ export default function TeacherEvalPage() {
                     type="button"
                     onClick={handleCopyPrevScores}
                     className="bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-extrabold px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 shadow-sm self-start sm:self-auto"
-                    title="직전 점수를 오늘 슬라이더에 1초 만에 그대로 적용합니다"
+                    title="직전 항목과 점수 구성을 오늘 폼에 1초 만에 그대로 적용합니다"
                   >
                     <span>📋</span>
                     <span>직전 점수 그대로 불러오기</span>
                   </button>
                 </div>
 
-                {/* 6대 영역 직전 점수 요약 그리드 */}
-                <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 text-center text-[11px] font-bold">
-                  <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700">
-                    <span className="text-slate-400 text-[10px] block">개념</span>
-                    <span className="text-blue-400 font-black text-xs">{prevEval.concept_score}점</span>
-                  </div>
-                  <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700">
-                    <span className="text-slate-400 text-[10px] block">연산</span>
-                    <span className="text-blue-400 font-black text-xs">{prevEval.calc_score}점</span>
-                  </div>
-                  <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700">
-                    <span className="text-slate-400 text-[10px] block">응용</span>
-                    <span className="text-blue-400 font-black text-xs">{prevEval.app_score}점</span>
-                  </div>
-                  <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700">
-                    <span className="text-slate-400 text-[10px] block">집중</span>
-                    <span className="text-blue-400 font-black text-xs">{prevEval.attitude_score}점</span>
-                  </div>
-                  <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700">
-                    <span className="text-slate-400 text-[10px] block">과제</span>
-                    <span className="text-blue-400 font-black text-xs">{prevEval.homework_score}점</span>
-                  </div>
-                  <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700">
-                    <span className="text-slate-400 text-[10px] block">끈기</span>
-                    <span className="text-blue-400 font-black text-xs">{prevEval.perseverance_score}점</span>
-                  </div>
+                {/* 직전 평가 항목 점수 요약 그리드 */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-1.5 text-center text-[11px] font-bold">
+                  {prevParsed.items.map((it) => (
+                    <div key={it.key || it.name} className="bg-slate-800/80 p-2 rounded-xl border border-slate-700">
+                      <span className="text-slate-400 text-[10px] block truncate">{it.name}</span>
+                      <span className="text-blue-400 font-black text-xs">{it.score}점</span>
+                    </div>
+                  ))}
                 </div>
 
                 {/* 직전 총평 코멘트 & 직전 시험 성적 요약 */}
@@ -461,7 +526,7 @@ export default function TeacherEvalPage() {
             {copySuccessToast && (
               <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-xs font-black text-emerald-800 flex items-center gap-2 animate-fade-in">
                 <span>✅</span>
-                <span>직전 피드백의 출석 상태, 6대 영역 점수 및 시험 점수를 성공적으로 불러왔습니다!</span>
+                <span>직전 피드백의 평가 항목 및 점수 구성을 성공적으로 불러왔습니다!</span>
               </div>
             )}
 
@@ -522,101 +587,147 @@ export default function TeacherEvalPage() {
               </div>
             </div>
 
-            {/* 4. 6대 영역 점수 슬라이더 */}
+            {/* 4. 📊 평가 항목 선택 칩 & 점수 슬라이더 */}
             <div className="space-y-4 pt-2">
-              <div className="flex justify-between items-center">
-                <h3 className="text-xs font-bold text-slate-700">📊 6대 성취도 영역 (각 1~10점)</h3>
-                {prevEval && (
-                  <span className="text-[11px] font-bold text-slate-400">
-                    ※ 직전 대비 증감(▲/▼)이 점수 옆에 자동 표시됩니다.
-                  </span>
-                )}
+              <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-1.5 border-b pb-2">
+                <div>
+                  <h3 className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+                    <span>📊</span>
+                    <span>학습 성취도 평가 항목 관리</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    오늘 수업에서 평가할 항목을 선택(ON/OFF)하거나, 새로운 맞춤 항목을 자유롭게 추가하세요.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddCustomInput(!showAddCustomInput)}
+                  className="self-start sm:self-auto bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-black px-3 py-1.5 rounded-xl border border-indigo-200 transition flex items-center gap-1"
+                >
+                  <span>✨</span>
+                  <span>+ 새 항목 추가</span>
+                </button>
               </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1.5">
-                  <div className="flex justify-between items-center text-xs font-bold">
-                    <span className="text-slate-700">📘 개념 이해도</span>
-                    <div className="flex items-center gap-1.5">
-                      {renderScoreDiffBadge(conceptScore, prevEval?.concept_score)}
-                      <span className="text-blue-600 font-black">{conceptScore}점</span>
-                    </div>
-                  </div>
-                  <input
-                    type="range" min="1" max="10" value={conceptScore}
-                    onChange={(e) => setConceptScore(e.target.value)} className="w-full accent-blue-600"
-                  />
-                </div>
 
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1.5">
-                  <div className="flex justify-between items-center text-xs font-bold">
-                    <span className="text-slate-700">🔢 연산/계산 정확도</span>
-                    <div className="flex items-center gap-1.5">
-                      {renderScoreDiffBadge(calcScore, prevEval?.calc_score)}
-                      <span className="text-blue-600 font-black">{calcScore}점</span>
-                    </div>
-                  </div>
+              {/* 새 항목 인라인 추가 폼 */}
+              {showAddCustomInput && (
+                <div className="p-3 bg-indigo-50/80 rounded-xl border border-indigo-200 flex gap-2 items-center animate-fade-in">
                   <input
-                    type="range" min="1" max="10" value={calcScore}
-                    onChange={(e) => setCalcScore(e.target.value)} className="w-full accent-blue-600"
+                    type="text"
+                    value={newCustomName}
+                    onChange={(e) => setNewCustomName(e.target.value)}
+                    placeholder="예: 서술형 풀이, 교재 필기 상태, 질문 적극성 등"
+                    className="flex-1 p-2 bg-white border border-indigo-300 rounded-xl text-xs font-bold text-indigo-950 focus:outline-none"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddCustomItem();
+                      }
+                    }}
                   />
+                  <button
+                    type="button"
+                    onClick={handleAddCustomItem}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-xs shrink-0"
+                  >
+                    추가
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowAddCustomInput(false); setNewCustomName(''); }}
+                    className="text-slate-400 hover:text-slate-600 text-xs px-2 shrink-0"
+                  >
+                    취소
+                  </button>
                 </div>
+              )}
 
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1.5">
-                  <div className="flex justify-between items-center text-xs font-bold">
-                    <span className="text-slate-700">💡 응용/심화 해결력</span>
-                    <div className="flex items-center gap-1.5">
-                      {renderScoreDiffBadge(appScore, prevEval?.app_score)}
-                      <span className="text-blue-600 font-black">{appScore}점</span>
-                    </div>
-                  </div>
-                  <input
-                    type="range" min="1" max="10" value={appScore}
-                    onChange={(e) => setAppScore(e.target.value)} className="w-full accent-blue-600"
-                  />
+              {/* 기본 6개 항목 토글 칩 */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-bold text-slate-600 block">기본 역량 선택 (클릭하여 켜기/끄기):</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {DEFAULT_EVAL_KEYS.map((def) => {
+                    const isActive = activeDefaultKeys.includes(def.key);
+                    return (
+                      <button
+                        key={def.key}
+                        type="button"
+                        onClick={() => toggleDefaultKey(def.key)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-black transition border flex items-center gap-1 ${
+                          isActive
+                            ? 'bg-blue-600 text-white border-blue-700 shadow-2xs'
+                            : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-100 opacity-60'
+                        }`}
+                      >
+                        <span>{def.icon}</span>
+                        <span>{def.name}</span>
+                        <span className="text-[10px]">{isActive ? '✓' : '+'}</span>
+                      </button>
+                    );
+                  })}
                 </div>
+              </div>
 
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1.5">
-                  <div className="flex justify-between items-center text-xs font-bold">
-                    <span className="text-slate-700">👀 수업 태도/집중도</span>
-                    <div className="flex items-center gap-1.5">
-                      {renderScoreDiffBadge(attitudeScore, prevEval?.attitude_score)}
-                      <span className="text-blue-600 font-black">{attitudeScore}점</span>
+              {/* 활성화된 항목들의 점수 슬라이더 리스트 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-2">
+                
+                {/* 1) 활성화된 기본 항목 슬라이더 */}
+                {DEFAULT_EVAL_KEYS.filter((def) => activeDefaultKeys.includes(def.key)).map((def) => (
+                  <div key={def.key} className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1.5">
+                    <div className="flex justify-between items-center text-xs font-bold">
+                      <span className="text-slate-800 flex items-center gap-1">
+                        <span>{def.icon}</span>
+                        <span>{def.name}</span>
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {renderScoreDiffBadge(defaultScores[def.key], prevEval?.[def.dbCol])}
+                        <span className="text-blue-600 font-black">{defaultScores[def.key]}점</span>
+                        <button
+                          type="button"
+                          onClick={() => toggleDefaultKey(def.key)}
+                          className="text-slate-300 hover:text-rose-500 text-xs ml-1"
+                          title="항목 제외"
+                        >
+                          ✕
+                        </button>
+                      </div>
                     </div>
+                    <input
+                      type="range" min="1" max="10" value={defaultScores[def.key]}
+                      onChange={(e) => setDefaultScores({ ...defaultScores, [def.key]: Number(e.target.value) })}
+                      className="w-full accent-blue-600"
+                    />
                   </div>
-                  <input
-                    type="range" min="1" max="10" value={attitudeScore}
-                    onChange={(e) => setAttitudeScore(e.target.value)} className="w-full accent-blue-600"
-                  />
-                </div>
+                ))}
 
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1.5">
-                  <div className="flex justify-between items-center text-xs font-bold">
-                    <span className="text-slate-700">📚 과제 완성도</span>
-                    <div className="flex items-center gap-1.5">
-                      {renderScoreDiffBadge(homeworkScore, prevEval?.homework_score)}
-                      <span className="text-blue-600 font-black">{homeworkScore}점</span>
+                {/* 2) 커스텀 추가 항목 슬라이더 */}
+                {customItems.map((c) => (
+                  <div key={c.id} className="bg-indigo-50/50 p-3.5 rounded-xl border border-indigo-200 space-y-1.5">
+                    <div className="flex justify-between items-center text-xs font-bold">
+                      <span className="text-indigo-950 flex items-center gap-1">
+                        <span>✨</span>
+                        <span>{c.name}</span>
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-indigo-600 font-black">{c.score}점</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveCustomItem(c.id)}
+                          className="text-slate-400 hover:text-rose-500 text-xs ml-1 font-bold"
+                          title="항목 삭제"
+                        >
+                          ✕
+                        </button>
+                      </div>
                     </div>
+                    <input
+                      type="range" min="1" max="10" value={c.score}
+                      onChange={(e) => handleCustomScoreChange(c.id, e.target.value)}
+                      className="w-full accent-indigo-600"
+                    />
                   </div>
-                  <input
-                    type="range" min="1" max="10" value={homeworkScore}
-                    onChange={(e) => setHomeworkScore(e.target.value)} className="w-full accent-blue-600"
-                  />
-                </div>
+                ))}
 
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1.5">
-                  <div className="flex justify-between items-center text-xs font-bold">
-                    <span className="text-slate-700">🔥 오답 복습 및 끈기</span>
-                    <div className="flex items-center gap-1.5">
-                      {renderScoreDiffBadge(perseveranceScore, prevEval?.perseverance_score)}
-                      <span className="text-blue-600 font-black">{perseveranceScore}점</span>
-                    </div>
-                  </div>
-                  <input
-                    type="range" min="1" max="10" value={perseveranceScore}
-                    onChange={(e) => setPerseveranceScore(e.target.value)} className="w-full accent-blue-600"
-                  />
-                </div>
               </div>
             </div>
 

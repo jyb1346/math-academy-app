@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import HexagonRadarChart from '@/components/HexagonRadarChart';
-import { parseTeacherCommentAndTestScore } from '@/lib/evalUtils';
+import EvaluationBarChart from '@/components/EvaluationBarChart';
+import { parseEvaluationRecord } from '@/lib/evalUtils';
 
 export default function EvalHistoryPage() {
   const [user, setUser] = useState(null);
@@ -70,7 +70,6 @@ export default function EvalHistoryPage() {
     }
   };
 
-  
   const [sendingId, setSendingId] = useState(null);
 
   const handleResendNotification = async (item) => {
@@ -134,45 +133,6 @@ export default function EvalHistoryPage() {
     }
   };
 
-  const getTwoWeekAvgScores = (studentId, currentEvalDate) => {
-    if (!currentEvalDate) return null;
-
-    const targetDate = new Date(currentEvalDate);
-    const twoWeeksAgo = new Date(targetDate);
-    twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
-
-    const studentTwoWeekEvals = evaluations.filter((e) => {
-      if (e.student_id !== studentId) return false;
-      const evalDateObj = new Date(e.eval_date);
-      return evalDateObj >= twoWeeksAgo && evalDateObj <= targetDate;
-    });
-
-    if (studentTwoWeekEvals.length === 0) return null;
-
-    const total = studentTwoWeekEvals.reduce(
-      (acc, curr) => ({
-        concept: acc.concept + (curr.concept_score || 0),
-        calc: acc.calc + (curr.calc_score || 0),
-        app: acc.app + (curr.app_score || 0),
-        attitude: acc.attitude + (curr.attitude_score || 0),
-        homework: acc.homework + (curr.homework_score || 0),
-        perseverance: acc.perseverance + (curr.perseverance_score || 0),
-      }),
-      { concept: 0, calc: 0, app: 0, attitude: 0, homework: 0, perseverance: 0 }
-    );
-
-    const count = studentTwoWeekEvals.length;
-    return {
-      concept: Number((total.concept / count).toFixed(1)),
-      calc: Number((total.calc / count).toFixed(1)),
-      app: Number((total.app / count).toFixed(1)),
-      attitude: Number((total.attitude / count).toFixed(1)),
-      homework: Number((total.homework / count).toFixed(1)),
-      perseverance: Number((total.perseverance / count).toFixed(1)),
-    };
-  };
-
-  // 🎯 문구 수정: ~분 이내 지각
   const renderAttendanceBadge = (status, latenessMins) => {
     if (status === 'LATE') {
       const minsText = latenessMins >= 30 ? '30분 이상 지각' : `${latenessMins || 5}분 이내 지각`;
@@ -196,7 +156,6 @@ export default function EvalHistoryPage() {
     );
   };
 
-  // 🎯 선택된 반에 속한 학생 목록 (중복 배정 완벽 지원)
   const filteredStudents = selectedClassId === 'ALL'
     ? students
     : students.filter((st) =>
@@ -306,11 +265,7 @@ export default function EvalHistoryPage() {
               <p className="text-center py-12 text-slate-400 text-xs font-bold">작성하신 학습 피드백 내역이 없습니다.</p>
             ) : (
               filteredEvals.map((item) => {
-                const twoWeekAvgScores = getTwoWeekAvgScores(item.student_id, item.eval_date);
-                const { testType, testScore, comment: cleanComment } = parseTeacherCommentAndTestScore(
-                  item.teacher_comment,
-                  item.weekly_test_score
-                );
+                const parsed = parseEvaluationRecord(item);
 
                 return (
                   <div key={item.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
@@ -324,9 +279,9 @@ export default function EvalHistoryPage() {
                         
                         {renderAttendanceBadge(item.attendance_status, item.lateness_minutes)}
 
-                        {weeklyScore && (
+                        {parsed.testScore && (
                           <span className="bg-indigo-50 text-indigo-800 border border-indigo-200 text-xs font-black px-2.5 py-0.5 rounded-full shadow-2xs">
-                            📝 주간테스트: {weeklyScore.endsWith('점') || weeklyScore.includes('/') ? weeklyScore : `${weeklyScore}점`}
+                            📝 {parsed.testType}: {parsed.testScore.endsWith('점') || parsed.testScore.includes('/') || parsed.testScore.includes('등급') ? parsed.testScore : `${parsed.testScore}점`}
                           </span>
                         )}
                       </div>
@@ -356,26 +311,16 @@ export default function EvalHistoryPage() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
-                      <div className="md:col-span-1 flex justify-center">
-                        <HexagonRadarChart
-                          scores={{
-                            concept: item.concept_score,
-                            calc: item.calc_score,
-                            app: item.app_score,
-                            attitude: item.attitude_score,
-                            homework: item.homework_score,
-                            perseverance: item.perseverance_score,
-                          }}
-                          twoWeekAvgScores={twoWeekAvgScores}
-                        />
-                      </div>
+                    <div className="space-y-4">
+                      {/* 가로 막대 차트 */}
+                      <EvaluationBarChart items={parsed.items} />
 
-                      <div className="md:col-span-2 space-y-3">
+                      {/* 선생님 총평 & 학부모 답장 */}
+                      <div className="space-y-3">
                         <div className="bg-blue-50/60 p-4 rounded-xl border border-blue-100 space-y-1">
                           <span className="text-xs font-bold text-blue-800 block">✍️ 선생님 학습 총평</span>
                           <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed font-medium">
-                            {cleanComment || '작성된 코멘트가 없습니다.'}
+                            {parsed.comment || '작성된 코멘트가 없습니다.'}
                           </p>
                         </div>
 
@@ -391,7 +336,6 @@ export default function EvalHistoryPage() {
                           </div>
                         )}
                       </div>
-
                     </div>
 
                   </div>

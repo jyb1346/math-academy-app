@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { getActiveLuckyEvent, getRecentFinishedLuckyEvent, catchLuckyBug } from '@/lib/luckyBugService';
 
 export default function LuckyBugOverlay() {
+  const router = useRouter();
   const [user, setUser] = useState(null);
   const [activeEvent, setActiveEvent] = useState(null);
   const [catching, setCatching] = useState(false);
@@ -44,6 +46,16 @@ export default function LuckyBugOverlay() {
     };
   }, []);
 
+  // 🔒 벌레 이벤트가 활성화되면 메인 화면(/student/dashboard)으로 자동 이동 및 고정
+  useEffect(() => {
+    if (activeEvent && typeof window !== 'undefined') {
+      const currentPath = window.location.pathname;
+      if (currentPath !== '/student/dashboard' && currentPath !== '/') {
+        router.push('/student/dashboard');
+      }
+    }
+  }, [activeEvent, router]);
+
   const initStudent = async (studentUser) => {
     try {
       // 1. 학생의 소속 반 ID 목록 조회
@@ -78,6 +90,11 @@ export default function LuckyBugOverlay() {
             setGimmickBubble(null);
             playChimeSound();
             startBugMovement(newEv.speedMode);
+
+            // 다른 서브화면에 있을 경우 즉시 메인 대시보드로 이동
+            if (typeof window !== 'undefined' && window.location.pathname !== '/student/dashboard') {
+              router.push('/student/dashboard');
+            }
           }
         })
         .on('broadcast', { event: 'BUG_FINISHED' }, (payload) => {
@@ -255,7 +272,29 @@ export default function LuckyBugOverlay() {
 
   return (
     <>
-      {/* 🐛 1. 화면 위를 떠다니는 황금 벌레 */}
+      {/* 🛡️ 1. 벌레 활성화 시 전체 화면 터치 방어막 & 메인 고정 실드 */}
+      {activeEvent && (
+        <>
+          <div
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onTouchStart={(e) => {
+              // 학생이 화면을 마구 터치해도 다른 버튼/메뉴/게시글이 눌리지 않도록 터치 흡수
+            }}
+            className="fixed inset-0 z-40 bg-black/10 backdrop-blur-[0.5px] cursor-crosshair select-none"
+          />
+
+          {/* 🚨 상단 이벤트 집중 안내 배너 */}
+          <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-45 bg-gradient-to-r from-amber-600 via-orange-500 to-amber-600 text-white font-black text-xs px-4 py-2 rounded-full shadow-2xl border border-yellow-200 animate-bounce flex items-center gap-2 pointer-events-none whitespace-nowrap">
+            <span className="text-sm">🚨</span>
+            <span>돌발 황금 벌레 포획 작전! 화면의 벌레를 터치하세요!</span>
+          </div>
+        </>
+      )}
+
+      {/* 🐛 2. 화면 위를 떠다니는 황금 벌레 (z-50) */}
       {activeEvent && (
         <div
           onClick={handleCatch}
@@ -297,7 +336,7 @@ export default function LuckyBugOverlay() {
                   className={`text-2xl sm:text-3xl inline-block ${
                     isTired ? 'animate-bounce' : 'animate-spin'
                   }`}
-                  style={{ animationDuration: isTired ? '0.5s' : activeEvent.speedMode === 'EXTREME' ? '1s' : '3s' }}
+                  style={{ animationDuration: isTired ? '0.5s' : activeEvent.speedMode === 'EXTREME' ? '0.5s' : '3s' }}
                 >
                   {isTired ? '😵' : '🐛'}
                 </span>
@@ -335,7 +374,7 @@ export default function LuckyBugOverlay() {
               <div className="absolute -top-7 left-1/2 transform -translate-x-1/2 bg-rose-600 text-white text-[9.5px] sm:text-[10px] font-black px-2 py-0.5 rounded-full whitespace-nowrap shadow-md flex items-center gap-1">
                 <span>
                   {activeEvent.speedMode === 'EXTREME'
-                    ? '🌪️ 광속'
+                    ? '🌪️ 초광속'
                     : activeEvent.speedMode === 'NORMAL'
                     ? '🟢 보통'
                     : '⚡ 빠름'}
@@ -348,7 +387,7 @@ export default function LuckyBugOverlay() {
         </div>
       )}
 
-      {/* 💥 2. 아쉽게 마감 안내 알림 (프리미엄 하단 토스트) */}
+      {/* 💥 3. 아쉽게 마감 안내 알림 (프리미엄 하단 토스트) */}
       {missedAlert && (
         <div className="fixed bottom-20 sm:bottom-24 left-1/2 transform -translate-x-1/2 z-50 bg-slate-950/95 text-white px-5 sm:px-6 py-3.5 rounded-2xl shadow-2xl border border-amber-500/40 text-xs sm:text-sm font-black flex items-center gap-3 animate-fade-in backdrop-blur-md max-w-md w-[92%] sm:w-auto text-center justify-center">
           <span className="text-xl shrink-0 animate-bounce">💨</span>
@@ -356,7 +395,7 @@ export default function LuckyBugOverlay() {
         </div>
       )}
 
-      {/* 🎉 3. 당첨 축하 팝업 모달 (선생님께 보여주는 인증 쿠폰) */}
+      {/* 🎉 4. 당첨 축하 팝업 모달 (선생님께 보여주는 인증 쿠폰) */}
       {winModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl border-2 border-amber-300 text-center space-y-5 animate-scale-up">

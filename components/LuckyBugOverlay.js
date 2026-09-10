@@ -123,11 +123,11 @@ export default function LuckyBugOverlay() {
     }
   };
 
-  // ⚡ 속도별 이동 주기 (1단계 보통 1.5s / 2단계 빠름 0.6s / 3단계 광속 0.25s)
+  // ⚡ 속도별 이동 주기 (1단계 보통 1.2s / 2단계 빠름 0.25s / 3단계 초광속 0.1s)
   const getIntervalMs = (mode) => {
-    if (mode === 'EXTREME') return 250; // 3단계: 광속 순간이동
-    if (mode === 'NORMAL') return 1500; // 1단계: 보통
-    return 600; // 2단계: 빠름 (기본값)
+    if (mode === 'EXTREME') return 100; // 3단계: 초광속 순간이동 (0.1초)
+    if (mode === 'NORMAL') return 1200; // 1단계: 보통 (1.2초)
+    return 250; // 2단계: 빠름 (0.25초)
   };
 
   const startBugMovement = (speedMode = 'FAST') => {
@@ -248,9 +248,9 @@ export default function LuckyBugOverlay() {
 
   const getTransitionStyle = () => {
     if (isTired) return 'transition-all duration-300 ease-out';
-    if (activeEvent?.speedMode === 'EXTREME') return 'transition-all duration-150 ease-out';
-    if (activeEvent?.speedMode === 'NORMAL') return 'transition-all duration-600 ease-out';
-    return 'transition-all duration-300 ease-out';
+    if (activeEvent?.speedMode === 'EXTREME') return 'transition-all duration-75 ease-out';
+    if (activeEvent?.speedMode === 'FAST') return 'transition-all duration-150 ease-out';
+    return 'transition-all duration-500 ease-out';
   };
 
   return (

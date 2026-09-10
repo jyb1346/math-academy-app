@@ -284,7 +284,7 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
                   >
                     <span>🟢 1단계: 보통</span>
                     <span className={`text-[10px] font-normal ${speedMode === 'NORMAL' ? 'text-emerald-100' : 'text-slate-400'}`}>
-                      1.5초 (편안함)
+                      1.2초 (편안함)
                     </span>
                   </button>
 
@@ -299,7 +299,7 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
                   >
                     <span>🟡 2단계: 빠름 ⚡</span>
                     <span className={`text-[10px] font-bold ${speedMode === 'FAST' ? 'text-amber-100' : 'text-amber-600'}`}>
-                      0.6초 (추천)
+                      0.25초 (추천)
                     </span>
                   </button>
 
@@ -312,9 +312,9 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
                         : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
                     }`}
                   >
-                    <span>🔴 3단계: 광속 🌪️</span>
+                    <span>🔴 3단계: 초광속 🌪️</span>
                     <span className={`text-[10px] font-normal ${speedMode === 'EXTREME' ? 'text-rose-100' : 'text-slate-400'}`}>
-                      0.25초 (순간이동)
+                      0.1초 (순간이동)
                     </span>
                   </button>
                 </div>

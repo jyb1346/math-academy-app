@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useParams, useRouter } from 'next/navigation';
 import HexagonRadarChart from '@/components/HexagonRadarChart';
-import { parseTeacherCommentAndWeeklyScore } from '@/lib/evalUtils';
+import { parseTeacherCommentAndTestScore } from '@/lib/evalUtils';
 
 export default function StudentReportPage() {
   const { id } = useParams();
@@ -133,7 +133,7 @@ export default function StudentReportPage() {
     return '🟢 정상 출석';
   };
 
-  const { weeklyScore, comment: cleanComment } = parseTeacherCommentAndWeeklyScore(
+  const { testType, testScore, comment: cleanComment } = parseTeacherCommentAndTestScore(
     evalData.teacher_comment,
     evalData.weekly_test_score
   );
@@ -192,28 +192,46 @@ export default function StudentReportPage() {
           </div>
         </div>
 
-        {/* 📝 주간 테스트 성적 카드 (입력된 경우에만 렌더링, 미입력 시 숨김) */}
-        {weeklyScore && (
-          <div className="mx-5 my-1 bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 rounded-2xl p-4 text-white shadow-lg shadow-indigo-600/15 space-y-2">
+        {/* 📝 시험 성적 결과 카드 (입력된 경우에만 렌더링, 미입력 시 숨김) */}
+        {testScore && (
+          <div className="mx-5 my-1 bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 rounded-2xl p-4 text-white shadow-lg shadow-indigo-600/15 space-y-2 animate-fade-in">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-lg shadow-inner">
-                  📝
+                  {testType === '단원평가' ? '📘' : testType === '일일테스트' ? '⚡' : testType === '모의고사' ? '🎯' : testType === '주간테스트' ? '📝' : '✍️'}
                 </div>
                 <div>
-                  <span className="text-[10.5px] font-bold text-indigo-200 block uppercase tracking-wide">Weekly Test</span>
-                  <h4 className="text-sm font-black text-white">주간 테스트 결과</h4>
+                  <span className="text-[10px] font-bold text-indigo-200 block uppercase tracking-wide">
+                    {testType === '단원평가'
+                      ? 'Unit Test'
+                      : testType === '일일테스트'
+                      ? 'Daily Test'
+                      : testType === '모의고사'
+                      ? 'Mock Exam'
+                      : testType === '주간테스트'
+                      ? 'Weekly Test'
+                      : 'Evaluation Result'}
+                  </span>
+                  <h4 className="text-sm font-black text-white">{testType} 결과</h4>
                 </div>
               </div>
               <div className="bg-white text-indigo-950 px-3.5 py-1.5 rounded-xl shadow-md text-right border border-indigo-100 flex items-baseline gap-1">
                 <span className="text-[11px] font-bold text-slate-500">점수:</span>
                 <span className="text-base sm:text-lg font-black text-indigo-600">
-                  {weeklyScore.endsWith('점') || weeklyScore.includes('/') ? weeklyScore : `${weeklyScore}점`}
+                  {testScore.endsWith('점') || testScore.includes('/') || testScore.includes('등급') ? testScore : `${testScore}점`}
                 </span>
               </div>
             </div>
             <p className="text-[11px] text-indigo-100/90 font-medium pt-0.5">
-              💡 이번 주 학습 단원 이해도 점검 및 주간 성취도 평가 점수입니다.
+              {testType === '단원평가'
+                ? '💡 해당 단원의 핵심 개념 이해도 및 심화 문제 해결력을 점검한 단원평가 결과입니다.'
+                : testType === '일일테스트'
+                ? '💡 오늘 수업 내용의 당일 이해도와 기본 계산 정확도를 점검한 일일 테스트 결과입니다.'
+                : testType === '모의고사'
+                ? '💡 실전 시험 대비 모의고사 성취도 및 성적 평가 결과입니다.'
+                : testType === '주간테스트'
+                ? '💡 이번 주 학습 단원 이해도 점검 및 주간 성취도 평가 점수입니다.'
+                : `💡 ${testType} 성취도 평가 결과입니다.`}
             </p>
           </div>
         )}

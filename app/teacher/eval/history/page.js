@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import HexagonRadarChart from '@/components/HexagonRadarChart';
-import { parseTeacherCommentAndWeeklyScore } from '@/lib/evalUtils';
+import { parseTeacherCommentAndTestScore } from '@/lib/evalUtils';
 
 export default function EvalHistoryPage() {
   const [user, setUser] = useState(null);
@@ -307,7 +307,7 @@ export default function EvalHistoryPage() {
             ) : (
               filteredEvals.map((item) => {
                 const twoWeekAvgScores = getTwoWeekAvgScores(item.student_id, item.eval_date);
-                const { weeklyScore, comment: cleanComment } = parseTeacherCommentAndWeeklyScore(
+                const { testType, testScore, comment: cleanComment } = parseTeacherCommentAndTestScore(
                   item.teacher_comment,
                   item.weekly_test_score
                 );

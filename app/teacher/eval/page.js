@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { formatTeacherCommentWithWeeklyScore, parseTeacherCommentAndWeeklyScore } from '@/lib/evalUtils';
+import { formatTeacherCommentWithTestScore, parseTeacherCommentAndTestScore } from '@/lib/evalUtils';
 
 export default function TeacherEvalPage() {
   const [user, setUser] = useState(null);
@@ -29,7 +29,11 @@ export default function TeacherEvalPage() {
   const [homeworkScore, setHomeworkScore] = useState(8);
   const [perseveranceScore, setPerseveranceScore] = useState(8);
 
-  const [weeklyTestScore, setWeeklyTestScore] = useState('');
+  // 📝 시험 성적 및 종류 상태 (단원평가, 일일테스트, 주간테스트, 모의고사, 기타)
+  const [testType, setTestType] = useState('단원평가');
+  const [customTestType, setCustomTestType] = useState('');
+  const [testScore, setTestScore] = useState('');
+  
   const [teacherComment, setTeacherComment] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -94,6 +98,19 @@ export default function TeacherEvalPage() {
     if (prevEval.lateness_minutes) {
       setLatenessMinutes(prevEval.lateness_minutes);
     }
+
+    const prevParsed = parseTeacherCommentAndTestScore(prevEval.teacher_comment, prevEval.weekly_test_score);
+    if (prevParsed.testScore) {
+      if (['단원평가', '일일테스트', '주간테스트', '모의고사'].includes(prevParsed.testType)) {
+        setTestType(prevParsed.testType);
+        setCustomTestType('');
+      } else {
+        setTestType('기타');
+        setCustomTestType(prevParsed.testType);
+      }
+      setTestScore(prevParsed.testScore);
+    }
+
     setCopySuccessToast(true);
     setTimeout(() => setCopySuccessToast(false), 3000);
   };
@@ -192,7 +209,9 @@ export default function TeacherEvalPage() {
 
       if (checkError) throw checkError;
 
-      const combinedComment = formatTeacherCommentWithWeeklyScore(teacherComment, weeklyTestScore);
+      // 최종 적용할 시험 종류 (기타 선택 시 직접 입력한 명칭 사용)
+      const effectiveTestType = testType === '기타' ? (customTestType.trim() || '기타평가') : testType;
+      const combinedComment = formatTeacherCommentWithTestScore(teacherComment, testScore, effectiveTestType);
 
       const payload = {
         teacher_id: user.id,
@@ -273,7 +292,8 @@ export default function TeacherEvalPage() {
 
       alert(`[${studentName}] 학생의 ${evalDate} 피드백이 성공적으로 저장되었습니다!${messageNotice}`);
       setTeacherComment('');
-      setWeeklyTestScore('');
+      setTestScore('');
+      setCustomTestType('');
       fetchPreviousEval(selectedStudentId, evalDate);
     } catch (err) {
       console.error(err);
@@ -284,8 +304,8 @@ export default function TeacherEvalPage() {
   if (loading) return <div className="p-8 text-center font-bold">로딩 중...</div>;
 
   const prevParsed = prevEval
-    ? parseTeacherCommentAndWeeklyScore(prevEval.teacher_comment, prevEval.weekly_test_score)
-    : { weeklyScore: null, comment: '' };
+    ? parseTeacherCommentAndTestScore(prevEval.teacher_comment, prevEval.weekly_test_score)
+    : { testType: '단원평가', testScore: null, comment: '' };
 
   return (
     <div className="min-h-screen bg-slate-50 pb-16">
@@ -307,7 +327,7 @@ export default function TeacherEvalPage() {
         <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
           <div className="border-b pb-4">
             <h2 className="text-lg font-bold text-slate-800">✍️ 일일 학습 피드백 작성</h2>
-            <p className="text-xs text-slate-500 mt-1">학생의 오늘 6대 역량 점수와 출결, 코멘트를 작성합니다.</p>
+            <p className="text-xs text-slate-500 mt-1">학생의 오늘 6대 역량 점수와 출결, 시험 성적 및 코멘트를 작성합니다.</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -417,12 +437,12 @@ export default function TeacherEvalPage() {
                   </div>
                 </div>
 
-                {/* 직전 총평 코멘트 & 주간테스트 요약 */}
+                {/* 직전 총평 코멘트 & 직전 시험 성적 요약 */}
                 <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/60 text-xs space-y-1">
-                  {prevParsed.weeklyScore && (
+                  {prevParsed.testScore && (
                     <div className="text-indigo-300 font-extrabold flex items-center gap-1 pb-0.5">
-                      <span>📝 직전 주간테스트:</span>
-                      <span className="text-amber-300 font-black">{prevParsed.weeklyScore}</span>
+                      <span>📝 직전 {prevParsed.testType}:</span>
+                      <span className="text-amber-300 font-black">{prevParsed.testScore}</span>
                     </div>
                   )}
                   <p className="text-slate-300 font-medium leading-relaxed">
@@ -441,7 +461,7 @@ export default function TeacherEvalPage() {
             {copySuccessToast && (
               <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-xs font-black text-emerald-800 flex items-center gap-2 animate-fade-in">
                 <span>✅</span>
-                <span>직전 피드백의 출석 상태와 6대 영역 점수를 성공적으로 불러왔습니다!</span>
+                <span>직전 피드백의 출석 상태, 6대 영역 점수 및 시험 점수를 성공적으로 불러왔습니다!</span>
               </div>
             )}
 
@@ -600,35 +620,86 @@ export default function TeacherEvalPage() {
               </div>
             </div>
 
-            {/* 5. 📝 주간 테스트 점수 (선택 입력) */}
-            <div className="bg-indigo-50/70 p-4 rounded-2xl border border-indigo-200/80 space-y-2">
+            {/* 5. 📝 시험 성적 기록 (단원평가, 일일테스트, 주간테스트, 모의고사, 기타 직접입력) */}
+            <div className="bg-indigo-50/70 p-4 sm:p-5 rounded-2xl border border-indigo-200/80 space-y-3.5">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-extrabold text-indigo-950 flex items-center gap-1.5">
                   <span>📝</span>
-                  <span>주간 테스트 점수</span>
+                  <span>시험 성적 기록</span>
                   <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100/90 px-2 py-0.5 rounded-full">
                     선택 입력
                   </span>
                 </label>
-                {weeklyTestScore && (
+                {testScore && (
                   <button
                     type="button"
-                    onClick={() => setWeeklyTestScore('')}
+                    onClick={() => { setTestScore(''); setCustomTestType(''); }}
                     className="text-[11px] font-bold text-slate-400 hover:text-rose-500 underline"
                   >
-                    점수 지우기
+                    점수 지우기 ✕
                   </button>
                 )}
               </div>
-              <input
-                type="text"
-                value={weeklyTestScore}
-                onChange={(e) => setWeeklyTestScore(e.target.value)}
-                placeholder="예: 95점 또는 24/25 (평일이거나 테스트를 안 본 날은 빈칸으로 둡니다)"
-                className="w-full p-2.5 border border-indigo-200 rounded-xl text-xs font-bold text-indigo-950 bg-white placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 shadow-2xs"
-              />
+
+              {/* 시험 종류 5가지 선택 탭 */}
+              <div>
+                <span className="block text-[11px] font-bold text-indigo-900 mb-1.5">📌 시험 종류 구분:</span>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+                  {[
+                    { key: '단원평가', label: '📘 단원평가' },
+                    { key: '일일테스트', label: '⚡ 일일테스트' },
+                    { key: '주간테스트', label: '📝 주간테스트' },
+                    { key: '모의고사', label: '🎯 모의고사' },
+                    { key: '기타', label: '✍️ 기타 (직접입력)' },
+                  ].map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => setTestType(item.key)}
+                      className={`py-2 px-1 rounded-xl text-[11px] sm:text-xs font-black transition border text-center ${
+                        testType === item.key
+                          ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs'
+                          : 'bg-white border-indigo-200 text-indigo-900 hover:bg-indigo-100/60'
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* '기타' 선택 시 나타나는 커스텀 시험명 입력창 */}
+              {testType === '기타' && (
+                <div className="animate-fade-in space-y-1">
+                  <label className="block text-[11px] font-bold text-indigo-900">
+                    ✍️ 기타 시험 명칭 직접 입력:
+                  </label>
+                  <input
+                    type="text"
+                    value={customTestType}
+                    onChange={(e) => setCustomTestType(e.target.value)}
+                    placeholder="예: 3월 월말평가, 중간고사 대비 모의테스트, 총괄평가 등"
+                    className="w-full p-2.5 border border-indigo-300 rounded-xl text-xs font-bold text-indigo-950 bg-white placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 shadow-2xs"
+                  />
+                </div>
+              )}
+
+              {/* 시험 점수 입력창 */}
+              <div>
+                <label className="block text-[11px] font-bold text-indigo-900 mb-1">
+                  🎯 획득 점수 / 결과:
+                </label>
+                <input
+                  type="text"
+                  value={testScore}
+                  onChange={(e) => setTestScore(e.target.value)}
+                  placeholder="예: 95점 또는 24/25, 1등급(96점) (시험을 안 본 날은 빈칸으로 둡니다)"
+                  className="w-full p-2.5 border border-indigo-200 rounded-xl text-xs font-bold text-indigo-950 bg-white placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 shadow-2xs"
+                />
+              </div>
+
               <p className="text-[10.5px] text-indigo-700/80 font-medium">
-                💡 점수를 입력하면 학부모 리포트에 주간 테스트 결과 카드가 생성되며, <strong>빈칸으로 두시면 리포트에 아무것도 표시되지 않습니다.</strong>
+                💡 점수를 입력하면 학부모 리포트에 <strong>[{testType === '기타' ? (customTestType || '기타 시험') : testType} 결과 카드]</strong>가 생성되며, <strong>빈칸으로 두시면 리포트에 시험 항목이 표시되지 않습니다.</strong>
               </p>
             </div>
 

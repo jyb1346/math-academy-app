@@ -3,8 +3,10 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
+import StudentHomeworkTable from '@/components/StudentHomeworkTable';
 import {
   DEFAULT_EVAL_KEYS,
+  HOMEWORK_STATUS_OPTIONS,
   formatTeacherCommentWithTestScoreAndItems,
   parseEvaluationRecord,
 } from '@/lib/evalUtils';
@@ -16,12 +18,13 @@ export default function TeacherEvalPage() {
   const [students, setStudents] = useState([]);
   const [selectedStudentId, setSelectedStudentId] = useState('');
 
-  // 직전 피드백 비교 상태
+  // 학생별 전체 평가 기록 (누적 과제표용) & 직전 평가 기록
+  const [studentEvals, setStudentEvals] = useState([]);
   const [prevEval, setPrevEval] = useState(null);
   const [loadingPrevEval, setLoadingPrevEval] = useState(false);
   const [copySuccessToast, setCopySuccessToast] = useState(false);
 
-  // 평가 항목 상태
+  // 평가 기본 정보
   const [evalDate, setEvalDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendanceStatus, setAttendanceStatus] = useState('ATTEND');
   const [latenessMinutes, setLatenessMinutes] = useState(5);
@@ -49,6 +52,19 @@ export default function TeacherEvalPage() {
   const [newCustomName, setNewCustomName] = useState('');
   const [showAddCustomInput, setShowAddCustomInput] = useState(false);
 
+  // 📚 1. 지난 수업 숙제 검사 상태: [{ name, range, status }]
+  const [prevHomeworkChecks, setPrevHomeworkChecks] = useState([]);
+
+  // 📖 2. 오늘 수업 진도 및 새 숙제 부여 상태
+  const [todayLessonProgress, setTodayLessonProgress] = useState('');
+  const [todayHomeworkBooks, setTodayHomeworkBooks] = useState([
+    { id: 'book_1', name: '개념서', range: '', status: '미체크' },
+    { id: 'book_2', name: '이제풀자', range: '', status: '미체크' },
+    { id: 'book_3', name: '프린트 / 추가숙제', range: '', status: '미체크' },
+  ]);
+  const [newBookName, setNewBookName] = useState('');
+  const [showAddBookInput, setShowAddBookInput] = useState(false);
+
   // 📝 시험 성적 및 종류 상태 (단원평가, 일일테스트, 주간테스트, 모의고사, 기타)
   const [testType, setTestType] = useState('단원평가');
   const [customTestType, setCustomTestType] = useState('');
@@ -75,32 +91,54 @@ export default function TeacherEvalPage() {
     fetchData(parsedUser);
   }, []);
 
-  // 선택된 학생이나 날짜가 변경될 때 직전 피드백 기록 조회
+  // 선택된 학생이나 날짜가 변경될 때 해당 학생의 전체 기록 및 직전 기록 조회
   useEffect(() => {
     if (selectedStudentId) {
-      fetchPreviousEval(selectedStudentId, evalDate);
+      fetchStudentEvaluationHistory(selectedStudentId, evalDate);
     } else {
+      setStudentEvals([]);
       setPrevEval(null);
+      setPrevHomeworkChecks([]);
     }
   }, [selectedStudentId, evalDate]);
 
-  const fetchPreviousEval = async (studentId, currentDate) => {
+  const fetchStudentEvaluationHistory = async (studentId, currentDate) => {
     try {
       setLoadingPrevEval(true);
       const { data, error } = await supabase
         .from('daily_evaluations')
         .select('*')
         .eq('student_id', studentId)
-        .neq('eval_date', currentDate)
-        .order('eval_date', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .order('eval_date', { ascending: false });
 
       if (error) throw error;
-      setPrevEval(data || null);
+
+      const evals = data || [];
+      setStudentEvals(evals);
+
+      // 현재 선택된 날짜 이전의 가장 최근 평가 1건 찾기
+      const prev = evals.find((e) => e.eval_date < currentDate) || null;
+      setPrevEval(prev);
+
+      if (prev) {
+        const parsedPrev = parseEvaluationRecord(prev);
+        // 직전 수업에 내준 교재 숙제 범위들을 가져와 검사 상태 초기 세팅
+        if (parsedPrev.homeworkBooks && parsedPrev.homeworkBooks.length > 0) {
+          setPrevHomeworkChecks(
+            parsedPrev.homeworkBooks.map((b) => ({
+              name: b.name,
+              range: b.range,
+              status: b.status || '미체크',
+            }))
+          );
+        } else {
+          setPrevHomeworkChecks([]);
+        }
+      } else {
+        setPrevHomeworkChecks([]);
+      }
     } catch (err) {
-      console.error('fetchPreviousEval error:', err);
-      setPrevEval(null);
+      console.error('fetchStudentEvaluationHistory error:', err);
     } finally {
       setLoadingPrevEval(false);
     }
@@ -188,6 +226,44 @@ export default function TeacherEvalPage() {
   const handleCustomScoreChange = (id, newScore) => {
     setCustomItems((prev) =>
       prev.map((c) => (c.id === id ? { ...c, score: Number(newScore) } : c))
+    );
+  };
+
+  // 📖 오늘 새 교재 추가
+  const handleAddTodayBook = () => {
+    const trimmed = newBookName.trim();
+    if (!trimmed) return alert('교재명을 입력해 주세요.');
+    if (todayHomeworkBooks.some((b) => b.name === trimmed)) {
+      return alert('이미 추가된 교재명입니다.');
+    }
+    setTodayHomeworkBooks((prev) => [
+      ...prev,
+      { id: `book_${Date.now()}`, name: trimmed, range: '', status: '미체크' },
+    ]);
+    setNewBookName('');
+    setShowAddBookInput(false);
+  };
+
+  const handleRemoveTodayBook = (id) => {
+    setTodayHomeworkBooks((prev) => prev.filter((b) => b.id !== id));
+  };
+
+  const handleTodayBookRangeChange = (id, newRange) => {
+    setTodayHomeworkBooks((prev) =>
+      prev.map((b) => (b.id === id ? { ...b, range: newRange } : b))
+    );
+  };
+
+  const handleTodayBookNameChange = (id, newName) => {
+    setTodayHomeworkBooks((prev) =>
+      prev.map((b) => (b.id === id ? { ...b, name: newName } : b))
+    );
+  };
+
+  // 📚 지난 수업 숙제 검사 상태 변경
+  const handlePrevCheckStatusChange = (bookName, newStatus) => {
+    setPrevHomeworkChecks((prev) =>
+      prev.map((b) => (b.name === bookName ? { ...b, status: newStatus } : b))
     );
   };
 
@@ -280,6 +356,25 @@ export default function TeacherEvalPage() {
     const studentName = selectedStudent ? selectedStudent.name : '해당';
 
     try {
+      // 1. 만약 지난 수업 숙제 검사 상태가 변경되었다면 직전 평가 레코드의 코멘트/숙제 상태 업데이트
+      if (prevEval && prevHomeworkChecks.length > 0) {
+        const prevParsed = parseEvaluationRecord(prevEval);
+        const updatedPrevComment = formatTeacherCommentWithTestScoreAndItems({
+          comment: prevParsed.comment,
+          testScore: prevParsed.testScore,
+          testType: prevParsed.testType,
+          customItems: prevParsed.customItems,
+          lessonProgress: prevParsed.lessonProgress,
+          homeworkBooks: prevHomeworkChecks,
+        });
+
+        await supabase
+          .from('daily_evaluations')
+          .update({ teacher_comment: updatedPrevComment })
+          .eq('id', prevEval.id);
+      }
+
+      // 2. 오늘 평가 레코드 생성/수정
       const { data: existingEval, error: checkError } = await supabase
         .from('daily_evaluations')
         .select('id')
@@ -296,6 +391,8 @@ export default function TeacherEvalPage() {
         testScore,
         testType: effectiveTestType,
         customItems,
+        lessonProgress: todayLessonProgress,
+        homeworkBooks: todayHomeworkBooks.filter((b) => b.name && b.range),
       });
 
       const payload = {
@@ -375,11 +472,13 @@ export default function TeacherEvalPage() {
         messageNotice = '\n\n(등록된 학부모 연락처가 없어 알림 발송은 건너뛰었습니다.)';
       }
 
-      alert(`[${studentName}] 학생의 ${evalDate} 피드백이 성공적으로 저장되었습니다!${messageNotice}`);
+      alert(`[${studentName}] 학생의 ${evalDate} 피드백 및 과제표가 성공적으로 저장되었습니다!${messageNotice}`);
       setTeacherComment('');
       setTestScore('');
       setCustomTestType('');
-      fetchPreviousEval(selectedStudentId, evalDate);
+      setTodayLessonProgress('');
+      setTodayHomeworkBooks((prev) => prev.map((b) => ({ ...b, range: '' })));
+      fetchStudentEvaluationHistory(selectedStudentId, evalDate);
     } catch (err) {
       console.error(err);
       alert('피드백 저장에 실패했습니다.');
@@ -389,10 +488,11 @@ export default function TeacherEvalPage() {
   if (loading) return <div className="p-8 text-center font-bold">로딩 중...</div>;
 
   const prevParsed = prevEval ? parseEvaluationRecord(prevEval) : null;
+  const currentStudentName = students.find((s) => s.id === selectedStudentId)?.name || '학생';
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-16">
-      <header className="bg-white border-b py-4 px-6 shadow-sm flex justify-between items-center">
+    <div className="min-h-screen bg-slate-50 pb-24">
+      <header className="bg-white border-b py-4 px-6 shadow-sm flex justify-between items-center sticky top-0 z-30">
         <h1 onClick={() => router.push('/teacher/dashboard')} className="text-xl font-bold text-blue-600 cursor-pointer">
           품수학 학원 교무실
         </h1>
@@ -406,16 +506,19 @@ export default function TeacherEvalPage() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 mt-6">
-        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
+      <main className="max-w-4xl mx-auto px-4 mt-6 space-y-6">
+        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-gray-200 shadow-sm space-y-6">
           <div className="border-b pb-4">
-            <h2 className="text-lg font-bold text-slate-800">✍️ 일일 학습 피드백 작성</h2>
-            <p className="text-xs text-slate-500 mt-1">오늘 수업에 맞게 평가할 항목을 선택하고 점수와 출결, 시험 결과를 기록합니다.</p>
+            <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
+              <span>✍️</span>
+              <span>일일 학습 피드백 & 진도 과제표 작성</span>
+            </h2>
+            <p className="text-xs text-slate-500 mt-1">지난 숙제 검사, 오늘 진도/새 과제, 6대 역량 점수 및 코멘트를 한 번에 기록합니다.</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-6">
             {/* 1. 반 / 학생 / 수업일자 선택 */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1">🏫 담당 반 선택</label>
                 <select
@@ -457,7 +560,167 @@ export default function TeacherEvalPage() {
               </div>
             </div>
 
-            {/* 🔍 2. 선택된 학생의 직전 피드백 비교 요약 카드 */}
+            {/* 📚 2. 지난 수업 과제 검사 섹션 (직전 수업 기준) */}
+            {selectedStudentId && (
+              <div className="bg-emerald-50/70 p-4 sm:p-5 rounded-2xl border border-emerald-200/80 space-y-3">
+                <div className="flex justify-between items-center border-b border-emerald-200/70 pb-2">
+                  <span className="text-xs font-black text-emerald-950 flex items-center gap-1.5">
+                    <span>📚</span>
+                    <span>1. 지난 수업 숙제 검사 ({prevEval ? `직전 ${prevEval.eval_date} 부여분` : '이전 기록 없음'})</span>
+                  </span>
+                  {prevEval && (
+                    <span className="text-[10.5px] font-bold text-emerald-700 bg-emerald-100/90 px-2 py-0.5 rounded-full">
+                      직전 수업일: {prevEval.eval_date}
+                    </span>
+                  )}
+                </div>
+
+                {prevHomeworkChecks.length === 0 ? (
+                  <p className="text-xs text-emerald-800/80 italic py-1">
+                    직전 수업에 등록된 교재별 숙제 범위가 없습니다. (오늘 수업에서 새 과제를 부여하세요)
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 pt-1">
+                    {prevHomeworkChecks.map((b) => (
+                      <div
+                        key={b.name}
+                        className="bg-white p-3 rounded-xl border border-emerald-200 shadow-2xs space-y-1.5"
+                      >
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-extrabold text-emerald-950 truncate">{b.name}</span>
+                          <span className="text-[11px] font-bold text-slate-500 truncate max-w-[100px]">{b.range}</span>
+                        </div>
+                        <select
+                          value={b.status || '미체크'}
+                          onChange={(e) => handlePrevCheckStatusChange(b.name, e.target.value)}
+                          className={`w-full p-1.5 rounded-lg text-xs font-black border transition ${
+                            b.status === '완료'
+                              ? 'bg-emerald-600 text-white border-emerald-700'
+                              : b.status === '일부완료'
+                              ? 'bg-sky-500 text-white border-sky-600'
+                              : b.status === '미완료'
+                              ? 'bg-rose-600 text-white border-rose-700'
+                              : b.status === '질문남음'
+                              ? 'bg-amber-500 text-white border-amber-600'
+                              : 'bg-slate-50 text-slate-700 border-slate-300'
+                          }`}
+                        >
+                          {HOMEWORK_STATUS_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value} className="bg-white text-slate-900 font-bold">
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 📖 3. 오늘 수업 진도 및 새 숙제 부여 섹션 */}
+            <div className="bg-indigo-50/70 p-4 sm:p-5 rounded-2xl border border-indigo-200/80 space-y-4">
+              <div className="flex justify-between items-center border-b border-indigo-200/70 pb-2">
+                <span className="text-xs font-black text-indigo-950 flex items-center gap-1.5">
+                  <span>📖</span>
+                  <span>2. 오늘 수업 진도 및 새 숙제 부여</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowAddBookInput(!showAddBookInput)}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-black px-2.5 py-1 rounded-lg transition flex items-center gap-1 shadow-2xs"
+                >
+                  <span>+</span>
+                  <span>교재 추가</span>
+                </button>
+              </div>
+
+              {/* 오늘 나간 진도 입력창 */}
+              <div>
+                <label className="block text-xs font-bold text-indigo-950 mb-1">
+                  🎯 오늘 나간 학습 진도:
+                </label>
+                <input
+                  type="text"
+                  value={todayLessonProgress}
+                  onChange={(e) => setTodayLessonProgress(e.target.value)}
+                  placeholder="예: 02. 항등식과 나머지정리 (또는 3단원 소수와 합성수 개념 학습)"
+                  className="w-full p-2.5 border border-indigo-200 rounded-xl text-xs font-bold text-indigo-950 bg-white placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 shadow-2xs"
+                />
+              </div>
+
+              {/* 새 교재 인라인 추가 폼 */}
+              {showAddBookInput && (
+                <div className="p-3 bg-white rounded-xl border border-indigo-300 flex gap-2 items-center animate-fade-in">
+                  <input
+                    type="text"
+                    value={newBookName}
+                    onChange={(e) => setNewBookName(e.target.value)}
+                    placeholder="새 교재명 입력 (예: 쎈 수학, 블랙라벨, 모의고사 프린트 등)"
+                    className="flex-1 p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddTodayBook();
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddTodayBook}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-xs shrink-0"
+                  >
+                    추가
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowAddBookInput(false); setNewBookName(''); }}
+                    className="text-slate-400 hover:text-slate-600 text-xs px-2 shrink-0"
+                  >
+                    취소
+                  </button>
+                </div>
+              )}
+
+              {/* 교재별 과제 범위 입력 그리드 */}
+              <div className="space-y-2">
+                <span className="block text-xs font-bold text-indigo-950">
+                  📚 교재별 새 숙제 범위:
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                  {todayHomeworkBooks.map((b) => (
+                    <div key={b.id} className="bg-white p-3 rounded-xl border border-indigo-200 shadow-2xs space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <input
+                          type="text"
+                          value={b.name}
+                          onChange={(e) => handleTodayBookNameChange(b.id, e.target.value)}
+                          className="text-xs font-extrabold text-indigo-950 bg-transparent border-b border-transparent hover:border-indigo-300 focus:border-indigo-600 focus:outline-none w-28"
+                          title="교재명을 클릭하여 수정할 수 있습니다"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveTodayBook(b.id)}
+                          className="text-slate-300 hover:text-rose-500 text-xs font-bold px-1"
+                          title="이 교재 삭제"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        value={b.range}
+                        onChange={(e) => handleTodayBookRangeChange(b.id, e.target.value)}
+                        placeholder="예: 23~40, 1~32(홀수) 등"
+                        className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* 🔍 4. 직전 피드백 기록 요약 & 불러오기 카드 */}
             {loadingPrevEval ? (
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-center text-xs font-bold text-slate-400 animate-pulse">
                 선택 학생의 직전 피드백 기록을 조회하는 중...
@@ -526,11 +789,11 @@ export default function TeacherEvalPage() {
             {copySuccessToast && (
               <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-xs font-black text-emerald-800 flex items-center gap-2 animate-fade-in">
                 <span>✅</span>
-                <span>직전 피드백의 평가 항목 및 점수 구성을 성공적으로 불러왔습니다!</span>
+                <span>직전 피드백의 출석 상태, 6대 영역 점수 및 시험 점수를 성공적으로 불러왔습니다!</span>
               </div>
             )}
 
-            {/* 3. 출결 상태 선택 */}
+            {/* 5. 출결 상태 선택 */}
             <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-200/80 space-y-3">
               <span className="text-xs font-extrabold text-amber-900 block">⏰ 출석 및 지각 상태 기록</span>
               <div className="flex flex-wrap gap-2 items-center">
@@ -587,7 +850,7 @@ export default function TeacherEvalPage() {
               </div>
             </div>
 
-            {/* 4. 📊 평가 항목 선택 칩 & 점수 슬라이더 */}
+            {/* 6. 📊 평가 항목 선택 칩 & 점수 슬라이더 */}
             <div className="space-y-4 pt-2">
               <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-1.5 border-b pb-2">
                 <div>
@@ -670,8 +933,6 @@ export default function TeacherEvalPage() {
 
               {/* 활성화된 항목들의 점수 슬라이더 리스트 */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-2">
-                
-                {/* 1) 활성화된 기본 항목 슬라이더 */}
                 {DEFAULT_EVAL_KEYS.filter((def) => activeDefaultKeys.includes(def.key)).map((def) => (
                   <div key={def.key} className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1.5">
                     <div className="flex justify-between items-center text-xs font-bold">
@@ -700,7 +961,6 @@ export default function TeacherEvalPage() {
                   </div>
                 ))}
 
-                {/* 2) 커스텀 추가 항목 슬라이더 */}
                 {customItems.map((c) => (
                   <div key={c.id} className="bg-indigo-50/50 p-3.5 rounded-xl border border-indigo-200 space-y-1.5">
                     <div className="flex justify-between items-center text-xs font-bold">
@@ -727,11 +987,10 @@ export default function TeacherEvalPage() {
                     />
                   </div>
                 ))}
-
               </div>
             </div>
 
-            {/* 5. 📝 시험 성적 기록 (단원평가, 일일테스트, 주간테스트, 모의고사, 기타 직접입력) */}
+            {/* 7. 📝 시험 성적 기록 (단원평가, 일일테스트, 주간테스트, 모의고사, 기타 직접입력) */}
             <div className="bg-indigo-50/70 p-4 sm:p-5 rounded-2xl border border-indigo-200/80 space-y-3.5">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-extrabold text-indigo-950 flex items-center gap-1.5">
@@ -814,7 +1073,7 @@ export default function TeacherEvalPage() {
               </p>
             </div>
 
-            {/* 6. 선생님 총평 코멘트 */}
+            {/* 8. 선생님 총평 코멘트 */}
             <div className="space-y-1">
               <label className="block text-xs font-bold text-slate-700">✍️ 선생님 총평 코멘트</label>
               <textarea
@@ -827,11 +1086,22 @@ export default function TeacherEvalPage() {
 
             <button
               type="submit"
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow transition text-sm"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl shadow-lg transition text-sm"
             >
-              일일 피드백 등록하기
+              일일 피드백 및 과제표 저장하기
             </button>
           </form>
+
+          {/* 📊 9. 학생 누적 과제표 미리보기 (엑셀 과제표 테이블) */}
+          {selectedStudentId && studentEvals.length > 0 && (
+            <div className="pt-6 border-t border-slate-200">
+              <StudentHomeworkTable
+                studentName={currentStudentName}
+                evaluations={studentEvals}
+              />
+            </div>
+          )}
+
         </div>
       </main>
     </div>

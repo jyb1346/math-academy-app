@@ -279,6 +279,12 @@ export default function EvalHistoryPage() {
                         
                         {renderAttendanceBadge(item.attendance_status, item.lateness_minutes)}
 
+                        {parsed.lessonProgress && (
+                          <span className="bg-slate-100 text-slate-800 border border-slate-300 text-xs font-bold px-2.5 py-0.5 rounded-full shadow-2xs">
+                            📖 진도: {parsed.lessonProgress}
+                          </span>
+                        )}
+
                         {parsed.testScore && (
                           <span className="bg-indigo-50 text-indigo-800 border border-indigo-200 text-xs font-black px-2.5 py-0.5 rounded-full shadow-2xs">
                             📝 {parsed.testType}: {parsed.testScore.endsWith('점') || parsed.testScore.includes('/') || parsed.testScore.includes('등급') ? parsed.testScore : `${parsed.testScore}점`}

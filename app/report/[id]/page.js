@@ -4,11 +4,13 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useParams, useRouter } from 'next/navigation';
 import EvaluationBarChart from '@/components/EvaluationBarChart';
+import StudentHomeworkTable from '@/components/StudentHomeworkTable';
 import { parseEvaluationRecord } from '@/lib/evalUtils';
 
 export default function StudentReportPage() {
   const { id } = useParams();
   const [evalData, setEvalData] = useState(null);
+  const [studentAllEvals, setStudentAllEvals] = useState([]);
   const [loading, setLoading] = useState(true);
   
   // 학부모 답장 상태
@@ -33,6 +35,17 @@ export default function StudentReportPage() {
       setEvalData(data);
       if (data?.parent_reply) {
         setReplyText(data.parent_reply);
+      }
+
+      // 학생의 전체 평가 기록 조회 (누적 과제표용)
+      if (data?.student_id) {
+        const { data: allEvals } = await supabase
+          .from('daily_evaluations')
+          .select('*')
+          .eq('student_id', data.student_id)
+          .order('eval_date', { ascending: true });
+
+        setStudentAllEvals(allEvals || []);
       }
     } catch (err) {
       console.error(err);
@@ -89,10 +102,11 @@ export default function StudentReportPage() {
   };
 
   const parsed = parseEvaluationRecord(evalData);
+  const studentName = evalData.users?.name || '학생';
 
   return (
-    <div className="min-h-screen bg-slate-100/80 py-6 px-4 flex flex-col items-center justify-center font-sans">
-      <div className="max-w-md w-full bg-white rounded-3xl shadow-xl border border-slate-200/80 overflow-hidden space-y-4">
+    <div className="min-h-screen bg-slate-100/80 py-6 px-3 sm:px-4 flex flex-col items-center justify-center font-sans">
+      <div className="max-w-xl w-full bg-white rounded-3xl shadow-xl border border-slate-200/80 overflow-hidden space-y-4">
         
         {/* 상단 리포트 헤더 */}
         <div className="bg-gradient-to-tr from-blue-600 to-indigo-700 text-white p-6 text-center space-y-2 shadow-md shadow-blue-500/10">
@@ -100,9 +114,9 @@ export default function StudentReportPage() {
             품수학 일일 학습 보고서
           </span>
           <h2 className="text-2xl font-black pt-1">
-            {(evalData.users?.name || '학생') + ' 피드백'}
+            {studentName + ' 피드백'}
           </h2>
-          <div className="flex items-center justify-center gap-2 pt-1">
+          <div className="flex items-center justify-center gap-2 pt-1 flex-wrap">
             <span className="text-xs text-blue-100 font-semibold">
               {'📅 수업 일자: ' + evalData.eval_date}
             </span>
@@ -112,14 +126,45 @@ export default function StudentReportPage() {
           </div>
         </div>
 
-        {/* 🎯 학습 성취도 분석 영역 (가로 막대 게이지 바 차트) */}
-        <div className="px-5 py-2">
+        {/* 📖 1. 오늘의 수업 진도 & 숙제 요약 카드 */}
+        {(parsed.lessonProgress || (parsed.homeworkBooks && parsed.homeworkBooks.length > 0)) && (
+          <div className="mx-4 sm:mx-5 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-white p-4 sm:p-5 rounded-2xl shadow-md border border-slate-700/80 space-y-3">
+            <div className="flex items-center gap-2 border-b border-slate-700 pb-2">
+              <span className="text-base">📖</span>
+              <h4 className="text-xs sm:text-sm font-black text-slate-100">오늘의 진도 및 과제 안내</h4>
+            </div>
+
+            {parsed.lessonProgress && (
+              <div className="bg-slate-800/80 p-3 rounded-xl border border-slate-700 space-y-0.5">
+                <span className="text-[10.5px] font-bold text-indigo-300 block">🎯 학습 진도</span>
+                <p className="text-xs sm:text-sm font-black text-white">{parsed.lessonProgress}</p>
+              </div>
+            )}
+
+            {parsed.homeworkBooks && parsed.homeworkBooks.length > 0 && (
+              <div className="space-y-1.5">
+                <span className="text-[10.5px] font-bold text-slate-400 block">📚 부여된 과제 범위</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {parsed.homeworkBooks.map((b) => (
+                    <div key={b.name} className="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700 text-xs flex justify-between items-center">
+                      <span className="font-extrabold text-amber-300">{b.name}</span>
+                      <span className="font-bold text-slate-200">{b.range}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 🎯 2. 학습 성취도 분석 영역 (가로 막대 게이지 바 차트) */}
+        <div className="px-4 sm:px-5 py-1">
           <EvaluationBarChart items={parsed.items} />
         </div>
 
-        {/* 📝 시험 성적 결과 카드 (입력된 경우에만 렌더링, 미입력 시 숨김) */}
+        {/* 📝 3. 시험 성적 결과 카드 (입력된 경우에만 렌더링, 미입력 시 숨김) */}
         {parsed.testScore && (
-          <div className="mx-5 my-1 bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 rounded-2xl p-4 text-white shadow-lg shadow-indigo-600/15 space-y-2 animate-fade-in">
+          <div className="mx-4 sm:mx-5 bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 rounded-2xl p-4 text-white shadow-lg shadow-indigo-600/15 space-y-2 animate-fade-in">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-lg shadow-inner">
@@ -161,8 +206,20 @@ export default function StudentReportPage() {
           </div>
         )}
 
-        {/* 선생님 피드백 */}
-        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 space-y-2">
+        {/* 📑 4. 학부모용 학생 전체 누적 과제표 (엑셀 뷰) */}
+        {studentAllEvals.length > 0 && (
+          <div className="px-4 sm:px-5 py-2">
+            <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200">
+              <StudentHomeworkTable
+                studentName={studentName}
+                evaluations={studentAllEvals}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* ✍️ 5. 선생님 피드백 코멘트 */}
+        <div className="px-5 sm:px-6 py-4 bg-slate-50 border-t border-slate-100 space-y-2">
           <h4 className="text-xs font-black text-indigo-700 uppercase tracking-wider flex items-center gap-1">
             <span>✍️</span> 선생님 피드백 코멘트
           </h4>
@@ -171,8 +228,8 @@ export default function StudentReportPage() {
           </p>
         </div>
 
-        {/* 학부모 답장 작성 섹션 */}
-        <div className="px-6 py-4 bg-white border-t border-slate-100 space-y-3">
+        {/* 💬 6. 학부모 답장 작성 섹션 */}
+        <div className="px-5 sm:px-6 py-4 bg-white border-t border-slate-100 space-y-3">
           <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1">
             <span>💬</span> 담당 선생님께 답장 남기기
           </h4>

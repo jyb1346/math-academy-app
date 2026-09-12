@@ -122,6 +122,12 @@ export default function StudentEvalPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     {renderAttendanceBadge(ev.attendance_status, ev.lateness_minutes)}
+
+                    {parsed.lessonProgress && (
+                      <span className="bg-slate-100 text-slate-800 border border-slate-300 text-xs font-bold px-2.5 py-0.5 rounded-full shadow-2xs">
+                        📖 진도: {parsed.lessonProgress}
+                      </span>
+                    )}
                     <button
                       onClick={() => router.push(`/report/${ev.id}`)}
                       className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs px-3.5 py-1.5 rounded-full border border-indigo-200 transition"

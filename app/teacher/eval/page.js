@@ -131,11 +131,25 @@ export default function TeacherEvalPage() {
               status: b.status || '미체크',
             }))
           );
+          // 오늘 숙제 교재 목록도 직전 수업에서 사용한 교재명들로 자동 세팅 (범위는 빈칸)
+          setTodayHomeworkBooks(
+            parsedPrev.homeworkBooks.map((b, idx) => ({
+              id: `book_${Date.now()}_${idx}`,
+              name: b.name,
+              range: '',
+              status: '미체크',
+            }))
+          );
         } else {
           setPrevHomeworkChecks([]);
         }
       } else {
         setPrevHomeworkChecks([]);
+        setTodayHomeworkBooks([
+          { id: 'book_1', name: '개념서', range: '', status: '미체크' },
+          { id: 'book_2', name: '이제풀자', range: '', status: '미체크' },
+          { id: 'book_3', name: '프린트 / 추가숙제', range: '', status: '미체크' },
+        ]);
       }
     } catch (err) {
       console.error('fetchStudentEvaluationHistory error:', err);
@@ -440,9 +454,13 @@ export default function TeacherEvalPage() {
         evalId = insertedData?.id;
       }
 
-      // 📲 학부모님께 카카오톡/문자 피드백 리포트 링크 자동 발송
+      // 📲 학부모님께 카카오톡/문자 피드백 리포트 링크 자동 발송 (개발/테스트 중 임시 비활성화)
+      const IS_ALIMTALK_ENABLED = false;
       let messageNotice = '';
-      if (evalId && selectedStudent?.parent_phone) {
+
+      if (!IS_ALIMTALK_ENABLED) {
+        messageNotice = '\n\n💡 (테스트 기간 동안 카카오 알림톡 자동 발송이 일시적으로 비활성화되어 비용이 발생하지 않습니다.)';
+      } else if (evalId && selectedStudent?.parent_phone) {
         try {
           const res = await fetch('/api/solapi/send-eval', {
             method: 'POST',
@@ -684,25 +702,34 @@ export default function TeacherEvalPage() {
 
               {/* 교재별 과제 범위 입력 그리드 */}
               <div className="space-y-2">
-                <span className="block text-xs font-bold text-indigo-950">
-                  📚 교재별 새 숙제 범위:
-                </span>
+                <div className="flex justify-between items-center">
+                  <span className="block text-xs font-bold text-indigo-950">
+                    📚 교재별 새 숙제 범위:
+                  </span>
+                  <span className="text-[11px] text-slate-400 font-semibold">
+                    교재명을 직접 클릭하여 수정할 수 있습니다.
+                  </span>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
                   {todayHomeworkBooks.map((b) => (
-                    <div key={b.id} className="bg-white p-3 rounded-xl border border-indigo-200 shadow-2xs space-y-1.5">
-                      <div className="flex justify-between items-center">
-                        <input
-                          type="text"
-                          value={b.name}
-                          onChange={(e) => handleTodayBookNameChange(b.id, e.target.value)}
-                          className="text-xs font-extrabold text-indigo-950 bg-transparent border-b border-transparent hover:border-indigo-300 focus:border-indigo-600 focus:outline-none w-28"
-                          title="교재명을 클릭하여 수정할 수 있습니다"
-                        />
+                    <div key={b.id} className="bg-white p-3 rounded-2xl border border-indigo-200/90 shadow-2xs space-y-2">
+                      <div className="flex items-center justify-between gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                          <span className="text-xs text-indigo-600">📖</span>
+                          <input
+                            type="text"
+                            value={b.name}
+                            onChange={(e) => handleTodayBookNameChange(b.id, e.target.value)}
+                            placeholder="교재명 직접 수정"
+                            className="text-xs font-black text-indigo-950 bg-indigo-50/60 border border-indigo-200/80 focus:bg-white focus:border-indigo-600 rounded-lg px-2 py-1 w-full transition"
+                            title="교재명을 클릭하여 자유롭게 수정하세요"
+                          />
+                        </div>
                         <button
                           type="button"
                           onClick={() => handleRemoveTodayBook(b.id)}
-                          className="text-slate-300 hover:text-rose-500 text-xs font-bold px-1"
-                          title="이 교재 삭제"
+                          className="text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg p-1 text-xs font-bold transition shrink-0"
+                          title="이 교재 항목 삭제"
                         >
                           ✕
                         </button>
@@ -711,8 +738,8 @@ export default function TeacherEvalPage() {
                         type="text"
                         value={b.range}
                         onChange={(e) => handleTodayBookRangeChange(b.id, e.target.value)}
-                        placeholder="예: 23~40, 1~32(홀수) 등"
-                        className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500"
+                        placeholder="과제 범위 (예: p.23~40, 1~32번)"
+                        className="w-full p-2 bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 rounded-xl text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none transition"
                       />
                     </div>
                   ))}

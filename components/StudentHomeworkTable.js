@@ -14,7 +14,7 @@ export default function StudentHomeworkTable({ studentName = '학생', evaluatio
       (a, b) => new Date(a.eval_date).getTime() - new Date(b.eval_date).getTime()
     );
 
-    const bookSet = new Set(['개념서', '이제풀자', '프린트 / 추가숙제']);
+    const bookOrder = [];
     const rows = [];
 
     sortedEvals.forEach((ev) => {
@@ -22,9 +22,12 @@ export default function StudentHomeworkTable({ studentName = '학생', evaluatio
       const rowBooks = {};
 
       (parsed.homeworkBooks || []).forEach((b) => {
-        if (b.name) {
-          bookSet.add(b.name);
-          rowBooks[b.name] = {
+        if (b.name && b.name.trim()) {
+          const trimmedName = b.name.trim();
+          if (!bookOrder.includes(trimmedName)) {
+            bookOrder.push(trimmedName);
+          }
+          rowBooks[trimmedName] = {
             range: b.range || '-',
             status: b.status || '미체크',
           };
@@ -48,7 +51,7 @@ export default function StudentHomeworkTable({ studentName = '학생', evaluatio
 
     return {
       tableRows: rows,
-      allBookNames: Array.from(bookSet),
+      allBookNames: bookOrder,
     };
   }, [evaluations]);
 
@@ -138,7 +141,7 @@ export default function StudentHomeworkTable({ studentName = '학생', evaluatio
 
                 {/* 2. 진도 */}
                 <td className="py-3 px-3 border-r border-slate-200 text-left font-bold text-slate-800 text-xs sm:text-sm">
-                  {row.lessonProgress !== '-' ? (
+                  {row.lessonProgress && row.lessonProgress !== '-' ? (
                     <span className="text-slate-900">{row.lessonProgress}</span>
                   ) : (
                     <span className="text-slate-300">-</span>
@@ -170,22 +173,24 @@ export default function StudentHomeworkTable({ studentName = '학생', evaluatio
         </table>
       </div>
 
-      {/* 하단 상태 범례 */}
-      <div className="flex items-center gap-3 text-[11px] font-bold text-slate-600 justify-end flex-wrap pt-1">
-        <span className="text-slate-400 font-semibold">숙제 상태:</span>
-        <span className="flex items-center gap-1">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 inline-block"></span> 완료
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-2.5 h-2.5 rounded-full bg-sky-500 inline-block"></span> 일부완료
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span> 질문남음
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-2.5 h-2.5 rounded-full bg-rose-600 inline-block"></span> 미완료
-        </span>
-      </div>
+      {/* 하단 상태 범례 (교재가 있는 경우에만 표시) */}
+      {allBookNames.length > 0 && (
+        <div className="flex items-center gap-3 text-[11px] font-bold text-slate-600 justify-end flex-wrap pt-1">
+          <span className="text-slate-400 font-semibold">숙제 상태:</span>
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 inline-block"></span> 완료
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-sky-500 inline-block"></span> 일부완료
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span> 질문남음
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-600 inline-block"></span> 미완료
+          </span>
+        </div>
+      )}
     </div>
   );
 }

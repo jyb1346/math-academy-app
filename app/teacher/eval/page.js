@@ -9,6 +9,8 @@ import {
   HOMEWORK_STATUS_OPTIONS,
   formatTeacherCommentWithTestScoreAndItems,
   parseEvaluationRecord,
+  updateBookStatusInComment,
+  updateEvaluationProgressAndBooksInComment,
 } from '@/lib/evalUtils';
 
 export default function TeacherEvalPage() {
@@ -23,6 +25,10 @@ export default function TeacherEvalPage() {
   const [prevEval, setPrevEval] = useState(null);
   const [loadingPrevEval, setLoadingPrevEval] = useState(false);
   const [copySuccessToast, setCopySuccessToast] = useState(false);
+  const [actionToast, setActionToast] = useState('');
+
+  // 📌 이전 미완료 숙제 목록 상태: [{ evalId, evalDate, formattedDate, name, range, status }]
+  const [pastIncompleteHomework, setPastIncompleteHomework] = useState([]);
 
   // 평가 기본 정보
   const [evalDate, setEvalDate] = useState(new Date().toISOString().split('T')[0]);
@@ -151,10 +157,119 @@ export default function TeacherEvalPage() {
           { id: 'book_3', name: '프린트 / 추가숙제', range: '', status: '미체크' },
         ]);
       }
+
+      // 📌 과거 모든 수업 중 '완료'되지 않은 숙제들 (직전 수업 제외한 그 이전 과거 수업들)
+      const olderIncompletes = [];
+      evals
+        .filter((e) => e.eval_date < currentDate && (!prev || e.id !== prev.id))
+        .forEach((e) => {
+          const parsed = parseEvaluationRecord(e);
+          (parsed.homeworkBooks || []).forEach((b) => {
+            if (b.name && b.range && b.status !== '완료') {
+              const dateParts = (e.eval_date || '').split('-');
+              const formattedDate = dateParts.length >= 3 ? `${parseInt(dateParts[1])}/${parseInt(dateParts[2])}` : e.eval_date;
+              olderIncompletes.push({
+                evalId: e.id,
+                evalDate: e.eval_date,
+                formattedDate,
+                name: b.name,
+                range: b.range,
+                status: b.status || '미체크',
+              });
+            }
+          });
+        });
+      setPastIncompleteHomework(olderIncompletes);
     } catch (err) {
       console.error('fetchStudentEvaluationHistory error:', err);
     } finally {
       setLoadingPrevEval(false);
+    }
+  };
+
+  const showToast = (msg) => {
+    setActionToast(msg);
+    setTimeout(() => setActionToast(''), 3500);
+  };
+
+  // ⚡ 1) 과제표에서 단일 과제 상태 변경 (실시간 DB 저장)
+  const handleInlineHomeworkStatusChange = async (evalId, bookName, newStatus) => {
+    try {
+      const targetEval = studentEvals.find((e) => e.id === evalId);
+      if (!targetEval) return;
+
+      const updatedComment = updateBookStatusInComment(targetEval.teacher_comment, bookName, newStatus);
+      
+      const { error } = await supabase
+        .from('daily_evaluations')
+        .update({ teacher_comment: updatedComment })
+        .eq('id', evalId);
+
+      if (error) throw error;
+
+      // 로컬 상태 즉시 갱신
+      setStudentEvals((prev) =>
+        prev.map((item) =>
+          item.id === evalId ? { ...item, teacher_comment: updatedComment } : item
+        )
+      );
+
+      // 직전 평가 폼에도 반영
+      if (prevEval && prevEval.id === evalId) {
+        setPrevHomeworkChecks((prev) =>
+          prev.map((b) => (b.name === bookName ? { ...b, status: newStatus } : b))
+        );
+      }
+
+      // 과거 미완료 목록 반영
+      setPastIncompleteHomework((prev) =>
+        prev
+          .map((item) =>
+            item.evalId === evalId && item.name === bookName
+              ? { ...item, status: newStatus }
+              : item
+          )
+          .filter((item) => item.status !== '완료')
+      );
+
+      showToast(`✅ [${bookName}] 과제 상태가 '${newStatus}'(으)로 즉시 변경되었습니다.`);
+    } catch (err) {
+      console.error('handleInlineHomeworkStatusChange error:', err);
+      alert('과제 상태 수정 중 오류가 발생했습니다.');
+    }
+  };
+
+  // ✏️ 2) 과제표 모달에서 진도 내용 및 전체 교재/범위 수정 저장
+  const handleUpdateEvaluation = async (evalId, updatedProgress, updatedBooks) => {
+    try {
+      const targetEval = studentEvals.find((e) => e.id === evalId);
+      if (!targetEval) return;
+
+      const updatedComment = updateEvaluationProgressAndBooksInComment(
+        targetEval.teacher_comment,
+        updatedProgress,
+        updatedBooks
+      );
+
+      const { error } = await supabase
+        .from('daily_evaluations')
+        .update({ teacher_comment: updatedComment })
+        .eq('id', evalId);
+
+      if (error) throw error;
+
+      // 로컬 상태 즉시 갱신
+      setStudentEvals((prev) =>
+        prev.map((item) =>
+          item.id === evalId ? { ...item, teacher_comment: updatedComment } : item
+        )
+      );
+
+      fetchStudentEvaluationHistory(selectedStudentId, evalDate);
+      showToast(`✅ ${targetEval.eval_date} 수업의 진도 및 과제 정보가 성공적으로 수정되었습니다.`);
+    } catch (err) {
+      console.error('handleUpdateEvaluation error:', err);
+      alert('수정 내용 저장 중 오류가 발생했습니다.');
     }
   };
 
@@ -386,6 +501,26 @@ export default function TeacherEvalPage() {
           .from('daily_evaluations')
           .update({ teacher_comment: updatedPrevComment })
           .eq('id', prevEval.id);
+      }
+
+      // 1-2. 과거 미완료 숙제 중 상태가 변경된 것들 일괄 DB 업데이트
+      if (pastIncompleteHomework.length > 0) {
+        for (const pastHw of pastIncompleteHomework) {
+          const targetEval = studentEvals.find((e) => e.id === pastHw.evalId);
+          if (targetEval) {
+            const updatedComment = updateBookStatusInComment(
+              targetEval.teacher_comment,
+              pastHw.name,
+              pastHw.status
+            );
+            if (updatedComment !== targetEval.teacher_comment) {
+              await supabase
+                .from('daily_evaluations')
+                .update({ teacher_comment: updatedComment })
+                .eq('id', pastHw.evalId);
+            }
+          }
+        }
       }
 
       // 2. 오늘 평가 레코드 생성/수정
@@ -633,6 +768,71 @@ export default function TeacherEvalPage() {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* 📌 2-2. 이전 수업 미완료 숙제 재검사 섹션 (과거 밀린 숙제 자동 조회) */}
+            {selectedStudentId && pastIncompleteHomework.length > 0 && (
+              <div className="bg-amber-50/80 p-4 sm:p-5 rounded-2xl border border-amber-200/90 space-y-3 animate-fade-in">
+                <div className="flex justify-between items-center border-b border-amber-200 pb-2">
+                  <span className="text-xs font-black text-amber-950 flex items-center gap-1.5">
+                    <span>📌</span>
+                    <span>이전 미완료 숙제 재검사 ({pastIncompleteHomework.length}건)</span>
+                  </span>
+                  <span className="text-[10.5px] font-bold text-amber-800 bg-amber-100/90 px-2 py-0.5 rounded-full">
+                    과거 밀린 숙제 완료 처리
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 pt-1">
+                  {pastIncompleteHomework.map((item, idx) => (
+                    <div
+                      key={`${item.evalId}_${item.name}_${idx}`}
+                      className="bg-white p-3 rounded-xl border border-amber-200 shadow-2xs space-y-1.5"
+                    >
+                      <div className="flex justify-between items-center text-xs">
+                        <div className="flex items-center gap-1 truncate">
+                          <span className="text-[10px] font-black bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded">
+                            {item.formattedDate}
+                          </span>
+                          <span className="font-extrabold text-slate-900 truncate">{item.name}</span>
+                        </div>
+                        <span className="text-[11px] font-bold text-slate-500 truncate max-w-[90px]">{item.range}</span>
+                      </div>
+                      <select
+                        value={item.status || '미체크'}
+                        onChange={(e) => {
+                          const newStatus = e.target.value;
+                          setPastIncompleteHomework((prev) =>
+                            prev.map((it) =>
+                              it.evalId === item.evalId && it.name === item.name
+                                ? { ...it, status: newStatus }
+                                : it
+                            )
+                          );
+                          handleInlineHomeworkStatusChange(item.evalId, item.name, newStatus);
+                        }}
+                        className={`w-full p-1.5 rounded-lg text-xs font-black border transition ${
+                          item.status === '완료'
+                            ? 'bg-emerald-600 text-white border-emerald-700'
+                            : item.status === '일부완료'
+                            ? 'bg-sky-500 text-white border-sky-600'
+                            : item.status === '미완료'
+                            ? 'bg-rose-600 text-white border-rose-700'
+                            : item.status === '질문남음'
+                            ? 'bg-amber-500 text-white border-amber-600'
+                            : 'bg-slate-50 text-slate-700 border-slate-300'
+                        }`}
+                      >
+                        {HOMEWORK_STATUS_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value} className="bg-white text-slate-900 font-bold">
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -1119,13 +1319,24 @@ export default function TeacherEvalPage() {
             </button>
           </form>
 
-          {/* 📊 9. 학생 누적 과제표 미리보기 (엑셀 과제표 테이블) */}
+          {/* 📊 9. 학생 누적 과제표 미리보기 (엑셀 과제표 테이블 - 실시간 수정 지원) */}
           {selectedStudentId && studentEvals.length > 0 && (
             <div className="pt-6 border-t border-slate-200">
               <StudentHomeworkTable
                 studentName={currentStudentName}
                 evaluations={studentEvals}
+                isEditable={true}
+                onStatusChange={handleInlineHomeworkStatusChange}
+                onUpdateEvaluation={handleUpdateEvaluation}
               />
+            </div>
+          )}
+
+          {/* ⚡ 실시간 변경 알림 토스트 */}
+          {actionToast && (
+            <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white text-xs font-black px-4 py-3 rounded-2xl shadow-2xl border border-slate-700 flex items-center gap-2 animate-slide-up">
+              <span>⚡</span>
+              <span>{actionToast}</span>
             </div>
           )}
 

@@ -321,6 +321,29 @@ export default function EvalHistoryPage() {
                       {/* 가로 막대 차트 */}
                       <EvaluationBarChart items={parsed.items} />
 
+                      {/* 📚 부여된 교재 과제 범위 및 수행 상태 */}
+                      {parsed.homeworkBooks && parsed.homeworkBooks.length > 0 && (
+                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1.5">
+                          <span className="text-[11px] font-bold text-slate-500 block">📚 부여된 과제 및 수행 상태:</span>
+                          <div className="flex flex-wrap gap-2">
+                            {parsed.homeworkBooks.map((b) => (
+                              <span key={b.name} className="inline-flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-lg border border-slate-200 text-xs font-bold text-slate-800 shadow-2xs">
+                                <span className="text-indigo-600 font-extrabold">{b.name}</span>
+                                <span className="text-slate-500 font-medium">{b.range}</span>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-black ${
+                                  b.status === '완료' ? 'bg-emerald-100 text-emerald-800' :
+                                  b.status === '일부완료' ? 'bg-sky-100 text-sky-800' :
+                                  b.status === '미완료' ? 'bg-rose-100 text-rose-800' :
+                                  b.status === '질문남음' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'
+                                }`}>
+                                  {b.status || '미체크'}
+                                </span>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       {/* 선생님 총평 & 학부모 답장 */}
                       <div className="space-y-3">
                         <div className="bg-blue-50/60 p-4 rounded-xl border border-blue-100 space-y-1">

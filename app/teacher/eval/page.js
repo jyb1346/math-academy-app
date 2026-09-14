@@ -9,6 +9,7 @@ import {
   HOMEWORK_STATUS_OPTIONS,
   formatTeacherCommentWithTestScoreAndItems,
   parseEvaluationRecord,
+  extractRecentBookNamesFromEvaluations,
   updateBookStatusInComment,
   updateEvaluationProgressAndBooksInComment,
 } from '@/lib/evalUtils';
@@ -58,8 +59,7 @@ export default function TeacherEvalPage() {
   const [todayLessonProgress, setTodayLessonProgress] = useState('');
   const [todayHomeworkBooks, setTodayHomeworkBooks] = useState([
     { id: 'book_1', name: '개념서', range: '', status: '미체크' },
-    { id: 'book_2', name: '이제풀자', range: '', status: '미체크' },
-    { id: 'book_3', name: '프린트 / 추가숙제', range: '', status: '미체크' },
+    { id: 'book_2', name: '유형서', range: '', status: '미체크' },
   ]);
   const [newBookName, setNewBookName] = useState('');
   const [showAddBookInput, setShowAddBookInput] = useState(false);
@@ -74,6 +74,21 @@ export default function TeacherEvalPage() {
 
   const router = useRouter();
 
+  // 최근 사용된 교재명을 브라우저 로컬 스토리지에 캐싱
+  const saveRecentBooksToCache = (booksOrNames) => {
+    try {
+      const names = (booksOrNames || [])
+        .map((item) => (typeof item === 'string' ? item : item?.name))
+        .map((n) => n?.trim())
+        .filter(Boolean);
+      if (names.length > 0) {
+        localStorage.setItem('poom_recent_homework_books', JSON.stringify([...new Set(names)]));
+      }
+    } catch (e) {
+      console.error('saveRecentBooksToCache error:', e);
+    }
+  };
+
   useEffect(() => {
     const userData = localStorage.getItem('user');
     if (!userData) {
@@ -87,6 +102,25 @@ export default function TeacherEvalPage() {
       return;
     }
     setUser(parsedUser);
+
+    // 저장된 최근 교재명이 있다면 즉시 초기 상태로 반영
+    try {
+      const cached = localStorage.getItem('poom_recent_homework_books');
+      if (cached) {
+        const parsedCached = JSON.parse(cached);
+        if (Array.isArray(parsedCached) && parsedCached.length > 0) {
+          setTodayHomeworkBooks(
+            parsedCached.map((name, idx) => ({
+              id: `book_init_${idx}`,
+              name,
+              range: '',
+              status: '미체크',
+            }))
+          );
+        }
+      }
+    } catch (e) {}
+
     fetchData(parsedUser);
   }, []);
 
@@ -118,26 +152,37 @@ export default function TeacherEvalPage() {
       const prev = evals.find((e) => e.eval_date < currentDate) || null;
       setPrevEval(prev);
 
-      if (prev) {
-        const parsedPrev = parseEvaluationRecord(prev);
-        // 오늘 숙제 교재 목록도 직전 수업에서 사용한 교재명들로 자동 세팅 (범위는 빈칸)
-        if (parsedPrev.homeworkBooks && parsedPrev.homeworkBooks.length > 0) {
-          setTodayHomeworkBooks(
-            parsedPrev.homeworkBooks.map((b, idx) => ({
-              id: `book_${Date.now()}_${idx}`,
-              name: b.name,
-              range: '',
-              status: '미체크',
-            }))
-          );
-        }
-      } else {
-        setTodayHomeworkBooks([
-          { id: 'book_1', name: '개념서', range: '', status: '미체크' },
-          { id: 'book_2', name: '이제풀자', range: '', status: '미체크' },
-          { id: 'book_3', name: '프린트 / 추가숙제', range: '', status: '미체크' },
-        ]);
+      // 1순위: 해당 학생의 최근 평가 기록에서 출제된 교재명 목록 추출 (최신순)
+      let recentBookNames = extractRecentBookNamesFromEvaluations(evals);
+
+      // 2순위: 해당 학생에게 이전 교재 기록이 없다면, 최근 사용된 교재 목록(로컬 캐시) 확인
+      if (recentBookNames.length === 0) {
+        try {
+          const cached = localStorage.getItem('poom_recent_homework_books');
+          if (cached) {
+            const parsedCached = JSON.parse(cached);
+            if (Array.isArray(parsedCached) && parsedCached.length > 0) {
+              recentBookNames = parsedCached.filter(Boolean);
+            }
+          }
+        } catch (e) {}
       }
+
+      // 3순위: 완전히 처음인 경우 기본 교재 2종 세팅
+      if (recentBookNames.length === 0) {
+        recentBookNames = ['개념서', '유형서'];
+      }
+
+      // 오늘 숙제 교재 목록에 최신 교재명들로 세팅 (범위는 빈칸으로 초기화)
+      const newBooks = recentBookNames.map((name, idx) => ({
+        id: `book_${Date.now()}_${idx}`,
+        name,
+        range: '',
+        status: '미체크',
+      }));
+
+      setTodayHomeworkBooks(newBooks);
+      saveRecentBooksToCache(recentBookNames);
     } catch (err) {
       console.error('fetchStudentEvaluationHistory error:', err);
     } finally {
@@ -325,16 +370,20 @@ export default function TeacherEvalPage() {
     if (todayHomeworkBooks.some((b) => b.name === trimmed)) {
       return alert('이미 추가된 교재명입니다.');
     }
-    setTodayHomeworkBooks((prev) => [
-      ...prev,
+    const updated = [
+      ...todayHomeworkBooks,
       { id: `book_${Date.now()}`, name: trimmed, range: '', status: '미체크' },
-    ]);
+    ];
+    setTodayHomeworkBooks(updated);
+    saveRecentBooksToCache(updated);
     setNewBookName('');
     setShowAddBookInput(false);
   };
 
   const handleRemoveTodayBook = (id) => {
-    setTodayHomeworkBooks((prev) => prev.filter((b) => b.id !== id));
+    const updated = todayHomeworkBooks.filter((b) => b.id !== id);
+    setTodayHomeworkBooks(updated);
+    saveRecentBooksToCache(updated);
   };
 
   const handleTodayBookRangeChange = (id, newRange) => {
@@ -344,9 +393,11 @@ export default function TeacherEvalPage() {
   };
 
   const handleTodayBookNameChange = (id, newName) => {
-    setTodayHomeworkBooks((prev) =>
-      prev.map((b) => (b.id === id ? { ...b, name: newName } : b))
+    const updated = todayHomeworkBooks.map((b) =>
+      b.id === id ? { ...b, name: newName } : b
     );
+    setTodayHomeworkBooks(updated);
+    saveRecentBooksToCache(updated);
   };
 
 
@@ -542,6 +593,7 @@ export default function TeacherEvalPage() {
       }
 
       alert(`[${studentName}] 학생의 ${evalDate} 피드백 및 과제표가 성공적으로 저장되었습니다!${messageNotice}`);
+      saveRecentBooksToCache(todayHomeworkBooks);
       setTeacherComment('');
       setTestScore('');
       setCustomTestType('');

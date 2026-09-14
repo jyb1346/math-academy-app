@@ -77,6 +77,9 @@ export default function TeacherEvalPage() {
   const [testScore, setTestScore] = useState('');
   const [teacherComment, setTeacherComment] = useState('');
 
+  // 알림톡 자동 발송 체크 상태 (기본 false: 과금 방지)
+  const [sendAlimtalk, setSendAlimtalk] = useState(false);
+
   // 2) 👥 판서수업 (반 일괄 등록 모드) 전용 상태
   const [commonLessonProgress, setCommonLessonProgress] = useState('');
   const [commonHomeworkBooks, setCommonHomeworkBooks] = useState([
@@ -855,9 +858,34 @@ export default function TeacherEvalPage() {
         evalId = insertedData?.id;
       }
 
+      // 📲 학부모 알림톡 자동 발송 (체크된 경우)
+      let alimtalkNotice = '';
+      if (sendAlimtalk && evalId && selectedStudent?.parent_phone) {
+        try {
+          const res = await fetch('/api/solapi/send-eval', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              evalId,
+              studentId: selectedStudentId,
+              studentName: selectedStudent.name,
+              evalDate,
+              parentPhone: selectedStudent.parent_phone,
+              teacherName: user?.name,
+            }),
+          });
+          const alimData = await res.json();
+          if (alimData.success) {
+            alimtalkNotice = '\n📲 학부모님께 카카오 알림톡이 성공적으로 발송되었습니다!';
+          }
+        } catch (alimErr) {
+          console.error('Alimtalk send error:', alimErr);
+        }
+      }
+
       saveRecentBooksToCache(todayHomeworkBooks);
       fetchStudentEvaluationHistory(selectedStudentId, evalDate);
-      alert(`🎉 [${studentName}] 학생의 ${evalDate} 일일 피드백 및 과제표 저장이 완료되었습니다!`);
+      alert(`🎉 [${studentName}] 학생의 ${evalDate} 일일 피드백 및 과제표 저장이 완료되었습니다!${alimtalkNotice}`);
     } catch (err) {
       console.error(err);
       alert(`저장 중 오류가 발생했습니다: ${err.message}`);
@@ -892,6 +920,7 @@ export default function TeacherEvalPage() {
     try {
       let successCount = 0;
       let errorCount = 0;
+      let alimtalkSentCount = 0;
 
       for (let i = 0; i < targets.length; i++) {
         const st = targets[i];
@@ -933,19 +962,51 @@ export default function TeacherEvalPage() {
 
         if (findErr) throw findErr;
 
+        let savedEvalId = null;
+
         if (existing) {
           const { error: updErr } = await supabase
             .from('daily_evaluations')
             .update(payload)
             .eq('id', existing.id);
           if (updErr) errorCount++;
-          else successCount++;
+          else {
+            successCount++;
+            savedEvalId = existing.id;
+          }
         } else {
-          const { error: insErr } = await supabase
+          const { data: insData, error: insErr } = await supabase
             .from('daily_evaluations')
-            .insert([payload]);
+            .insert([payload])
+            .select('id')
+            .single();
           if (insErr) errorCount++;
-          else successCount++;
+          else {
+            successCount++;
+            savedEvalId = insData?.id;
+          }
+        }
+
+        // 📲 알림톡 발송 체크 시 전송
+        if (sendAlimtalk && savedEvalId && st.parent_phone) {
+          try {
+            const res = await fetch('/api/solapi/send-eval', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                evalId: savedEvalId,
+                studentId: st.student_id,
+                studentName: st.name,
+                evalDate,
+                parentPhone: st.parent_phone,
+                teacherName: user?.name,
+              }),
+            });
+            const alimRes = await res.json();
+            if (alimRes.success) alimtalkSentCount++;
+          } catch (alimErr) {
+            console.error('Alimtalk send error for student:', st.name, alimErr);
+          }
         }
       }
 
@@ -956,7 +1017,8 @@ export default function TeacherEvalPage() {
         prev.map((s) => (s.included ? { ...s, isSaved: true } : s))
       );
 
-      alert(`🎉 [${className}] 총 ${successCount}명의 피드백 및 공통 과제표가 일괄 등록되었습니다!${errorCount > 0 ? ` (실패: ${errorCount}건)` : ''}`);
+      const alimNotice = sendAlimtalk ? `\n📲 학부모 알림톡 발송 완료: ${alimtalkSentCount}명` : '';
+      alert(`🎉 [${className}] 총 ${successCount}명의 피드백 및 공통 과제표가 일괄 등록되었습니다!${errorCount > 0 ? ` (실패: ${errorCount}건)` : ''}${alimNotice}`);
     } catch (err) {
       console.error('handleBatchSubmit error:', err);
       alert(`일괄 등록 중 오류가 발생했습니다: ${err.message}`);
@@ -1460,23 +1522,42 @@ export default function TeacherEvalPage() {
                 )}
               </div>
 
-              {/* 4. 일괄 등록 버튼 */}
-              <button
-                type="submit"
-                disabled={batchSubmitting}
-                className={`w-full font-black py-4 px-4 rounded-2xl shadow-lg transition text-sm flex items-center justify-center gap-2 ${
-                  batchSubmitting
-                    ? 'bg-slate-400 text-white cursor-not-allowed'
-                    : 'bg-indigo-600 hover:bg-indigo-700 text-white active:scale-98'
-                }`}
-              >
-                <span className="text-base shrink-0">🚀</span>
-                <span className="leading-snug">
-                  {batchSubmitting
-                    ? batchProgressText || '일괄 등록 진행 중...'
-                    : `[${currentClassName || '반'}] 학생 전체 (${batchStudents.filter((s) => s.included).length}명) 피드백 일괄 등록`}
-                </span>
-              </button>
+              {/* 4. 학부모 알림톡 발송 선택 체크박스 & 일괄 등록 버튼 */}
+              <div className="space-y-2.5">
+                <div className="bg-amber-50/80 p-3.5 rounded-2xl border border-amber-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="flex items-center gap-2.5 cursor-pointer text-xs font-extrabold text-amber-950 select-none">
+                    <input
+                      type="checkbox"
+                      checked={sendAlimtalk}
+                      onChange={(e) => setSendAlimtalk(e.target.checked)}
+                      className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
+                    />
+                    <span>📲 등록 완료 시 학부모님께 카카오 알림톡 자동 발송</span>
+                  </label>
+                  <span className={`text-[11px] font-black px-2.5 py-0.5 rounded-full self-start sm:self-auto ${
+                    sendAlimtalk ? 'bg-amber-200 text-amber-900 border border-amber-300' : 'bg-slate-200 text-slate-500'
+                  }`}>
+                    {sendAlimtalk ? '알림톡 ON (선택된 학생 전원 발송)' : '알림톡 OFF (과금 없음)'}
+                  </span>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={batchSubmitting}
+                  className={`w-full font-black py-4 px-4 rounded-2xl shadow-lg transition text-sm flex items-center justify-center gap-2 ${
+                    batchSubmitting
+                      ? 'bg-slate-400 text-white cursor-not-allowed'
+                      : 'bg-indigo-600 hover:bg-indigo-700 text-white active:scale-98'
+                  }`}
+                >
+                  <span className="text-base shrink-0">🚀</span>
+                  <span className="leading-snug">
+                    {batchSubmitting
+                      ? batchProgressText || '일괄 등록 진행 중...'
+                      : `[${currentClassName || '반'}] 학생 전체 (${batchStudents.filter((s) => s.included).length}명) 피드백 일괄 등록`}
+                  </span>
+                </button>
+              </div>
             </form>
           ) : (
             /* ========================================================================= */
@@ -1915,12 +1996,32 @@ export default function TeacherEvalPage() {
                 />
               </div>
 
-              <button
-                type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl shadow-lg transition text-sm"
-              >
-                일일 피드백 및 과제표 저장하기
-              </button>
+              {/* 학부모 알림톡 발송 선택 체크박스 & 저장 버튼 */}
+              <div className="space-y-2.5">
+                <div className="bg-amber-50/80 p-3.5 rounded-2xl border border-amber-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="flex items-center gap-2.5 cursor-pointer text-xs font-extrabold text-amber-950 select-none">
+                    <input
+                      type="checkbox"
+                      checked={sendAlimtalk}
+                      onChange={(e) => setSendAlimtalk(e.target.checked)}
+                      className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
+                    />
+                    <span>📲 저장 완료 시 학부모님께 카카오 알림톡 자동 발송</span>
+                  </label>
+                  <span className={`text-[11px] font-black px-2.5 py-0.5 rounded-full self-start sm:self-auto ${
+                    sendAlimtalk ? 'bg-amber-200 text-amber-900 border border-amber-300' : 'bg-slate-200 text-slate-500'
+                  }`}>
+                    {sendAlimtalk ? '알림톡 ON (학부모 발송)' : '알림톡 OFF (과금 없음)'}
+                  </span>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl shadow-lg transition text-sm"
+                >
+                  일일 피드백 및 과제표 저장하기
+                </button>
+              </div>
             </form>
           )}
 

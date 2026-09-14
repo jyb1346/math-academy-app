@@ -43,18 +43,21 @@ export async function POST(req) {
 
     const subject = `[품수학] ${name} 학생 일일 학습 피드백`;
     const messageText = `[품수학 일일 학습 피드백]
-안녕하세요, 학부모님!
+안녕하세요. 
+품수학전문학원입니다.
 
-${name} 학생의 ${date} 일일 학습 피드백${teacher}이 등록되었습니다.
+${name} 학생의 ${date} 
+일일 학습 피드백이 등록되었습니다.
 
-아래 링크에서 6대 영역(개념/계산/응용/태도/과제/집중) 성취도 차트와 상세 코멘트를 확인해 보세요.
+아래 링크에서 수업 성취도 차트와 
+상세 코멘트를 확인해 보세요.
 
 ▶ 피드백 리포트 바로가기:
 ${reportUrl}`;
 
     // Solapi 카카오 알림톡 옵션 (기본 카카오 채널 및 승인된 템플릿 연동)
     const pfId = process.env.SOLAPI_KAKAO_PFID || 'KA01PF260831093804945uPxRUYsn8qj';
-    const templateId = process.env.SOLAPI_KAKAO_TEMPLATE_ID || 'KA01TP260901085150042icX0U1Jrpr1';
+    const templateId = process.env.SOLAPI_KAKAO_TEMPLATE_ID || 'KA01TP260910091446841piwDckq6MW7';
 
     const kakaoOptions = {
       pfId,

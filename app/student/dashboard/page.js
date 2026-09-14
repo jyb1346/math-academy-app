@@ -2,11 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
 import PushNotificationManager from '@/components/PushNotificationManager';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
+import StudentHomeworkTable from '@/components/StudentHomeworkTable';
 
 export default function StudentDashboard() {
   const [user, setUser] = useState(null);
+  const [evaluations, setEvaluations] = useState([]);
+  const [loadingEvals, setLoadingEvals] = useState(true);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const router = useRouter();
 
@@ -19,10 +23,29 @@ export default function StudentDashboard() {
     try {
       const parsedUser = JSON.parse(userData);
       setUser(parsedUser);
+      fetchStudentEvaluations(parsedUser.id);
     } catch (e) {
       router.push('/login');
     }
   }, []);
+
+  const fetchStudentEvaluations = async (studentId) => {
+    try {
+      const { data, error } = await supabase
+        .from('daily_evaluations')
+        .select('*')
+        .eq('student_id', studentId)
+        .order('eval_date', { ascending: false });
+
+      if (!error && data) {
+        setEvaluations(data);
+      }
+    } catch (err) {
+      console.error('fetchStudentEvaluations error:', err);
+    } finally {
+      setLoadingEvals(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-100/70 pb-32 font-sans text-slate-800">
@@ -80,96 +103,60 @@ export default function StudentDashboard() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 mt-8 space-y-6">
+      <main className="max-w-4xl mx-auto px-4 mt-6 space-y-6">
         <PushNotificationManager user={user} />
-        
 
+        {/* 📑 1. 최상단: 내 최근 진도 & 교재별 과제표 위젯 */}
+        <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+          {loadingEvals ? (
+            <div className="py-8 text-center text-xs font-bold text-slate-400">과제표 불러오는 중...</div>
+          ) : (
+            <StudentHomeworkTable
+              studentName={user?.name || '내'}
+              evaluations={evaluations}
+              isEditable={false}
+            />
+          )}
+        </div>
 
-        {/* 🎓 학생 전용 5대 메뉴 카드 그리드 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-          {/* 1. 피드백 날짜별 확인 게시판 */}
+        {/* 🎓 2. 학생 전용 2대 핵심 바로가기 메뉴 */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          
+          {/* 1. 숙제 및 반별 공지사항 (복습영상, 수업자료 통합 게시판) */}
           <div
-            onClick={() => router.push('/student/eval')}
-            className="group relative bg-gradient-to-br from-blue-600 to-indigo-700 text-white p-6 rounded-3xl shadow-lg cursor-pointer overflow-hidden transition-all duration-300 hover:scale-[1.01]"
+            onClick={() => router.push('/board?category=NOTICE_HOMEWORK')}
+            className="group relative bg-gradient-to-br from-indigo-950 via-slate-900 to-indigo-900 text-white p-6 rounded-3xl shadow-md cursor-pointer overflow-hidden transition-all duration-300 hover:scale-[1.01] hover:shadow-lg border border-indigo-800/40"
           >
             <div className="flex justify-between items-start">
-              <span className="bg-white/20 border border-white/20 text-white text-[11px] px-3 py-1 rounded-full font-bold">
-                📊 Daily Report
+              <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 text-[11px] px-3 py-1 rounded-full font-black">
+                📢 Notice & Materials
+              </span>
+              <span className="text-2xl text-slate-400 group-hover:text-indigo-400 group-hover:translate-x-1 transition-all">→</span>
+            </div>
+            <div className="mt-5">
+              <h3 className="text-xl font-extrabold text-white">숙제 및 반별 공지사항</h3>
+              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                마감일별 숙제 공지, 수업 복습영상 및 교재 자료를 확인합니다.
+              </p>
+            </div>
+          </div>
+
+          {/* 2. 1:1 수학 질의응답 (Q&A) */}
+          <div
+            onClick={() => router.push('/qna')}
+            className="group relative bg-gradient-to-br from-blue-600 via-indigo-600 to-blue-700 text-white p-6 rounded-3xl shadow-md cursor-pointer overflow-hidden transition-all duration-300 hover:scale-[1.01] hover:shadow-lg border border-blue-500/30"
+          >
+            <div className="flex justify-between items-start">
+              <span className="bg-white/20 text-white border border-white/20 text-[11px] px-3 py-1 rounded-full font-black">
+                ❓ Math Q&A
               </span>
               <span className="text-2xl text-white/70 group-hover:text-white group-hover:translate-x-1 transition-all">→</span>
             </div>
-            <div className="mt-6">
-              <h3 className="text-xl font-extrabold">일일 학습 피드백 리포트</h3>
-              <p className="text-xs text-blue-100 mt-1">선생님이 기록해 주신 날짜별 학습 성취도와 평가를 확인하세요.</p>
-            </div>
-          </div>
-
-          {/* 2. 숙제 및 공지사항 확인게시판 */}
-          <div
-            onClick={() => router.push('/board?category=HOMEWORK')}
-            className="group relative bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white p-6 rounded-3xl shadow-lg cursor-pointer overflow-hidden transition-all duration-300 hover:scale-[1.01]"
-          >
-            <div className="flex justify-between items-start">
-              <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 text-[11px] px-3 py-1 rounded-full font-bold">
-                📢 Notice & HW
-              </span>
-              <span className="text-2xl text-slate-500 group-hover:text-indigo-400 group-hover:translate-x-1 transition-all">→</span>
-            </div>
-            <div className="mt-6">
-              <h3 className="text-xl font-extrabold">숙제 및 반별 공지사항</h3>
-              <p className="text-xs text-slate-300 mt-1">마감일별 숙제와 우리 반의 중요한 공지사항을 확인합니다.</p>
-            </div>
-          </div>
-
-          {/* 3. 복습영상게시판 */}
-          <div
-            onClick={() => router.push('/board?category=VIDEO')}
-            className="group relative bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs cursor-pointer hover:border-red-300 transition-all duration-300"
-          >
-            <div className="flex justify-between items-start">
-              <span className="bg-red-50 text-red-600 border border-red-100 text-[11px] px-3 py-1 rounded-full font-bold">
-                🎥 Video Lesson
-              </span>
-              <span className="text-xl text-slate-300 group-hover:text-red-500 transition-all">→</span>
-            </div>
-            <div className="mt-6">
-              <h3 className="text-lg font-extrabold text-slate-800">복습 영상 게시판</h3>
-              <p className="text-xs text-slate-400 mt-1">수업 시간 놓친 개념 및 문제풀이 영상 강의를 다시 시청합니다.</p>
-            </div>
-          </div>
-
-          {/* 4. 수업자료게시판 */}
-          <div
-            onClick={() => router.push('/board?category=MATERIAL')}
-            className="group relative bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs cursor-pointer hover:border-emerald-300 transition-all duration-300"
-          >
-            <div className="flex justify-between items-start">
-              <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 text-[11px] px-3 py-1 rounded-full font-bold">
-                📁 Class Materials
-              </span>
-              <span className="text-xl text-slate-300 group-hover:text-emerald-600 transition-all">→</span>
-            </div>
-            <div className="mt-6">
-              <h3 className="text-lg font-extrabold text-slate-800">수업 자료 게시판</h3>
-              <p className="text-xs text-slate-400 mt-1">수업 교재, 유인물 PDF 및 테스트 모의고사 자료를 다운로드합니다.</p>
-            </div>
-          </div>
-
-          {/* 5. Q&A게시판 */}
-          <div
-            onClick={() => router.push('/qna')}
-            className="group relative bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs cursor-pointer hover:border-amber-300 transition-all duration-300 col-span-1 md:col-span-2"
-          >
-            <div className="flex justify-between items-start">
-              <span className="bg-amber-50 text-amber-800 border border-amber-200 text-[11px] px-3 py-1 rounded-full font-bold">
-                ❓ Math Q&A
-              </span>
-              <span className="text-xl text-slate-300 group-hover:text-amber-600 transition-all">→</span>
-            </div>
-            <div className="mt-4">
-              <h3 className="text-lg font-extrabold text-slate-800">1:1 수학 질의응답 (Q&A)</h3>
-              <p className="text-xs text-slate-400 mt-1">모르는 문제 사진을 찍어 올리면 담당 선생님이 1:1로 풀이 답변을 남겨 드립니다.</p>
+            <div className="mt-5">
+              <h3 className="text-xl font-extrabold text-white">1:1 수학 질의응답 (Q&A)</h3>
+              <p className="text-xs text-blue-100 mt-1 leading-relaxed">
+                모르는 문제 사진을 찍어 올리면 담당 선생님이 1:1로 풀이 답변을 남겨 드립니다.
+              </p>
             </div>
           </div>
 

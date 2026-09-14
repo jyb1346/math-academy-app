@@ -210,9 +210,6 @@ export default function StudentHomeworkTable({
               (표에서 상태를 바로 변경하거나 [수정/삭제] 버튼을 이용할 수 있습니다)
             </span>
           )}
-          <span className="text-[11px] font-bold text-slate-500">
-            총 {tableRows.length}회차 수업
-          </span>
         </div>
       </div>
 

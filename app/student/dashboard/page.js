@@ -10,6 +10,7 @@ import StudentHomeworkTable from '@/components/StudentHomeworkTable';
 export default function StudentDashboard() {
   const [user, setUser] = useState(null);
   const [evaluations, setEvaluations] = useState([]);
+  const [qnaStats, setQnaStats] = useState({ pending: 0, answered: 0, resolved: 0, total: 0 });
   const [loadingEvals, setLoadingEvals] = useState(true);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const router = useRouter();
@@ -23,25 +24,53 @@ export default function StudentDashboard() {
     try {
       const parsedUser = JSON.parse(userData);
       setUser(parsedUser);
-      fetchStudentEvaluations(parsedUser.id);
+      fetchStudentData(parsedUser.id);
     } catch (e) {
       router.push('/login');
     }
   }, []);
 
-  const fetchStudentEvaluations = async (studentId) => {
+  const fetchStudentData = async (studentId) => {
     try {
-      const { data, error } = await supabase
+      const { data: evData } = await supabase
         .from('daily_evaluations')
         .select('*')
         .eq('student_id', studentId)
         .order('eval_date', { ascending: false });
 
-      if (!error && data) {
-        setEvaluations(data);
-      }
+      if (evData) setEvaluations(evData);
+
+      const { data: qData } = await supabase
+        .from('qna')
+        .select('id, status, replies')
+        .eq('student_id', studentId);
+
+      const parsedQna = (qData || []).map((q) => {
+        let replies = [];
+        if (Array.isArray(q.replies)) replies = q.replies;
+        else if (typeof q.replies === 'string') {
+          try { replies = JSON.parse(q.replies) || []; } catch { replies = []; }
+        }
+        const lastReply = replies.length > 0 ? replies[replies.length - 1] : null;
+        let computedStatus = q.status;
+        if (q.status === 'ANSWERED' && lastReply?.type === 'RESOLVED') {
+          computedStatus = 'RESOLVED';
+        }
+        return { ...q, computedStatus };
+      });
+
+      const pending = parsedQna.filter((q) => q.computedStatus === 'PENDING').length;
+      const answered = parsedQna.filter((q) => q.computedStatus === 'ANSWERED').length;
+      const resolved = parsedQna.filter((q) => q.computedStatus === 'RESOLVED').length;
+
+      setQnaStats({
+        pending,
+        answered,
+        resolved,
+        total: parsedQna.length,
+      });
     } catch (err) {
-      console.error('fetchStudentEvaluations error:', err);
+      console.error('fetchStudentData error:', err);
     } finally {
       setLoadingEvals(false);
     }
@@ -147,9 +176,23 @@ export default function StudentDashboard() {
             className="group relative bg-gradient-to-br from-blue-600 via-indigo-600 to-blue-700 text-white p-6 rounded-3xl shadow-md cursor-pointer overflow-hidden transition-all duration-300 hover:scale-[1.01] hover:shadow-lg border border-blue-500/30"
           >
             <div className="flex justify-between items-start">
-              <span className="bg-white/20 text-white border border-white/20 text-[11px] px-3 py-1 rounded-full font-black">
-                ❓ Math Q&A
-              </span>
+              {qnaStats.answered > 0 && qnaStats.pending > 0 ? (
+                <span className="bg-amber-400 text-slate-950 text-[11px] px-3 py-1 rounded-full font-black flex items-center gap-1 shadow-md animate-pulse">
+                  <span>💬 확인 중 {qnaStats.answered}건 · 🚨 대기 {qnaStats.pending}건</span>
+                </span>
+              ) : qnaStats.answered > 0 ? (
+                <span className="bg-emerald-400 text-slate-950 text-[11px] px-3 py-1 rounded-full font-black flex items-center gap-1 shadow-md animate-pulse">
+                  <span>💬 풀이 답변 도착 ({qnaStats.answered}건)</span>
+                </span>
+              ) : qnaStats.pending > 0 ? (
+                <span className="bg-amber-300 text-slate-950 text-[11px] px-3 py-1 rounded-full font-black flex items-center gap-1 shadow-xs">
+                  <span>🚨 답변 대기 중 {qnaStats.pending}건</span>
+                </span>
+              ) : (
+                <span className="bg-white/20 text-white border border-white/20 text-[11px] px-3 py-1 rounded-full font-black">
+                  ❓ Math Q&A
+                </span>
+              )}
               <span className="text-2xl text-white/70 group-hover:text-white group-hover:translate-x-1 transition-all">→</span>
             </div>
             <div className="mt-5">

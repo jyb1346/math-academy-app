@@ -620,21 +620,21 @@ export default function TeacherEvalPage() {
     const diff = Number(currentScore) - Number(prevScore);
     if (diff > 0) {
       return (
-        <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-100/90 px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
+        <span className="text-[9.5px] font-black text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-md flex items-center gap-0.5 whitespace-nowrap shrink-0">
           <span>▲</span>+{diff} (직전 {prevScore})
         </span>
       );
     }
     if (diff < 0) {
       return (
-        <span className="text-[10px] font-extrabold text-rose-700 bg-rose-100/90 px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
+        <span className="text-[9.5px] font-black text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded-md flex items-center gap-0.5 whitespace-nowrap shrink-0">
           <span>▼</span>{diff} (직전 {prevScore})
         </span>
       );
     }
     return (
-      <span className="text-[10px] font-bold text-slate-500 bg-slate-200/80 px-1.5 py-0.5 rounded-md">
-        - 동일 (직전 {prevScore})
+      <span className="text-[9.5px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md whitespace-nowrap shrink-0">
+        - (직전 {prevScore})
       </span>
     );
   };
@@ -1087,17 +1087,17 @@ export default function TeacherEvalPage() {
 
               {/* 2. 📢 오늘 반 공통 진도 및 공통 숙제 (1회만 작성) */}
               <div className="bg-indigo-50/70 p-4 sm:p-5 rounded-2xl border border-indigo-200/80 space-y-4">
-                <div className="flex justify-between items-center border-b border-indigo-200/70 pb-2">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-base">📢</span>
-                    <span className="text-xs font-black text-indigo-950">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-indigo-200/70 pb-2">
+                  <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                    <span className="text-base shrink-0">📢</span>
+                    <span className="text-xs font-black text-indigo-950 truncate sm:whitespace-normal">
                       [{currentClassName || '반'}] 오늘 공통 학습 진도 및 과제 부여 (전체 동일)
                     </span>
                   </div>
                   <button
                     type="button"
                     onClick={() => setShowCommonAddBookInput(!showCommonAddBookInput)}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-black px-2.5 py-1 rounded-lg transition flex items-center gap-1 shadow-2xs"
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-black px-3 py-1.5 rounded-lg transition flex items-center gap-1 shadow-2xs whitespace-nowrap shrink-0 self-start sm:self-auto"
                   >
                     <span>+</span>
                     <span>교재 추가</span>
@@ -1373,14 +1373,22 @@ export default function TeacherEvalPage() {
                               <button
                                 type="button"
                                 onClick={() => handleBatchToggleScoreEditor(st.student_id)}
-                                className={`text-xs px-2.5 py-1 rounded-xl font-extrabold border transition flex items-center gap-1 ${
+                                className={`text-xs px-2.5 py-1 rounded-xl font-extrabold border transition flex items-center gap-1.5 ${
                                   st.showScoreEditor
                                     ? 'bg-indigo-600 text-white border-indigo-700'
                                     : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
                                 }`}
                               >
                                 <span>평균 {avgScore}점</span>
-                                <span>{st.showScoreEditor ? '▲ 접기' : '⚙️ 점수조절'}</span>
+                                {st.initialScores && (() => {
+                                  const prevTot = Object.values(st.initialScores).reduce((a, b) => a + Number(b), 0);
+                                  const prevAvg = (prevTot / 6).toFixed(1);
+                                  const diff = Number((avgScore - prevAvg).toFixed(1));
+                                  if (diff > 0) return <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 px-1 py-0.2 rounded">▲+{diff}</span>;
+                                  if (diff < 0) return <span className="text-[10px] font-black text-rose-700 bg-rose-100 px-1 py-0.2 rounded">▼{diff}</span>;
+                                  return null;
+                                })()}
+                                <span className="text-[10px]">{st.showScoreEditor ? '▲ 접기' : '⚙️ 점수조절'}</span>
                               </button>
                             </div>
                           </div>
@@ -1420,23 +1428,29 @@ export default function TeacherEvalPage() {
 
                           {/* 펼쳐진 6대 역량 점수 슬라이더 에디터 */}
                           {st.showScoreEditor && (
-                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-xs animate-fade-in">
-                              {DEFAULT_EVAL_KEYS.map((def) => (
-                                <div key={def.key} className="bg-white p-2 rounded-lg border border-slate-200 space-y-1">
-                                  <div className="flex justify-between items-center text-[11px] font-bold">
-                                    <span className="text-slate-700">{def.name}</span>
-                                    <span className="text-blue-600 font-black">{st.scores[def.key]}점</span>
+                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 text-xs animate-fade-in">
+                              {DEFAULT_EVAL_KEYS.map((def) => {
+                                const prevVal = st.initialScores?.[def.key];
+                                return (
+                                  <div key={def.key} className="bg-white p-2.5 rounded-xl border border-slate-200/90 space-y-1.5 shadow-2xs">
+                                    <div className="flex justify-between items-center text-[11px] font-bold">
+                                      <span className="text-slate-700">{def.name}</span>
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        {renderScoreDiffBadge(st.scores[def.key], prevVal)}
+                                        <span className="text-blue-600 font-black text-xs">{st.scores[def.key]}점</span>
+                                      </div>
+                                    </div>
+                                    <input
+                                      type="range"
+                                      min="1"
+                                      max="10"
+                                      value={st.scores[def.key]}
+                                      onChange={(e) => handleBatchScoreChange(st.student_id, def.key, e.target.value)}
+                                      className="w-full accent-blue-600 h-1.5 cursor-pointer"
+                                    />
                                   </div>
-                                  <input
-                                    type="range"
-                                    min="1"
-                                    max="10"
-                                    value={st.scores[def.key]}
-                                    onChange={(e) => handleBatchScoreChange(st.student_id, def.key, e.target.value)}
-                                    className="w-full accent-blue-600 h-1.5"
-                                  />
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           )}
                         </div>
@@ -1450,17 +1464,17 @@ export default function TeacherEvalPage() {
               <button
                 type="submit"
                 disabled={batchSubmitting}
-                className={`w-full font-black py-4 rounded-2xl shadow-lg transition text-sm flex items-center justify-center gap-2 ${
+                className={`w-full font-black py-4 px-4 rounded-2xl shadow-lg transition text-sm flex items-center justify-center gap-2 ${
                   batchSubmitting
                     ? 'bg-slate-400 text-white cursor-not-allowed'
                     : 'bg-indigo-600 hover:bg-indigo-700 text-white active:scale-98'
                 }`}
               >
-                <span>🚀</span>
-                <span>
+                <span className="text-base shrink-0">🚀</span>
+                <span className="leading-snug">
                   {batchSubmitting
                     ? batchProgressText || '일괄 등록 진행 중...'
-                    : `[${currentClassName || '반'}] 선택 학생 전체 (${batchStudents.filter((s) => s.included).length}명) 피드백 한 번에 일괄 등록하기`}
+                    : `[${currentClassName || '반'}] 학생 전체 (${batchStudents.filter((s) => s.included).length}명) 피드백 일괄 등록`}
                 </span>
               </button>
             </form>

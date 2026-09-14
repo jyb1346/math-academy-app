@@ -415,10 +415,10 @@ export default function EvalHistoryPage() {
                 return (
                   <div key={item.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
                     
-                    <div className="flex justify-between items-center border-b pb-3 text-xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b pb-3 text-xs">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-extrabold text-base text-slate-800">{item.users?.name} 학생</span>
-                        <span className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full font-bold border border-blue-200">
+                        <span className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full font-bold border border-blue-200 whitespace-nowrap">
                           📅 수업일: {item.eval_date}
                         </span>
                         
@@ -436,10 +436,10 @@ export default function EvalHistoryPage() {
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5 flex-wrap shrink-0 pt-1 sm:pt-0">
                         <button
                           onClick={() => handleCopyReportLink(item.id)}
-                          className="px-2.5 py-1 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition"
+                          className="px-2.5 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition whitespace-nowrap shadow-2xs"
                           title="학부모 리포트 웹 주소 복사"
                         >
                           🔗 링크 복사
@@ -447,7 +447,7 @@ export default function EvalHistoryPage() {
                         <button
                           onClick={() => handleResendNotification(item)}
                           disabled={sendingId === item.id}
-                          className="px-2.5 py-1 text-xs font-black text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition flex items-center gap-1 shadow-2xs disabled:opacity-50"
+                          className="px-2.5 py-1.5 text-xs font-black text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition flex items-center gap-1 shadow-2xs disabled:opacity-50 whitespace-nowrap"
                           title="학부모님 휴대폰으로 알림톡/문자 전송"
                         >
                           <span>📲</span>
@@ -455,7 +455,7 @@ export default function EvalHistoryPage() {
                         </button>
                         <button
                           onClick={() => handleDeleteEval(item.id, item.users?.name, item.eval_date)}
-                          className="text-rose-500 hover:underline font-bold px-1"
+                          className="text-rose-500 hover:underline font-bold px-1.5 py-1 text-xs whitespace-nowrap"
                         >
                           삭제
                         </button>

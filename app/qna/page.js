@@ -672,13 +672,13 @@ export default function QnaPage() {
                   {/* ────────────────── 2. 선생님 1차 답변 영역 ────────────────── */}
                   {item.answer && !qState.isEditing ? (
                     <div className="bg-gradient-to-br from-indigo-50/80 to-blue-50/70 p-5 rounded-2xl border border-indigo-100 space-y-3">
-                      <div className="flex justify-between items-center">
-                        <div className="flex items-center gap-2">
-                          <span className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-black">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-black shrink-0">
                             쌤
                           </span>
                           <span className="text-xs font-black text-indigo-950">
-                            {teacherName} 선생님의 풀이 답변
+                            {teacherName}의 풀이 답변
                           </span>
                           <span className="text-[10px] text-indigo-500 font-medium">
                             {item.answered_at ? new Date(item.answered_at).toLocaleString() : ''}
@@ -693,7 +693,7 @@ export default function QnaPage() {
                                 [item.id]: { text: item.answer, files: [], filePreviews: [], isEditing: true },
                               }));
                             }}
-                            className="text-xs text-indigo-600 hover:underline font-bold px-2 py-1"
+                            className="text-xs text-indigo-600 hover:underline font-bold px-2 py-1 whitespace-nowrap shrink-0 self-end sm:self-auto"
                           >
                             답변 수정
                           </button>

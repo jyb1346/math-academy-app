@@ -97,7 +97,6 @@ export default function TeacherEvalPage() {
     } else {
       setStudentEvals([]);
       setPrevEval(null);
-      setPrevHomeworkChecks([]);
     }
   }, [selectedStudentId, evalDate]);
 
@@ -350,12 +349,6 @@ export default function TeacherEvalPage() {
     );
   };
 
-  // 📚 지난 수업 숙제 검사 상태 변경
-  const handlePrevCheckStatusChange = (bookName, newStatus) => {
-    setPrevHomeworkChecks((prev) =>
-      prev.map((b) => (b.name === bookName ? { ...b, status: newStatus } : b))
-    );
-  };
 
   const renderScoreDiffBadge = (currentScore, prevScore) => {
     if (prevScore === undefined || prevScore === null) return null;

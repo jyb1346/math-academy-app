@@ -658,9 +658,6 @@ export default function EvalHistoryPage() {
                         </button>
                         <button
                           onClick={() => handleResendNotification(item)}
-                          disabled={sendingId === item.id}
-                          className="px-2.5 py-1.5 text-xs font-black text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition flex items-center gap-1 shadow-2xs disabled:opacity-50 whitespace-nowrap"
-                          title="학부모님 휴대폰으로 알림톡/문자 전송"
                           disabled={sendingId === item.id || batchSending}
                           className={`px-2.5 py-1.5 text-xs font-black rounded-lg transition flex items-center gap-1 shadow-2xs disabled:opacity-50 whitespace-nowrap ${
                             parsed.alimtalkSentAt
@@ -669,8 +666,6 @@ export default function EvalHistoryPage() {
                           }`}
                           title={parsed.alimtalkSentAt ? '학부모님 휴대폰으로 알림톡 재전송' : '학부모님 휴대폰으로 알림톡 전송'}
                         >
-                          <span>📲</span>
-                          <span>{sendingId === item.id ? '발송 중...' : '학부모 알림 발송'}</span>
                           <span>{parsed.alimtalkSentAt ? '↻' : '📲'}</span>
                           <span>
                             {sendingId === item.id

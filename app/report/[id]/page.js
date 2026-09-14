@@ -72,6 +72,28 @@ export default function StudentReportPage() {
 
       if (error) throw error;
 
+      // 🔔 담당 선생님께 실시간 웹 푸시 알림 발송
+      if (evalData?.teacher_id) {
+        try {
+          const studentName = evalData.users?.name || '학생';
+          const trimmedReply = replyText.trim();
+          const preview = trimmedReply.length > 50 ? `${trimmedReply.slice(0, 50)}...` : trimmedReply;
+
+          fetch('/api/push/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userIds: [evalData.teacher_id],
+              title: `💌 [학부모 답장] ${studentName} 학생 학부모님`,
+              message: `"${preview}"`,
+              url: '/teacher/eval/history',
+            }),
+          }).catch((err) => console.warn('Parent reply push send warning:', err));
+        } catch (pushErr) {
+          console.warn('Push dispatch error:', pushErr);
+        }
+      }
+
       alert('담당 선생님께 답장이 성공적으로 전달되었습니다!');
       fetchEvaluation();
     } catch (err) {

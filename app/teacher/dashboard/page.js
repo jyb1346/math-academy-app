@@ -271,6 +271,9 @@ export default function TeacherDashboard() {
   const handleDeleteStudent = async (studentId, studentName) => {
     if (!confirm(`[${studentName}] 학생을 삭제하시겠습니까?`)) return;
     try {
+      await supabase.from('class_students').delete().eq('student_id', studentId);
+      await supabase.from('push_subscriptions').delete().eq('user_id', studentId);
+
       const { error } = await supabase.from('users').delete().eq('id', studentId);
       if (error) throw error;
       fetchTeacherData(user.id);

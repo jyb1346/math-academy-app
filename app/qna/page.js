@@ -27,6 +27,9 @@ export default function QnaPage() {
   // 🔍 사진 확대 뷰어 모달
   const [previewImageUrl, setPreviewImageUrl] = useState(null);
 
+  // 💡 완전히 이해했어요 (완료 처리 중 상태)
+  const [resolvingId, setResolvingId] = useState(null);
+
   const router = useRouter();
 
   useEffect(() => {
@@ -361,6 +364,49 @@ export default function QnaPage() {
     }
   };
 
+  // 💡 학생: "완전히 이해했어요! (질문 완료)" 처리
+  const handleResolveQuestion = async (qnaItem) => {
+    if (!confirm(`'${qnaItem.title}' 문제 풀이를 완전히 이해하셨나요?\n질문을 '이해 완료' 상태로 변경하고 선생님께 알림을 보냅니다.`)) {
+      return;
+    }
+
+    setResolvingId(qnaItem.id);
+    try {
+      const { error } = await supabase
+        .from('qna')
+        .update({ status: 'RESOLVED' })
+        .eq('id', qnaItem.id);
+
+      if (error) throw error;
+
+      // 담당 선생님께 푸시 알림 발송
+      if (qnaItem.teacher_id) {
+        try {
+          fetch('/api/push/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userIds: [qnaItem.teacher_id],
+              title: `[질문 해결] ${user.name || '학생'} 학생이 풀이를 완전히 이해했습니다! 💡`,
+              message: `'${qnaItem.title}' 질문이 해결 완료되었습니다.`,
+              url: '/qna',
+            }),
+          }).catch((e) => console.warn('Resolve push warning:', e));
+        } catch (e) {
+          console.warn('Push error:', e);
+        }
+      }
+
+      alert('🎉 질문이 해결 완료되었습니다! 수고했어요! 💡');
+      fetchQuestions(user);
+    } catch (err) {
+      console.error('Resolve error:', err);
+      alert('완료 처리 실패: ' + err.message);
+    } finally {
+      setResolvingId(null);
+    }
+  };
+
   // 이미지 파싱 유틸 (배열, JSON 문자열, 단일 URL 등 모든 형식 완벽 지원)
   const parseImages = (imgInput) => {
     if (!imgInput) return [];
@@ -401,14 +447,16 @@ export default function QnaPage() {
 
   const isTeacher = user?.role === 'TEACHER' || user?.role === 'HEAD_TEACHER';
 
+  const pendingCount = questions.filter((q) => q.status === 'PENDING').length;
+  const answeredCount = questions.filter((q) => q.status === 'ANSWERED').length;
+  const resolvedCount = questions.filter((q) => q.status === 'RESOLVED').length;
+
   const filteredQuestions = questions.filter((q) => {
     if (filterStatus === 'PENDING') return q.status === 'PENDING';
     if (filterStatus === 'ANSWERED') return q.status === 'ANSWERED';
+    if (filterStatus === 'RESOLVED') return q.status === 'RESOLVED';
     return true;
   });
-
-  const pendingCount = questions.filter((q) => q.status === 'PENDING').length;
-  const answeredCount = questions.filter((q) => q.status === 'ANSWERED').length;
 
   if (loading) return <div className="p-10 text-center font-bold text-slate-500">1:1 질의응답 로딩 중...</div>;
 
@@ -535,9 +583,9 @@ export default function QnaPage() {
           </div>
         )}
 
-        {/* 탭 필터 (전체 / 미답변 / 답변 완료) */}
-        <div className="flex items-center justify-between bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs">
-          <div className="flex gap-2">
+        {/* 탭 필터 (전체 / 답변 대기 / 학생 확인 중 / 이해 완료) */}
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setFilterStatus('ALL')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition ${
@@ -546,33 +594,44 @@ export default function QnaPage() {
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              전체 ({questions.length}건)
+              📋 전체 ({questions.length})
             </button>
             <button
               onClick={() => setFilterStatus('PENDING')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition flex items-center gap-1 ${
                 filterStatus === 'PENDING'
-                  ? 'bg-amber-500 text-white shadow-xs'
-                  : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
+                  ? 'bg-rose-600 text-white shadow-xs'
+                  : 'bg-rose-50 text-rose-800 hover:bg-rose-100'
               }`}
             >
-              <span>🚨 미답변</span>
-              <span>({pendingCount}건)</span>
+              <span>🚨 답변 대기</span>
+              <span>({pendingCount})</span>
             </button>
             <button
               onClick={() => setFilterStatus('ANSWERED')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition flex items-center gap-1 ${
                 filterStatus === 'ANSWERED'
+                  ? 'bg-amber-500 text-white shadow-xs'
+                  : 'bg-amber-50 text-amber-900 hover:bg-amber-100'
+              }`}
+            >
+              <span>💬 학생 확인 중</span>
+              <span>({answeredCount})</span>
+            </button>
+            <button
+              onClick={() => setFilterStatus('RESOLVED')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition flex items-center gap-1 ${
+                filterStatus === 'RESOLVED'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
               }`}
             >
-              <span>✅ 답변 완료</span>
-              <span>({answeredCount}건)</span>
+              <span>💡 이해 완료</span>
+              <span>({resolvedCount})</span>
             </button>
           </div>
 
-          <span className="text-[11px] text-slate-400 font-semibold hidden sm:inline">
+          <span className="text-[11px] text-slate-400 font-semibold hidden lg:inline">
             🔒 학생 본인과 담당 선생님만 확인 가능합니다.
           </span>
         </div>
@@ -609,13 +668,17 @@ export default function QnaPage() {
                         <span
                           className={`text-[10px] font-black px-2.5 py-0.5 rounded-full border ${
                             item.status === 'PENDING'
-                              ? 'bg-amber-50 text-amber-700 border-amber-200'
+                              ? 'bg-rose-50 text-rose-700 border-rose-200'
+                              : item.status === 'ANSWERED'
+                              ? 'bg-amber-50 text-amber-800 border-amber-200'
                               : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                           }`}
                         >
                           {item.status === 'PENDING'
-                            ? (repliesList.length > 0 ? '⏳ 추가 질문 대기 중' : '⏳ 1차 답변 대기 중')
-                            : '✅ 답변 완료'}
+                            ? (repliesList.length > 0 ? '🚨 추가 질문 대기 중' : '🚨 답변 대기 중')
+                            : item.status === 'ANSWERED'
+                            ? '💬 학생 확인 중'
+                            : '💡 이해 완료'}
                         </span>
                         <span className="text-xs font-black bg-indigo-50 text-indigo-800 border border-indigo-200 px-2.5 py-0.5 rounded-full">
                           👤 {studentName} {studentInfo?.email ? `(${studentInfo.email.split('@')[0]})` : ''}의 1:1 질문
@@ -886,6 +949,62 @@ export default function QnaPage() {
                     </div>
                   )}
 
+                  {/* ────────────────── 3.5. 이해 완료 확인 & 상태 안내 박스 ────────────────── */}
+                  {item.answer && !qState.isEditing && (
+                    <div className="space-y-2 pt-1">
+                      {/* 💡 학생 전용: 이해 완료 버튼 */}
+                      {!isTeacher && item.status === 'ANSWERED' && (
+                        <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border border-emerald-200/90 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs animate-in fade-in">
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-2xl">💡</span>
+                            <div>
+                              <h4 className="text-xs font-black text-emerald-950">선생님 풀이가 잘 이해되었나요?</h4>
+                              <p className="text-[11px] text-emerald-700 font-medium">더 이상 궁금한 점이 없다면 완료 버튼을 눌러주세요!</p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleResolveQuestion(item)}
+                            disabled={resolvingId === item.id}
+                            className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-black px-5 py-2.5 rounded-xl shadow-md shadow-emerald-600/20 transition whitespace-nowrap flex items-center justify-center gap-1.5 disabled:bg-slate-400 cursor-pointer shrink-0"
+                          >
+                            <span>💡</span>
+                            <span>{resolvingId === item.id ? '완료 처리 중...' : '완전히 이해했어요! (질문 완료)'}</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* 💡 학생 전용: 이해 완료 안내 */}
+                      {!isTeacher && item.status === 'RESOLVED' && (
+                        <div className="bg-emerald-50/80 border border-emerald-200/80 p-3.5 rounded-2xl flex items-center gap-2.5 text-emerald-900 shadow-2xs">
+                          <span className="text-xl">🎉</span>
+                          <div>
+                            <p className="text-xs font-black text-emerald-950">풀이를 완전히 이해하여 해결 완료된 질문입니다!</p>
+                            <p className="text-[11px] text-emerald-700 font-medium">다시 모르는 부분이 생기면 언제든 아래에서 추가 질문을 남길 수 있어요.</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 💡 선생님 전용: 이해 완료 안내 */}
+                      {isTeacher && item.status === 'RESOLVED' && (
+                        <div className="bg-emerald-50/80 border border-emerald-200/80 p-3.5 rounded-2xl flex items-center gap-2.5 text-emerald-900 shadow-2xs">
+                          <span className="text-xl">💡</span>
+                          <div>
+                            <p className="text-xs font-black text-emerald-950">학생이 풀이를 확인하고 [완전히 이해 완료]를 눌렀습니다.</p>
+                            <p className="text-[11px] text-emerald-700 font-medium">질문이 깔끔하게 해결되었습니다 ✨</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 💡 선생님 전용: 학생 확인 중 안내 */}
+                      {isTeacher && item.status === 'ANSWERED' && (
+                        <div className="bg-amber-50/80 border border-amber-200/80 p-3 rounded-2xl flex items-center gap-2 text-amber-900 shadow-2xs">
+                          <span className="text-base">💬</span>
+                          <span className="text-xs font-bold">선생님 답변 완료 (학생이 확인하고 이해 여부를 체크 중입니다)</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* ────────────────── 4. 추가 질문 / 추가 답변 작성창 ────────────────── */}
                   {item.answer && !qState.isEditing && (
                     <div className="pt-2">
@@ -899,14 +1018,18 @@ export default function QnaPage() {
                           }
                           className={`w-full py-3 rounded-2xl text-xs font-black flex items-center justify-center gap-1.5 transition border shadow-2xs ${
                             !isTeacher
-                              ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-200'
+                              ? item.status === 'RESOLVED'
+                                ? 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                                : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-200'
                               : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border-indigo-200'
                           }`}
                         >
                           <span>💬</span>
                           <span>
                             {!isTeacher
-                              ? '선생님 풀이에 추가 질문(재질문) 남기기'
+                              ? item.status === 'RESOLVED'
+                                ? '해결된 질문에 다시 추가 질문(재질문) 남기기'
+                                : '선생님 풀이에 추가 질문(재질문) 남기기'
                               : '학생에게 추가 풀이 / 힌트 남기기'}
                           </span>
                           <span className="text-[10px] text-slate-400 font-normal ml-1">▼</span>

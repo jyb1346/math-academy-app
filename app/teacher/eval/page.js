@@ -776,6 +776,8 @@ export default function TeacherEvalPage() {
           email: st.email,
           parent_phone: st.parent_phone,
           included: true,
+          attendanceStatus: 'ATTEND',
+          latenessMinutes: 5,
           attendanceStatus: todayEval?.attendance_status || 'ATTEND',
           latenessMinutes: todayEval?.lateness_minutes || 5,
           scores: { ...scores },
@@ -788,6 +790,7 @@ export default function TeacherEvalPage() {
           comment: '',
           showScoreEditor: false,
           prevEvalSummary: prev ? `${prev.eval_date} 피드백` : '첫 피드백',
+          isSaved: false,
           isSaved: !!todayEval,
           alimtalkSentAt: parsedToday?.alimtalkSentAt || null,
         };

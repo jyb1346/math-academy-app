@@ -12,7 +12,7 @@ export default function TeacherDashboard() {
   const [classes, setClasses] = useState([]);
   const [students, setStudents] = useState([]);
   const [classStudents, setClassStudents] = useState([]);
-  const [pendingQnaCount, setPendingQnaCount] = useState(0);
+  const [qnaStats, setQnaStats] = useState({ pending: 0, inProgress: 0, resolved: 0, total: 0 });
   const [loading, setLoading] = useState(true);
 
   // 비밀번호 변경 모달 상태
@@ -121,9 +121,18 @@ export default function TeacherDashboard() {
       const { data: qnaData } = await supabase
         .from('qna')
         .select('id, status')
-        .eq('teacher_id', teacherId)
-        .eq('status', 'PENDING');
-      setPendingQnaCount(qnaData ? qnaData.length : 0);
+        .eq('teacher_id', teacherId);
+
+      const pending = (qnaData || []).filter((q) => q.status === 'PENDING').length;
+      const inProgress = (qnaData || []).filter((q) => q.status === 'ANSWERED').length;
+      const resolved = (qnaData || []).filter((q) => q.status === 'RESOLVED').length;
+
+      setQnaStats({
+        pending,
+        inProgress,
+        resolved,
+        total: (qnaData || []).length,
+      });
 
     } catch (err) {
       console.error(err);
@@ -473,11 +482,19 @@ export default function TeacherDashboard() {
 
               <div className="flex justify-between items-start">
                 <span className={`text-xs px-3.5 py-1 rounded-full font-black flex items-center gap-1.5 ${
-                  pendingQnaCount > 0
+                  qnaStats.pending > 0
                     ? 'bg-rose-600 text-white animate-pulse shadow-md'
-                    : 'bg-white/20 border border-white/20 text-white'
+                    : qnaStats.inProgress > 0
+                    ? 'bg-amber-400 text-slate-900 font-extrabold shadow-md'
+                    : 'bg-emerald-500/90 text-white border border-emerald-400/40 font-bold'
                 }`}>
-                  {pendingQnaCount > 0 ? `🚨 미답변 질문 ${pendingQnaCount}건` : '✅ 답변 완료'}
+                  {qnaStats.pending > 0 && qnaStats.inProgress > 0
+                    ? `🚨 미답변 ${qnaStats.pending}건 · 💬 확인 중 ${qnaStats.inProgress}건`
+                    : qnaStats.pending > 0
+                    ? `🚨 미답변 질문 ${qnaStats.pending}건`
+                    : qnaStats.inProgress > 0
+                    ? `💬 학생 확인 중 ${qnaStats.inProgress}건`
+                    : '💡 모든 질문 해결 완료'}
                 </span>
                 <span className="text-3xl text-white/60 group-hover:text-white group-hover:translate-x-1 transition-all">→</span>
               </div>

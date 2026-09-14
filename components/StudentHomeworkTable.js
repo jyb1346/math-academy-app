@@ -26,6 +26,10 @@ export default function StudentHomeworkTable({
   const [showAddBookInModal, setShowAddBookInModal] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
 
+  // 📜 이전 수업 기록 접기/펼치기 상태 (기본 6개 최근 수업만 노출)
+  const [showAllRows, setShowAllRows] = useState(false);
+  const DEFAULT_VISIBLE_COUNT = 6;
+
   // 1. 모든 평가 레코드에서 사용된 고유 교재명 목록 추출 (순서 유지)
   const { tableRows, allBookNames } = useMemo(() => {
     // 날짜 오름차순(과거 ➔ 최신순) 정렬
@@ -74,6 +78,14 @@ export default function StudentHomeworkTable({
       allBookNames: bookOrder,
     };
   }, [evaluations]);
+
+  const hasMoreRows = tableRows.length > DEFAULT_VISIBLE_COUNT;
+  const displayedRows = useMemo(() => {
+    if (showAllRows || !hasMoreRows) {
+      return tableRows;
+    }
+    return tableRows.slice(-DEFAULT_VISIBLE_COUNT);
+  }, [tableRows, showAllRows, hasMoreRows]);
 
   const renderStatusBadge = (status) => {
     if (status === '완료') {
@@ -237,7 +249,7 @@ export default function StudentHomeworkTable({
             </tr>
           </thead>
           <tbody>
-            {tableRows.map((row, idx) => (
+            {displayedRows.map((row, idx) => (
               <tr
                 key={row.id || idx}
                 className={`border-b border-slate-200 hover:bg-slate-50/80 transition ${
@@ -342,6 +354,24 @@ export default function StudentHomeworkTable({
           </tbody>
         </table>
       </div>
+
+      {/* 📜 이전 수업 과제 기록 더보기 / 접기 버튼 */}
+      {hasMoreRows && (
+        <div className="flex justify-center pt-1">
+          <button
+            type="button"
+            onClick={() => setShowAllRows(!showAllRows)}
+            className="w-full sm:w-auto text-xs font-black px-5 py-2.5 rounded-2xl border border-slate-300/80 bg-slate-50 hover:bg-slate-100 text-slate-700 shadow-2xs transition flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+          >
+            <span>{showAllRows ? '🔼' : '📜'}</span>
+            <span>
+              {showAllRows
+                ? `최근 ${DEFAULT_VISIBLE_COUNT}개 수업만 보기 (접기)`
+                : `이전 수업 과제 기록 더보기 (총 ${tableRows.length}회 중 ${tableRows.length - DEFAULT_VISIBLE_COUNT}개 이전 수업) ▾`}
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* 하단 상태 범례 */}
       {allBookNames.length > 0 && (

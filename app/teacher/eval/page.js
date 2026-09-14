@@ -148,9 +148,70 @@ export default function TeacherEvalPage() {
       const evals = data || [];
       setStudentEvals(evals);
 
-      // 현재 선택된 날짜 이전의 가장 최근 평가 1건 찾기
-      const prev = evals.find((e) => e.eval_date < currentDate) || null;
+      // 현재 선택된 날짜 이전의 가장 최근 평가 1건 찾기 (없으면 최신 1건)
+      const prev = evals.find((e) => e.eval_date < currentDate) || (evals.length > 0 ? evals[0] : null);
       setPrevEval(prev);
+
+      // 🎯 역량 평가 항목 및 점수 게이지 자동 반영
+      if (prev) {
+        const parsedPrev = parseEvaluationRecord(prev);
+
+        // (1) 기본 역량 항목 중 직전에 활성화되었던 항목 및 점수 자동 세팅
+        const prevActiveKeys = [];
+        const newScores = {
+          concept: 8,
+          calc: 8,
+          app: 8,
+          attitude: 8,
+          homework: 8,
+          perseverance: 8,
+        };
+
+        DEFAULT_EVAL_KEYS.forEach((def) => {
+          const val = prev[def.dbCol];
+          if (val !== null && val !== undefined) {
+            prevActiveKeys.push(def.key);
+            newScores[def.key] = Number(val);
+          }
+        });
+
+        if (prevActiveKeys.length > 0) {
+          setActiveDefaultKeys(prevActiveKeys);
+          setDefaultScores(newScores);
+        }
+
+        // (2) 커스텀 항목 및 점수 자동 세팅
+        if (parsedPrev.customItems && parsedPrev.customItems.length > 0) {
+          setCustomItems(
+            parsedPrev.customItems.map((c, idx) => ({
+              id: `custom_${Date.now()}_${idx}`,
+              name: c.name,
+              score: Number(c.score) || 8,
+            }))
+          );
+        } else {
+          setCustomItems([]);
+        }
+      } else {
+        // 이전 기록이 없는 신규 학생인 경우 기본 6개 항목 8점으로 초기화
+        setActiveDefaultKeys([
+          'concept',
+          'calc',
+          'app',
+          'attitude',
+          'homework',
+          'perseverance',
+        ]);
+        setDefaultScores({
+          concept: 8,
+          calc: 8,
+          app: 8,
+          attitude: 8,
+          homework: 8,
+          perseverance: 8,
+        });
+        setCustomItems([]);
+      }
 
       // 1순위: 해당 학생의 최근 평가 기록에서 출제된 교재명 목록 추출 (최신순)
       let recentBookNames = extractRecentBookNamesFromEvaluations(evals);
@@ -820,10 +881,10 @@ export default function TeacherEvalPage() {
                     type="button"
                     onClick={handleCopyPrevScores}
                     className="bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-extrabold px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 shadow-sm self-start sm:self-auto"
-                    title="직전 항목과 점수 구성을 오늘 폼에 1초 만에 그대로 적용합니다"
+                    title="슬라이더 점수와 항목을 직전 수업 상태로 다시 재설정합니다"
                   >
-                    <span>📋</span>
-                    <span>직전 점수 그대로 불러오기</span>
+                    <span>🔄</span>
+                    <span>직전 점수로 다시 맞추기</span>
                   </button>
                 </div>
 
@@ -931,7 +992,7 @@ export default function TeacherEvalPage() {
                     <span>학습 성취도 평가 항목 관리</span>
                   </h3>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    오늘 수업에서 평가할 항목을 선택(ON/OFF)하거나, 새로운 맞춤 항목을 자유롭게 추가하세요.
+                    ✨ 직전 수업의 평가 항목 및 점수 게이지가 자동으로 세팅되어 있습니다. 필요에 따라 항목을 ON/OFF하거나 점수를 조절하세요.
                   </p>
                 </div>
                 <button

@@ -26,7 +26,6 @@ export default function TeacherEvalPage() {
   const [studentEvals, setStudentEvals] = useState([]);
   const [prevEval, setPrevEval] = useState(null);
   const [loadingPrevEval, setLoadingPrevEval] = useState(false);
-  const [copySuccessToast, setCopySuccessToast] = useState(false);
   const [actionToast, setActionToast] = useState('');
   // 평가 기본 정보
   const [evalDate, setEvalDate] = useState(new Date().toISOString().split('T')[0]);
@@ -338,61 +337,6 @@ export default function TeacherEvalPage() {
       console.error('handleDeleteEvaluation error:', err);
       alert('기록 삭제 중 오류가 발생했습니다.');
     }
-  };
-
-  const handleCopyPrevScores = () => {
-    if (!prevEval) return;
-    const prevParsed = parseEvaluationRecord(prevEval);
-
-    // 1. 기본 항목 중 직전에 활성화되었던 항목 및 점수 복사
-    const prevActiveKeys = [];
-    const newScores = { ...defaultScores };
-    DEFAULT_EVAL_KEYS.forEach((def) => {
-      const val = prevEval[def.dbCol];
-      if (val !== null && val !== undefined) {
-        prevActiveKeys.push(def.key);
-        newScores[def.key] = Number(val);
-      }
-    });
-
-    if (prevActiveKeys.length > 0) {
-      setActiveDefaultKeys(prevActiveKeys);
-      setDefaultScores(newScores);
-    }
-
-    // 2. 커스텀 항목 복사
-    if (prevParsed.customItems && prevParsed.customItems.length > 0) {
-      setCustomItems(
-        prevParsed.customItems.map((c, idx) => ({
-          id: `custom_${Date.now()}_${idx}`,
-          name: c.name,
-          score: Number(c.score) || 8,
-        }))
-      );
-    } else {
-      setCustomItems([]);
-    }
-
-    // 3. 출결 상태 복사
-    setAttendanceStatus(prevEval.attendance_status || 'ATTEND');
-    if (prevEval.lateness_minutes) {
-      setLatenessMinutes(prevEval.lateness_minutes);
-    }
-
-    // 4. 시험 종류 및 점수 복사
-    if (prevParsed.testScore) {
-      if (['단원평가', '일일테스트', '주간테스트', '모의고사'].includes(prevParsed.testType)) {
-        setTestType(prevParsed.testType);
-        setCustomTestType('');
-      } else {
-        setTestType('기타');
-        setCustomTestType(prevParsed.testType);
-      }
-      setTestScore(prevParsed.testScore);
-    }
-
-    setCopySuccessToast(true);
-    setTimeout(() => setCopySuccessToast(false), 3000);
   };
 
   const toggleDefaultKey = (key) => {
@@ -891,95 +835,6 @@ export default function TeacherEvalPage() {
                 </div>
               </div>
             </div>
-
-            {/* 🔍 4. 직전 피드백 기록 요약 & 불러오기 카드 */}
-            {loadingPrevEval ? (
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-center text-xs font-bold text-slate-400 animate-pulse">
-                선택 학생의 직전 피드백 기록을 조회하는 중...
-              </div>
-            ) : prevEval && prevParsed ? (
-              <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-white p-4 sm:p-5 rounded-2xl shadow-md border border-slate-700/80 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-700/80 pb-2.5">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="bg-indigo-500 text-white text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">
-                      직전 수업 기록
-                    </span>
-                    <h4 className="text-xs sm:text-sm font-black text-slate-100">
-                      📅 {prevEval.eval_date} 수업 피드백
-                    </h4>
-                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-600">
-                      {prevEval.attendance_status === 'LATE'
-                        ? `⏰ ${prevEval.lateness_minutes || 5}분 지각`
-                        : prevEval.attendance_status === 'ABSENT'
-                        ? '🔴 결석'
-                        : '🟢 정상 출석'}
-                    </span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleCopyPrevScores}
-                    className="bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-extrabold px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 shadow-sm self-start sm:self-auto"
-                    title="슬라이더 점수와 항목을 직전 수업 상태로 다시 재설정합니다"
-                  >
-                    <span>🔄</span>
-                    <span>직전 점수로 다시 맞추기</span>
-                  </button>
-                </div>
-
-                {/* 직전 평가 항목 점수 요약 그리드 */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-1.5 text-center text-[11px] font-bold">
-                  {prevParsed.items.map((it) => (
-                    <div key={it.key || it.name} className="bg-slate-800/80 p-2 rounded-xl border border-slate-700">
-                      <span className="text-slate-400 text-[10px] block truncate">{it.name}</span>
-                      <span className="text-blue-400 font-black text-xs">{it.score}점</span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* 직전 총평 코멘트 & 직전 시험 성적 요약 */}
-                <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/60 text-xs space-y-1">
-                  {prevParsed.testScore && (
-                    <div className="text-indigo-300 font-extrabold flex items-center gap-1 pb-0.5">
-                      <span>📝 직전 {prevParsed.testType}:</span>
-                      <span className="text-amber-300 font-black">{prevParsed.testScore}</span>
-                    </div>
-                  )}
-                  <p className="text-slate-300 font-medium leading-relaxed">
-                    <span className="text-slate-400 font-bold mr-1">💬 직전 코멘트:</span>
-                    {prevParsed.comment || '작성된 코멘트가 없었습니다.'}
-                  </p>
-                </div>
-                {(prevParsed.testScore || prevParsed.comment) && (
-                  <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/60 text-xs space-y-1">
-                    {prevParsed.testScore && (
-                      <div className="text-indigo-300 font-extrabold flex items-center gap-1 pb-0.5">
-                        <span>📝 직전 {prevParsed.testType}:</span>
-                        <span className="text-amber-300 font-black">{prevParsed.testScore}</span>
-                      </div>
-                    )}
-                    {prevParsed.comment && (
-                      <p className="text-slate-300 font-medium leading-relaxed">
-                        <span className="text-slate-400 font-bold mr-1">💬 직전 코멘트:</span>
-                        {prevParsed.comment}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs font-bold text-slate-500 flex items-center gap-2">
-                <span>ℹ️</span>
-                <span>선택된 학생의 이전 피드백 기록이 없습니다. (첫 피드백 작성)</span>
-              </div>
-            )}
-
-            {copySuccessToast && (
-              <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-xs font-black text-emerald-800 flex items-center gap-2 animate-fade-in">
-                <span>✅</span>
-                <span>직전 피드백의 출석 상태, 6대 영역 점수 및 시험 점수를 성공적으로 불러왔습니다!</span>
-              </div>
-            )}
 
             {/* 5. 출결 상태 선택 */}
             <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-200/80 space-y-3">

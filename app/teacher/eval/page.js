@@ -26,10 +26,6 @@ export default function TeacherEvalPage() {
   const [loadingPrevEval, setLoadingPrevEval] = useState(false);
   const [copySuccessToast, setCopySuccessToast] = useState(false);
   const [actionToast, setActionToast] = useState('');
-
-  // 📌 이전 미완료 숙제 목록 상태: [{ evalId, evalDate, formattedDate, name, range, status }]
-  const [pastIncompleteHomework, setPastIncompleteHomework] = useState([]);
-
   // 평가 기본 정보
   const [evalDate, setEvalDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendanceStatus, setAttendanceStatus] = useState('ATTEND');
@@ -58,10 +54,7 @@ export default function TeacherEvalPage() {
   const [newCustomName, setNewCustomName] = useState('');
   const [showAddCustomInput, setShowAddCustomInput] = useState(false);
 
-  // 📚 1. 지난 수업 숙제 검사 상태: [{ name, range, status }]
-  const [prevHomeworkChecks, setPrevHomeworkChecks] = useState([]);
-
-  // 📖 2. 오늘 수업 진도 및 새 숙제 부여 상태
+  // 📖 오늘 수업 진도 및 새 숙제 부여 상태
   const [todayLessonProgress, setTodayLessonProgress] = useState('');
   const [todayHomeworkBooks, setTodayHomeworkBooks] = useState([
     { id: 'book_1', name: '개념서', range: '', status: '미체크' },
@@ -128,16 +121,8 @@ export default function TeacherEvalPage() {
 
       if (prev) {
         const parsedPrev = parseEvaluationRecord(prev);
-        // 직전 수업에 내준 교재 숙제 범위들을 가져와 검사 상태 초기 세팅
+        // 오늘 숙제 교재 목록도 직전 수업에서 사용한 교재명들로 자동 세팅 (범위는 빈칸)
         if (parsedPrev.homeworkBooks && parsedPrev.homeworkBooks.length > 0) {
-          setPrevHomeworkChecks(
-            parsedPrev.homeworkBooks.map((b) => ({
-              name: b.name,
-              range: b.range,
-              status: b.status || '미체크',
-            }))
-          );
-          // 오늘 숙제 교재 목록도 직전 수업에서 사용한 교재명들로 자동 세팅 (범위는 빈칸)
           setTodayHomeworkBooks(
             parsedPrev.homeworkBooks.map((b, idx) => ({
               id: `book_${Date.now()}_${idx}`,
@@ -146,40 +131,14 @@ export default function TeacherEvalPage() {
               status: '미체크',
             }))
           );
-        } else {
-          setPrevHomeworkChecks([]);
         }
       } else {
-        setPrevHomeworkChecks([]);
         setTodayHomeworkBooks([
           { id: 'book_1', name: '개념서', range: '', status: '미체크' },
           { id: 'book_2', name: '이제풀자', range: '', status: '미체크' },
           { id: 'book_3', name: '프린트 / 추가숙제', range: '', status: '미체크' },
         ]);
       }
-
-      // 📌 과거 모든 수업 중 '완료'되지 않은 숙제들 (직전 수업 제외한 그 이전 과거 수업들)
-      const olderIncompletes = [];
-      evals
-        .filter((e) => e.eval_date < currentDate && (!prev || e.id !== prev.id))
-        .forEach((e) => {
-          const parsed = parseEvaluationRecord(e);
-          (parsed.homeworkBooks || []).forEach((b) => {
-            if (b.name && b.range && b.status !== '완료') {
-              const dateParts = (e.eval_date || '').split('-');
-              const formattedDate = dateParts.length >= 3 ? `${parseInt(dateParts[1])}/${parseInt(dateParts[2])}` : e.eval_date;
-              olderIncompletes.push({
-                evalId: e.id,
-                evalDate: e.eval_date,
-                formattedDate,
-                name: b.name,
-                range: b.range,
-                status: b.status || '미체크',
-              });
-            }
-          });
-        });
-      setPastIncompleteHomework(olderIncompletes);
     } catch (err) {
       console.error('fetchStudentEvaluationHistory error:', err);
     } finally {
@@ -212,24 +171,6 @@ export default function TeacherEvalPage() {
         prev.map((item) =>
           item.id === evalId ? { ...item, teacher_comment: updatedComment } : item
         )
-      );
-
-      // 직전 평가 폼에도 반영
-      if (prevEval && prevEval.id === evalId) {
-        setPrevHomeworkChecks((prev) =>
-          prev.map((b) => (b.name === bookName ? { ...b, status: newStatus } : b))
-        );
-      }
-
-      // 과거 미완료 목록 반영
-      setPastIncompleteHomework((prev) =>
-        prev
-          .map((item) =>
-            item.evalId === evalId && item.name === bookName
-              ? { ...item, status: newStatus }
-              : item
-          )
-          .filter((item) => item.status !== '완료')
       );
 
       showToast(`✅ [${bookName}] 과제 상태가 '${newStatus}'(으)로 즉시 변경되었습니다.`);
@@ -270,6 +211,26 @@ export default function TeacherEvalPage() {
     } catch (err) {
       console.error('handleUpdateEvaluation error:', err);
       alert('수정 내용 저장 중 오류가 발생했습니다.');
+    }
+  };
+
+  // 🗑️ 3) 과제표에서 특정 회차 피드백 및 진도/과제 기록 삭제
+  const handleDeleteEvaluation = async (evalId, formattedDate) => {
+    try {
+      const { error } = await supabase
+        .from('daily_evaluations')
+        .delete()
+        .eq('id', evalId);
+
+      if (error) throw error;
+
+      // 로컬 상태 즉시 갱신
+      setStudentEvals((prev) => prev.filter((item) => item.id !== evalId));
+      fetchStudentEvaluationHistory(selectedStudentId, evalDate);
+      showToast(`🗑️ ${formattedDate} 피드백 및 과제 기록이 성공적으로 삭제되었습니다.`);
+    } catch (err) {
+      console.error('handleDeleteEvaluation error:', err);
+      alert('기록 삭제 중 오류가 발생했습니다.');
     }
   };
 
@@ -485,45 +446,7 @@ export default function TeacherEvalPage() {
     const studentName = selectedStudent ? selectedStudent.name : '해당';
 
     try {
-      // 1. 만약 지난 수업 숙제 검사 상태가 변경되었다면 직전 평가 레코드의 코멘트/숙제 상태 업데이트
-      if (prevEval && prevHomeworkChecks.length > 0) {
-        const prevParsed = parseEvaluationRecord(prevEval);
-        const updatedPrevComment = formatTeacherCommentWithTestScoreAndItems({
-          comment: prevParsed.comment,
-          testScore: prevParsed.testScore,
-          testType: prevParsed.testType,
-          customItems: prevParsed.customItems,
-          lessonProgress: prevParsed.lessonProgress,
-          homeworkBooks: prevHomeworkChecks,
-        });
-
-        await supabase
-          .from('daily_evaluations')
-          .update({ teacher_comment: updatedPrevComment })
-          .eq('id', prevEval.id);
-      }
-
-      // 1-2. 과거 미완료 숙제 중 상태가 변경된 것들 일괄 DB 업데이트
-      if (pastIncompleteHomework.length > 0) {
-        for (const pastHw of pastIncompleteHomework) {
-          const targetEval = studentEvals.find((e) => e.id === pastHw.evalId);
-          if (targetEval) {
-            const updatedComment = updateBookStatusInComment(
-              targetEval.teacher_comment,
-              pastHw.name,
-              pastHw.status
-            );
-            if (updatedComment !== targetEval.teacher_comment) {
-              await supabase
-                .from('daily_evaluations')
-                .update({ teacher_comment: updatedComment })
-                .eq('id', pastHw.evalId);
-            }
-          }
-        }
-      }
-
-      // 2. 오늘 평가 레코드 생성/수정
+      // 1. 오늘 평가 레코드 생성/수정
       const { data: existingEval, error: checkError } = await supabase
         .from('daily_evaluations')
         .select('id')
@@ -713,135 +636,12 @@ export default function TeacherEvalPage() {
               </div>
             </div>
 
-            {/* 📚 2. 지난 수업 과제 검사 섹션 (직전 수업 기준) */}
-            {selectedStudentId && (
-              <div className="bg-emerald-50/70 p-4 sm:p-5 rounded-2xl border border-emerald-200/80 space-y-3">
-                <div className="flex justify-between items-center border-b border-emerald-200/70 pb-2">
-                  <span className="text-xs font-black text-emerald-950 flex items-center gap-1.5">
-                    <span>📚</span>
-                    <span>1. 지난 수업 숙제 검사 ({prevEval ? `직전 ${prevEval.eval_date} 부여분` : '이전 기록 없음'})</span>
-                  </span>
-                  {prevEval && (
-                    <span className="text-[10.5px] font-bold text-emerald-700 bg-emerald-100/90 px-2 py-0.5 rounded-full">
-                      직전 수업일: {prevEval.eval_date}
-                    </span>
-                  )}
-                </div>
-
-                {prevHomeworkChecks.length === 0 ? (
-                  <p className="text-xs text-emerald-800/80 italic py-1">
-                    직전 수업에 등록된 교재별 숙제 범위가 없습니다. (오늘 수업에서 새 과제를 부여하세요)
-                  </p>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 pt-1">
-                    {prevHomeworkChecks.map((b) => (
-                      <div
-                        key={b.name}
-                        className="bg-white p-3 rounded-xl border border-emerald-200 shadow-2xs space-y-1.5"
-                      >
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="font-extrabold text-emerald-950 truncate">{b.name}</span>
-                          <span className="text-[11px] font-bold text-slate-500 truncate max-w-[100px]">{b.range}</span>
-                        </div>
-                        <select
-                          value={b.status || '미체크'}
-                          onChange={(e) => handlePrevCheckStatusChange(b.name, e.target.value)}
-                          className={`w-full p-1.5 rounded-lg text-xs font-black border transition ${
-                            b.status === '완료'
-                              ? 'bg-emerald-600 text-white border-emerald-700'
-                              : b.status === '일부완료'
-                              ? 'bg-sky-500 text-white border-sky-600'
-                              : b.status === '미완료'
-                              ? 'bg-rose-600 text-white border-rose-700'
-                              : b.status === '질문남음'
-                              ? 'bg-amber-500 text-white border-amber-600'
-                              : 'bg-slate-50 text-slate-700 border-slate-300'
-                          }`}
-                        >
-                          {HOMEWORK_STATUS_OPTIONS.map((opt) => (
-                            <option key={opt.value} value={opt.value} className="bg-white text-slate-900 font-bold">
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* 📌 2-2. 이전 수업 미완료 숙제 재검사 섹션 (과거 밀린 숙제 자동 조회) */}
-            {selectedStudentId && pastIncompleteHomework.length > 0 && (
-              <div className="bg-amber-50/80 p-4 sm:p-5 rounded-2xl border border-amber-200/90 space-y-3 animate-fade-in">
-                <div className="flex justify-between items-center border-b border-amber-200 pb-2">
-                  <span className="text-xs font-black text-amber-950 flex items-center gap-1.5">
-                    <span>📌</span>
-                    <span>이전 미완료 숙제 재검사 ({pastIncompleteHomework.length}건)</span>
-                  </span>
-                  <span className="text-[10.5px] font-bold text-amber-800 bg-amber-100/90 px-2 py-0.5 rounded-full">
-                    과거 밀린 숙제 완료 처리
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 pt-1">
-                  {pastIncompleteHomework.map((item, idx) => (
-                    <div
-                      key={`${item.evalId}_${item.name}_${idx}`}
-                      className="bg-white p-3 rounded-xl border border-amber-200 shadow-2xs space-y-1.5"
-                    >
-                      <div className="flex justify-between items-center text-xs">
-                        <div className="flex items-center gap-1 truncate">
-                          <span className="text-[10px] font-black bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded">
-                            {item.formattedDate}
-                          </span>
-                          <span className="font-extrabold text-slate-900 truncate">{item.name}</span>
-                        </div>
-                        <span className="text-[11px] font-bold text-slate-500 truncate max-w-[90px]">{item.range}</span>
-                      </div>
-                      <select
-                        value={item.status || '미체크'}
-                        onChange={(e) => {
-                          const newStatus = e.target.value;
-                          setPastIncompleteHomework((prev) =>
-                            prev.map((it) =>
-                              it.evalId === item.evalId && it.name === item.name
-                                ? { ...it, status: newStatus }
-                                : it
-                            )
-                          );
-                          handleInlineHomeworkStatusChange(item.evalId, item.name, newStatus);
-                        }}
-                        className={`w-full p-1.5 rounded-lg text-xs font-black border transition ${
-                          item.status === '완료'
-                            ? 'bg-emerald-600 text-white border-emerald-700'
-                            : item.status === '일부완료'
-                            ? 'bg-sky-500 text-white border-sky-600'
-                            : item.status === '미완료'
-                            ? 'bg-rose-600 text-white border-rose-700'
-                            : item.status === '질문남음'
-                            ? 'bg-amber-500 text-white border-amber-600'
-                            : 'bg-slate-50 text-slate-700 border-slate-300'
-                        }`}
-                      >
-                        {HOMEWORK_STATUS_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value} className="bg-white text-slate-900 font-bold">
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* 📖 3. 오늘 수업 진도 및 새 숙제 부여 섹션 */}
+            {/* 📖 오늘 수업 진도 및 새 숙제 부여 섹션 */}
             <div className="bg-indigo-50/70 p-4 sm:p-5 rounded-2xl border border-indigo-200/80 space-y-4">
               <div className="flex justify-between items-center border-b border-indigo-200/70 pb-2">
                 <span className="text-xs font-black text-indigo-950 flex items-center gap-1.5">
                   <span>📖</span>
-                  <span>2. 오늘 수업 진도 및 새 숙제 부여</span>
+                  <span>오늘 수업 진도 및 새 과제 부여</span>
                 </span>
                 <button
                   type="button"
@@ -1319,7 +1119,7 @@ export default function TeacherEvalPage() {
             </button>
           </form>
 
-          {/* 📊 9. 학생 누적 과제표 미리보기 (엑셀 과제표 테이블 - 실시간 수정 지원) */}
+          {/* 📊 학생 누적 과제표 (실시간 수정 및 삭제 지원) */}
           {selectedStudentId && studentEvals.length > 0 && (
             <div className="pt-6 border-t border-slate-200">
               <StudentHomeworkTable
@@ -1328,6 +1128,7 @@ export default function TeacherEvalPage() {
                 isEditable={true}
                 onStatusChange={handleInlineHomeworkStatusChange}
                 onUpdateEvaluation={handleUpdateEvaluation}
+                onDeleteEvaluation={handleDeleteEvaluation}
               />
             </div>
           )}

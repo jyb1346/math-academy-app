@@ -10,6 +10,7 @@ import { parseEvaluationRecord, HOMEWORK_STATUS_OPTIONS } from '@/lib/evalUtils'
  * @param {boolean} isEditable - 선생님 수정 모드 활성화 여부
  * @param {Function} onStatusChange - (evalId, bookName, newStatus) => Promise<void>
  * @param {Function} onUpdateEvaluation - (evalId, updatedProgress, updatedBooks) => Promise<void>
+ * @param {Function} onDeleteEvaluation - (evalId, formattedDate) => Promise<void>
  */
 export default function StudentHomeworkTable({
   studentName = '학생',
@@ -17,6 +18,7 @@ export default function StudentHomeworkTable({
   isEditable = false,
   onStatusChange,
   onUpdateEvaluation,
+  onDeleteEvaluation,
 }) {
   // 모달 수정 상태: { isOpen, evalId, rawDate, formattedDate, lessonProgress, books: [{ id, name, range, status }] }
   const [editingRow, setEditingRow] = useState(null);
@@ -169,6 +171,16 @@ export default function StudentHomeworkTable({
     }
   };
 
+  // 행 삭제
+  const handleDeleteRow = async (row) => {
+    if (!confirm(`[${studentName}] 학생의 ${row.formattedDate} (${row.rawDate}) 피드백 및 과제 기록을 정말 삭제하시겠습니까?\n\n⚠️ 삭제 후에는 복구할 수 없습니다.`)) {
+      return;
+    }
+    if (onDeleteEvaluation) {
+      await onDeleteEvaluation(row.id, row.formattedDate);
+    }
+  };
+
   if (tableRows.length === 0) {
     return (
       <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 text-slate-400 text-xs font-bold">
@@ -180,7 +192,7 @@ export default function StudentHomeworkTable({
   return (
     <div className="w-full space-y-3">
       {/* 표 헤더 */}
-      <div className="flex justify-between items-end border-b-2 border-slate-800 pb-1.5">
+      <div className="flex justify-between items-end border-b-2 border-slate-800 pb-1.5 flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight flex items-center gap-1.5">
             <span>📑</span>
@@ -195,7 +207,7 @@ export default function StudentHomeworkTable({
         <div className="flex items-center gap-2">
           {isEditable && (
             <span className="text-[11px] font-bold text-slate-400 hidden sm:inline">
-              (표에서 상태를 바로 변경하거나 [✏️] 버튼으로 진도/범위를 수정할 수 있습니다)
+              (표에서 상태를 바로 변경하거나 [수정/삭제] 버튼을 이용할 수 있습니다)
             </span>
           )}
           <span className="text-[11px] font-bold text-slate-500">
@@ -221,7 +233,7 @@ export default function StudentHomeworkTable({
                 </th>
               ))}
               {isEditable && (
-                <th className="py-2.5 px-2 w-14 whitespace-nowrap bg-slate-200/70 text-slate-700">
+                <th className="py-2.5 px-3 min-w-[130px] whitespace-nowrap bg-slate-200/70 text-slate-700">
                   관리
                 </th>
               )}
@@ -302,18 +314,30 @@ export default function StudentHomeworkTable({
                   );
                 })}
 
-                {/* 4. 수정 액션 버튼 (선생님 모드) */}
+                {/* 4. 수정 및 삭제 액션 버튼 (선생님 모드 - 가로 정렬) */}
                 {isEditable && (
-                  <td className="py-3 px-1 text-center">
-                    <button
-                      type="button"
-                      onClick={() => handleOpenEditModal(row)}
-                      className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-black px-2 py-1 rounded-lg transition shadow-2xs flex items-center gap-0.5 mx-auto"
-                      title="이 날짜의 진도 및 교재별 과제 범위를 수정합니다"
-                    >
-                      <span>✏️</span>
-                      <span>수정</span>
-                    </button>
+                  <td className="py-3 px-2 text-center whitespace-nowrap">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditModal(row)}
+                        className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[11px] font-bold px-2 py-1 rounded-lg transition shadow-2xs flex items-center gap-1 shrink-0"
+                        title="이 날짜의 진도 및 교재별 과제 범위를 수정합니다"
+                      >
+                        <span>✏️</span>
+                        <span>수정</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteRow(row)}
+                        className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-[11px] font-bold px-2 py-1 rounded-lg transition shadow-2xs flex items-center gap-1 shrink-0"
+                        title="이 날짜의 피드백 및 진도/과제 기록을 삭제합니다"
+                      >
+                        <span>🗑️</span>
+                        <span>삭제</span>
+                      </button>
+                    </div>
                   </td>
                 )}
               </tr>

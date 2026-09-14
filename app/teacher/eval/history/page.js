@@ -6,6 +6,112 @@ import { useRouter } from 'next/navigation';
 import EvaluationBarChart from '@/components/EvaluationBarChart';
 import { parseEvaluationRecord } from '@/lib/evalUtils';
 
+function HexagonRadarChart({ scores, twoWeekAvgScores }) {
+  const { concept = 8, calc = 8, app = 8, attitude = 8, homework = 8, perseverance = 8 } = scores;
+  const labels = ['개념이해', '연산정확', '응용해결', '수업집중', '과제완성', '오답끈기'];
+  const values = [concept, calc, app, attitude, homework, perseverance];
+
+  const center = 100;
+  const radius = 65;
+
+  const getCoordinates = (valArray, maxVal = 10) => {
+    return valArray.map((val, i) => {
+      const angle = (Math.PI / 3) * i - Math.PI / 2;
+      const r = (val / maxVal) * radius;
+      const x = center + r * Math.cos(angle);
+      const y = center + r * Math.sin(angle);
+      return `${x},${y}`;
+    }).join(' ');
+  };
+
+  const gridLevels = [0.2, 0.4, 0.6, 0.8, 1.0];
+
+  return (
+    <div className="flex flex-col items-center justify-center p-3 bg-slate-50 rounded-2xl border border-slate-100 space-y-2">
+      <svg width="220" height="220" viewBox="0 0 200 200" className="overflow-visible">
+        {gridLevels.map((level, idx) => (
+          <polygon
+            key={idx}
+            points={getCoordinates([10, 10, 10, 10, 10, 10].map(v => v * level))}
+            fill="none"
+            stroke="#e2e8f0"
+            strokeWidth="1"
+            strokeDasharray={idx === 4 ? "none" : "2 2"}
+          />
+        ))}
+
+        {labels.map((_, i) => {
+          const angle = (Math.PI / 3) * i - Math.PI / 2;
+          const x2 = center + radius * Math.cos(angle);
+          const y2 = center + radius * Math.sin(angle);
+          return <line key={i} x1={center} y1={center} x2={x2} y2={y2} stroke="#cbd5e1" strokeWidth="1" />;
+        })}
+
+        {twoWeekAvgScores && (
+          <polygon
+            points={getCoordinates([
+              twoWeekAvgScores.concept,
+              twoWeekAvgScores.calc,
+              twoWeekAvgScores.app,
+              twoWeekAvgScores.attitude,
+              twoWeekAvgScores.homework,
+              twoWeekAvgScores.perseverance,
+            ])}
+            fill="rgba(249, 115, 22, 0.15)"
+            stroke="#f97316"
+            strokeWidth="2"
+            strokeDasharray="4 2"
+          />
+        )}
+
+        <polygon
+          points={getCoordinates(values)}
+          fill="rgba(37, 99, 235, 0.3)"
+          stroke="#2563eb"
+          strokeWidth="2.5"
+        />
+
+        {values.map((val, i) => {
+          const angle = (Math.PI / 3) * i - Math.PI / 2;
+          const r = (val / 10) * radius;
+          const cx = center + r * Math.cos(angle);
+          const cy = center + r * Math.sin(angle);
+          return <circle key={i} cx={cx} cy={cy} r="3.5" fill="#2563eb" />;
+        })}
+
+        {labels.map((label, i) => {
+          const angle = (Math.PI / 3) * i - Math.PI / 2;
+          const labelRadius = radius + 18;
+          const lx = center + labelRadius * Math.cos(angle);
+          const ly = center + labelRadius * Math.sin(angle);
+          return (
+            <text
+              key={i} x={lx} y={ly}
+              textAnchor="middle" dominantBaseline="middle"
+              className="text-[10px] font-black fill-slate-700"
+            >
+              {label} ({values[i]})
+            </text>
+          );
+        })}
+      </svg>
+
+      <div className="flex items-center justify-center gap-4 text-[11px] font-bold pt-1">
+        <div className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded-full bg-blue-600 inline-block"></span>
+          <span className="text-blue-900">당일 성취도</span>
+        </div>
+        {twoWeekAvgScores && (
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-full bg-orange-500 inline-block border border-dashed"></span>
+            <span className="text-orange-900">본인 최근 2주 평균</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function EvalHistoryPage() {
   const [user, setUser] = useState(null);
   const [evaluations, setEvaluations] = useState([]);
@@ -57,6 +163,7 @@ export default function EvalHistoryPage() {
       const { data: evalData, error } = await supabase
         .from('daily_evaluations')
         .select('*, users!daily_evaluations_student_id_fkey(name, email, parent_phone)')
+        .select('*, users!daily_evaluations_student_id_fkey(name, email)')
         .eq('teacher_id', currentUser.id)
         .order('eval_date', { ascending: false });
 
@@ -131,6 +238,44 @@ export default function EvalHistoryPage() {
     } catch (err) {
       alert(`삭제 실패: ${err.message}`);
     }
+  };
+
+  const getTwoWeekAvgScores = (studentId, currentEvalDate) => {
+    if (!currentEvalDate) return null;
+
+    const targetDate = new Date(currentEvalDate);
+    const twoWeeksAgo = new Date(targetDate);
+    twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+
+    const studentTwoWeekEvals = evaluations.filter((e) => {
+      if (e.student_id !== studentId) return false;
+      const evalDateObj = new Date(e.eval_date);
+      return evalDateObj >= twoWeeksAgo && evalDateObj <= targetDate;
+    });
+
+    if (studentTwoWeekEvals.length === 0) return null;
+
+    const total = studentTwoWeekEvals.reduce(
+      (acc, curr) => ({
+        concept: acc.concept + (curr.concept_score || 0),
+        calc: acc.calc + (curr.calc_score || 0),
+        app: acc.app + (curr.app_score || 0),
+        attitude: acc.attitude + (curr.attitude_score || 0),
+        homework: acc.homework + (curr.homework_score || 0),
+        perseverance: acc.perseverance + (curr.perseverance_score || 0),
+      }),
+      { concept: 0, calc: 0, app: 0, attitude: 0, homework: 0, perseverance: 0 }
+    );
+
+    const count = studentTwoWeekEvals.length;
+    return {
+      concept: Number((total.concept / count).toFixed(1)),
+      calc: Number((total.calc / count).toFixed(1)),
+      app: Number((total.app / count).toFixed(1)),
+      attitude: Number((total.attitude / count).toFixed(1)),
+      homework: Number((total.homework / count).toFixed(1)),
+      perseverance: Number((total.perseverance / count).toFixed(1)),
+    };
   };
 
   const renderAttendanceBadge = (status, latenessMins) => {

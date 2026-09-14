@@ -10,6 +10,7 @@ import {
   formatTeacherCommentWithTestScoreAndItems,
   parseEvaluationRecord,
   extractRecentBookNamesFromEvaluations,
+  extractAllUniqueBookNamesFromEvaluations,
   updateBookStatusInComment,
   updateEvaluationProgressAndBooksInComment,
 } from '@/lib/evalUtils';
@@ -671,6 +672,7 @@ export default function TeacherEvalPage() {
 
   const prevParsed = prevEval ? parseEvaluationRecord(prevEval) : null;
   const currentStudentName = students.find((s) => s.id === selectedStudentId)?.name || '학생';
+  const allStudentUsedBooks = extractAllUniqueBookNamesFromEvaluations(studentEvals);
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
@@ -807,7 +809,7 @@ export default function TeacherEvalPage() {
               )}
 
               {/* 교재별 과제 범위 입력 그리드 */}
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 <div className="flex justify-between items-center">
                   <span className="block text-xs font-bold text-indigo-950">
                     📚 교재별 새 숙제 범위:
@@ -816,6 +818,43 @@ export default function TeacherEvalPage() {
                     교재명을 직접 클릭하여 수정할 수 있습니다.
                   </span>
                 </div>
+
+                {/* 🏷️ 이전에 사용했던 교재 빠른 추가 칩 */}
+                {allStudentUsedBooks.length > 0 && (
+                  <div className="bg-white/90 p-2.5 rounded-xl border border-indigo-200/70 flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] font-extrabold text-indigo-950 shrink-0 flex items-center gap-1">
+                      <span>🏷️</span>
+                      <span>기존 사용 교재 빠른 추가:</span>
+                    </span>
+                    {allStudentUsedBooks.map((bookName) => {
+                      const isAlreadyAdded = todayHomeworkBooks.some((b) => b.name === bookName);
+                      return (
+                        <button
+                          key={bookName}
+                          type="button"
+                          onClick={() => {
+                            if (isAlreadyAdded) return;
+                            const updated = [
+                              ...todayHomeworkBooks,
+                              { id: `book_${Date.now()}`, name: bookName, range: '', status: '미체크' },
+                            ];
+                            setTodayHomeworkBooks(updated);
+                            saveRecentBooksToCache(updated);
+                          }}
+                          className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border transition flex items-center gap-1 shadow-2xs ${
+                            isAlreadyAdded
+                              ? 'bg-indigo-100/70 text-indigo-800 border-indigo-200 cursor-default opacity-60'
+                              : 'bg-white text-indigo-950 border-indigo-300 hover:bg-indigo-600 hover:text-white hover:border-indigo-600 active:scale-95'
+                          }`}
+                          title={isAlreadyAdded ? '이미 목록에 추가된 교재입니다' : `클릭하여 [${bookName}] 교재를 오늘 과제 입력칸에 추가`}
+                        >
+                          <span>{isAlreadyAdded ? '✓' : '+'}</span>
+                          <span>{bookName}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
                   {todayHomeworkBooks.map((b) => (
                     <div key={b.id} className="bg-white p-3 rounded-2xl border border-indigo-200/90 shadow-2xs space-y-2">
@@ -899,6 +938,18 @@ export default function TeacherEvalPage() {
                 </div>
 
                 {/* 직전 총평 코멘트 & 직전 시험 성적 요약 */}
+                <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/60 text-xs space-y-1">
+                  {prevParsed.testScore && (
+                    <div className="text-indigo-300 font-extrabold flex items-center gap-1 pb-0.5">
+                      <span>📝 직전 {prevParsed.testType}:</span>
+                      <span className="text-amber-300 font-black">{prevParsed.testScore}</span>
+                    </div>
+                  )}
+                  <p className="text-slate-300 font-medium leading-relaxed">
+                    <span className="text-slate-400 font-bold mr-1">💬 직전 코멘트:</span>
+                    {prevParsed.comment || '작성된 코멘트가 없었습니다.'}
+                  </p>
+                </div>
                 {(prevParsed.testScore || prevParsed.comment) && (
                   <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/60 text-xs space-y-1">
                     {prevParsed.testScore && (

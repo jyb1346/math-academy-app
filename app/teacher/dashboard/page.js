@@ -120,18 +120,32 @@ export default function TeacherDashboard() {
 
       const { data: qnaData } = await supabase
         .from('qna')
-        .select('id, status')
+        .select('id, status, replies')
         .eq('teacher_id', teacherId);
 
-      const pending = (qnaData || []).filter((q) => q.status === 'PENDING').length;
-      const inProgress = (qnaData || []).filter((q) => q.status === 'ANSWERED').length;
-      const resolved = (qnaData || []).filter((q) => q.status === 'RESOLVED').length;
+      const parsedQna = (qnaData || []).map((q) => {
+        let replies = [];
+        if (Array.isArray(q.replies)) replies = q.replies;
+        else if (typeof q.replies === 'string') {
+          try { replies = JSON.parse(q.replies) || []; } catch { replies = []; }
+        }
+        const lastReply = replies.length > 0 ? replies[replies.length - 1] : null;
+        let computedStatus = q.status;
+        if (q.status === 'ANSWERED' && lastReply?.type === 'RESOLVED') {
+          computedStatus = 'RESOLVED';
+        }
+        return { ...q, computedStatus };
+      });
+
+      const pending = parsedQna.filter((q) => q.computedStatus === 'PENDING').length;
+      const inProgress = parsedQna.filter((q) => q.computedStatus === 'ANSWERED').length;
+      const resolved = parsedQna.filter((q) => q.computedStatus === 'RESOLVED').length;
 
       setQnaStats({
         pending,
         inProgress,
         resolved,
-        total: (qnaData || []).length,
+        total: parsedQna.length,
       });
 
     } catch (err) {

@@ -30,6 +30,9 @@ export default function QnaPage() {
   // 💡 완전히 이해했어요 (완료 처리 중 상태)
   const [resolvingId, setResolvingId] = useState(null);
 
+  // ✍️ 학생: 최초 질문 수정 상태 (qnaId -> { title, question, isOpen, submitting })
+  const [editQuestionState, setEditQuestionState] = useState({});
+
   const router = useRouter();
 
   useEffect(() => {
@@ -187,7 +190,7 @@ export default function QnaPage() {
     }
   };
 
-  // 학생: 질문 삭제 (대기 중인 경우에만)
+  // 학생: 질문 삭제 (답변 등록 전에만)
   const handleDeleteQuestion = async (id, qTitle) => {
     if (!confirm(`[${qTitle}] 질문을 삭제하시겠습니까?`)) return;
     try {
@@ -197,6 +200,60 @@ export default function QnaPage() {
       alert('삭제되었습니다.');
     } catch (err) {
       alert('삭제 실패: ' + err.message);
+    }
+  };
+
+  // 학생: 질문 수정 시작/취소/저장 핸들러
+  const handleStartEditQuestion = (item) => {
+    setEditQuestionState((prev) => ({
+      ...prev,
+      [item.id]: {
+        title: item.title || '',
+        question: item.question || '',
+        isOpen: true,
+        submitting: false,
+      },
+    }));
+  };
+
+  const handleCancelEditQuestion = (id) => {
+    setEditQuestionState((prev) => ({
+      ...prev,
+      [id]: { isOpen: false, submitting: false },
+    }));
+  };
+
+  const handleSaveEditQuestion = async (id) => {
+    const st = editQuestionState[id];
+    if (!st?.title?.trim()) return alert('질문 제목을 입력해 주세요.');
+    if (!st?.question?.trim()) return alert('질문 내용을 입력해 주세요.');
+
+    setEditQuestionState((prev) => ({
+      ...prev,
+      [id]: { ...(prev[id] || {}), submitting: true },
+    }));
+
+    try {
+      const { error } = await supabase
+        .from('qna')
+        .update({
+          title: st.title.trim(),
+          question: st.question.trim(),
+        })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      alert('질문이 성공적으로 수정되었습니다.');
+      handleCancelEditQuestion(id);
+      fetchQuestions(user);
+    } catch (err) {
+      console.error('Edit question error:', err);
+      alert('질문 수정 실패: ' + err.message);
+      setEditQuestionState((prev) => ({
+        ...prev,
+        [id]: { ...(prev[id] || {}), submitting: false },
+      }));
     }
   };
 
@@ -372,9 +429,26 @@ export default function QnaPage() {
 
     setResolvingId(qnaItem.id);
     try {
+      const existingReplies = parseReplies(qnaItem.replies);
+      const resolveEvent = {
+        id: `resolve_${Date.now()}`,
+        type: 'RESOLVED',
+        sender_id: user.id,
+        sender_name: user.name || '학생',
+        sender_role: 'STUDENT',
+        content: '💡 학생이 풀이를 완전히 이해하여 해결 완료되었습니다.',
+        created_at: new Date().toISOString(),
+      };
+
+      const updatedReplies = [...existingReplies, resolveEvent];
+
+      // DB 테이블의 qna_status_check(PENDING/ANSWERED) 제약조건을 준수하며 replies에 해결 이벤트를 기록
       const { error } = await supabase
         .from('qna')
-        .update({ status: 'RESOLVED' })
+        .update({
+          status: 'ANSWERED',
+          replies: updatedReplies,
+        })
         .eq('id', qnaItem.id);
 
       if (error) throw error;
@@ -445,16 +519,34 @@ export default function QnaPage() {
     }
   };
 
+  // 3단계 라이프사이클 계산 (PENDING: 답변 대기 / ANSWERED: 학생 확인 중 / RESOLVED: 이해 완료)
+  const getLifecycleStatus = (item) => {
+    if (item.status === 'PENDING') return 'PENDING';
+    const replies = parseReplies(item.replies);
+    if (replies.length > 0) {
+      const lastReply = replies[replies.length - 1];
+      if (lastReply?.type === 'RESOLVED') {
+        return 'RESOLVED';
+      }
+    }
+    return 'ANSWERED';
+  };
+
   const isTeacher = user?.role === 'TEACHER' || user?.role === 'HEAD_TEACHER';
 
-  const pendingCount = questions.filter((q) => q.status === 'PENDING').length;
-  const answeredCount = questions.filter((q) => q.status === 'ANSWERED').length;
-  const resolvedCount = questions.filter((q) => q.status === 'RESOLVED').length;
+  const questionsWithStatus = questions.map((q) => ({
+    ...q,
+    computedStatus: getLifecycleStatus(q),
+  }));
 
-  const filteredQuestions = questions.filter((q) => {
-    if (filterStatus === 'PENDING') return q.status === 'PENDING';
-    if (filterStatus === 'ANSWERED') return q.status === 'ANSWERED';
-    if (filterStatus === 'RESOLVED') return q.status === 'RESOLVED';
+  const pendingCount = questionsWithStatus.filter((q) => q.computedStatus === 'PENDING').length;
+  const answeredCount = questionsWithStatus.filter((q) => q.computedStatus === 'ANSWERED').length;
+  const resolvedCount = questionsWithStatus.filter((q) => q.computedStatus === 'RESOLVED').length;
+
+  const filteredQuestions = questionsWithStatus.filter((q) => {
+    if (filterStatus === 'PENDING') return q.computedStatus === 'PENDING';
+    if (filterStatus === 'ANSWERED') return q.computedStatus === 'ANSWERED';
+    if (filterStatus === 'RESOLVED') return q.computedStatus === 'RESOLVED';
     return true;
   });
 
@@ -649,6 +741,7 @@ export default function QnaPage() {
               const questionImages = parseImages(item.question_image_url);
               const answerImages = parseImages(item.answer_image_url);
               const repliesList = parseReplies(item.replies);
+              const normalReplies = repliesList.filter((r) => r.type !== 'RESOLVED');
               const studentInfo = usersMap[item.student_id];
               const studentName = studentInfo?.name ? `${studentInfo.name} 학생` : '학생';
               const teacherInfo = usersMap[item.teacher_id];
@@ -658,79 +751,151 @@ export default function QnaPage() {
               const isAnswerFormOpen = isTeacher && (!item.answer || qState.isEditing);
               const currentFollowUp = followUpState[item.id] || {};
 
+              const isQuestionEditing = !isTeacher && editQuestionState[item.id]?.isOpen;
+              const curEditState = editQuestionState[item.id] || {};
+
               return (
                 <div key={item.id} className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-5">
                   
-                  {/* 상단 뱃지 & 날짜 */}
-                  <div className="flex justify-between items-start border-b border-slate-100 pb-3">
-                    <div className="space-y-1">
+                  {/* 상단 뱃지 & 날짜 & 수정/삭제 버튼 */}
+                  <div className="flex justify-between items-start gap-2 border-b border-slate-100 pb-3">
+                    <div className="space-y-1.5 min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span
-                          className={`text-[10px] font-black px-2.5 py-0.5 rounded-full border ${
-                            item.status === 'PENDING'
+                          className={`text-[10px] font-black px-2.5 py-0.5 rounded-full border shrink-0 ${
+                            item.computedStatus === 'PENDING'
                               ? 'bg-rose-50 text-rose-700 border-rose-200'
-                              : item.status === 'ANSWERED'
+                              : item.computedStatus === 'ANSWERED'
                               ? 'bg-amber-50 text-amber-800 border-amber-200'
                               : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                           }`}
                         >
-                          {item.status === 'PENDING'
-                            ? (repliesList.length > 0 ? '🚨 추가 질문 대기 중' : '🚨 답변 대기 중')
-                            : item.status === 'ANSWERED'
+                          {item.computedStatus === 'PENDING'
+                            ? (normalReplies.length > 0 ? '🚨 추가 질문 대기 중' : '🚨 답변 대기 중')
+                            : item.computedStatus === 'ANSWERED'
                             ? '💬 학생 확인 중'
                             : '💡 이해 완료'}
                         </span>
-                        <span className="text-xs font-black bg-indigo-50 text-indigo-800 border border-indigo-200 px-2.5 py-0.5 rounded-full">
+                        <span className="text-xs font-black bg-indigo-50 text-indigo-800 border border-indigo-200 px-2.5 py-0.5 rounded-full shrink-0">
                           👤 {studentName} {studentInfo?.email ? `(${studentInfo.email.split('@')[0]})` : ''}의 1:1 질문
                         </span>
-                        <span className="text-[11px] text-slate-400 font-medium">
+                        <span className="text-[11px] text-slate-400 font-medium whitespace-nowrap">
                           • {new Date(item.created_at).toLocaleString()}
                         </span>
                       </div>
-                      <h3 className="text-base font-extrabold text-slate-800 pt-1">{item.title}</h3>
+                      
+                      {!isQuestionEditing && (
+                        <h3 className="text-base font-extrabold text-slate-800 pt-0.5 break-words">{item.title}</h3>
+                      )}
                     </div>
 
-                    {!isTeacher && item.status === 'PENDING' && !item.answer && (
-                      <button
-                        onClick={() => handleDeleteQuestion(item.id, item.title)}
-                        className="text-xs text-rose-500 hover:underline font-bold px-2 py-1"
-                      >
-                        삭제
-                      </button>
-                    )}
-                  </div>
-
-                  {/* ────────────────── 1. 최초 질문 영역 ────────────────── */}
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
-                      <span>🙋‍♂️</span>
-                      <span>학생 질문 내용:</span>
-                    </div>
-                    <div className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap bg-slate-50 p-4 rounded-2xl border border-slate-100 font-medium">
-                      {item.question}
-                    </div>
-
-                    {/* 질문 다중 사진 갤러리 */}
-                    {questionImages.length > 0 && (
-                      <div className="space-y-1 pt-1">
-                        <span className="text-[11px] font-bold text-slate-500">📷 첨부된 문제 사진 ({questionImages.length}장):</span>
-                        <div className="flex flex-wrap gap-2 pt-1">
-                          {questionImages.map((imgUrl, idx) => (
-                            <div
-                              key={idx}
-                              onClick={() => setPreviewImageUrl(imgUrl)}
-                              className="relative w-24 h-24 rounded-2xl overflow-hidden border border-slate-200 cursor-pointer group shadow-xs hover:border-amber-400 transition"
+                    {/* 학생 전용: 질문 수정/삭제 버튼 (선생님 답변 등록 전에만 가능) */}
+                    {!isTeacher && !item.answer && (
+                      <div className="flex items-center gap-1.5 shrink-0 whitespace-nowrap pt-0.5 ml-2">
+                        {!isQuestionEditing ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditQuestion(item)}
+                              className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2.5 py-1 rounded-xl transition border border-slate-200 shadow-2xs whitespace-nowrap shrink-0 flex items-center gap-1 cursor-pointer"
                             >
-                              <img src={imgUrl} alt="문제 사진" className="w-full h-full object-cover group-hover:scale-105 transition" />
-                              <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] font-bold transition">
-                                확대보기 🔍
-                              </div>
-                            </div>
-                          ))}
-                        </div>
+                              <span>✏️</span>
+                              <span>수정</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteQuestion(item.id, item.title)}
+                              className="text-[11px] bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold px-2.5 py-1 rounded-xl transition border border-rose-200 shadow-2xs whitespace-nowrap shrink-0 flex items-center gap-1 cursor-pointer"
+                            >
+                              <span>🗑️</span>
+                              <span>삭제</span>
+                            </button>
+                          </>
+                        ) : null}
                       </div>
                     )}
                   </div>
+
+                  {/* ────────────────── 1. 최초 질문 영역 (또는 수정 폼) ────────────────── */}
+                  {isQuestionEditing ? (
+                    <div className="bg-amber-50/50 p-4 rounded-2xl border border-amber-200 space-y-3 animate-in fade-in">
+                      <h4 className="text-xs font-black text-amber-950 flex items-center gap-1.5">
+                        <span>✏️</span>
+                        <span>질문 내용 수정하기</span>
+                      </h4>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">질문 제목</label>
+                        <input
+                          type="text"
+                          value={curEditState.title || ''}
+                          onChange={(e) => setEditQuestionState((prev) => ({
+                            ...prev,
+                            [item.id]: { ...(prev[item.id] || {}), title: e.target.value },
+                          }))}
+                          className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">질문 내용</label>
+                        <textarea
+                          value={curEditState.question || ''}
+                          onChange={(e) => setEditQuestionState((prev) => ({
+                            ...prev,
+                            [item.id]: { ...(prev[item.id] || {}), question: e.target.value },
+                          }))}
+                          className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 h-24 focus:outline-none focus:border-amber-500 font-medium"
+                        />
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleCancelEditQuestion(item.id)}
+                          className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
+                        >
+                          취소
+                        </button>
+                        <button
+                          type="button"
+                          disabled={curEditState.submitting}
+                          onClick={() => handleSaveEditQuestion(item.id)}
+                          className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-black text-xs rounded-xl shadow-xs transition disabled:bg-slate-400"
+                        >
+                          {curEditState.submitting ? '저장 중...' : '수정 완료'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
+                        <span>🙋‍♂️</span>
+                        <span>학생 질문 내용:</span>
+                      </div>
+                      <div className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap bg-slate-50 p-4 rounded-2xl border border-slate-100 font-medium">
+                        {item.question}
+                      </div>
+
+                      {/* 질문 다중 사진 갤러리 */}
+                      {questionImages.length > 0 && (
+                        <div className="space-y-1 pt-1">
+                          <span className="text-[11px] font-bold text-slate-500">📷 첨부된 문제 사진 ({questionImages.length}장):</span>
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            {questionImages.map((imgUrl, idx) => (
+                              <div
+                                key={idx}
+                                onClick={() => setPreviewImageUrl(imgUrl)}
+                                className="relative w-24 h-24 rounded-2xl overflow-hidden border border-slate-200 cursor-pointer group shadow-xs hover:border-amber-400 transition"
+                              >
+                                <img src={imgUrl} alt="문제 사진" className="w-full h-full object-cover group-hover:scale-105 transition" />
+                                <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] font-bold transition">
+                                  확대보기 🔍
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* ────────────────── 2. 선생님 1차 답변 영역 ────────────────── */}
                   {item.answer && !qState.isEditing ? (
@@ -877,13 +1042,13 @@ export default function QnaPage() {
                   ) : null}
 
                   {/* ────────────────── 3. 대화형 연속 추가 질문/답변 스레드 타임라인 ────────────────── */}
-                  {repliesList.length > 0 && (
+                  {normalReplies.length > 0 && (
                     <div className="space-y-3 pt-2 border-t border-slate-100">
                       <span className="text-[11px] font-bold text-slate-400 block">
-                        💬 추가 질의응답 내역 ({repliesList.length}개):
+                        💬 추가 질의응답 내역 ({normalReplies.length}개):
                       </span>
 
-                      {repliesList.map((reply) => {
+                      {normalReplies.map((reply) => {
                         const isReplyStudent = reply.sender_role === 'STUDENT';
                         const replyImages = parseImages(reply.images);
 
@@ -953,7 +1118,7 @@ export default function QnaPage() {
                   {item.answer && !qState.isEditing && (
                     <div className="space-y-2 pt-1">
                       {/* 💡 학생 전용: 이해 완료 버튼 */}
-                      {!isTeacher && item.status === 'ANSWERED' && (
+                      {!isTeacher && item.computedStatus === 'ANSWERED' && (
                         <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border border-emerald-200/90 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs animate-in fade-in">
                           <div className="flex items-center gap-2.5">
                             <span className="text-2xl">💡</span>
@@ -974,7 +1139,7 @@ export default function QnaPage() {
                       )}
 
                       {/* 💡 학생 전용: 이해 완료 안내 */}
-                      {!isTeacher && item.status === 'RESOLVED' && (
+                      {!isTeacher && item.computedStatus === 'RESOLVED' && (
                         <div className="bg-emerald-50/80 border border-emerald-200/80 p-3.5 rounded-2xl flex items-center gap-2.5 text-emerald-900 shadow-2xs">
                           <span className="text-xl">🎉</span>
                           <div>
@@ -985,7 +1150,7 @@ export default function QnaPage() {
                       )}
 
                       {/* 💡 선생님 전용: 이해 완료 안내 */}
-                      {isTeacher && item.status === 'RESOLVED' && (
+                      {isTeacher && item.computedStatus === 'RESOLVED' && (
                         <div className="bg-emerald-50/80 border border-emerald-200/80 p-3.5 rounded-2xl flex items-center gap-2.5 text-emerald-900 shadow-2xs">
                           <span className="text-xl">💡</span>
                           <div>
@@ -996,7 +1161,7 @@ export default function QnaPage() {
                       )}
 
                       {/* 💡 선생님 전용: 학생 확인 중 안내 */}
-                      {isTeacher && item.status === 'ANSWERED' && (
+                      {isTeacher && item.computedStatus === 'ANSWERED' && (
                         <div className="bg-amber-50/80 border border-amber-200/80 p-3 rounded-2xl flex items-center gap-2 text-amber-900 shadow-2xs">
                           <span className="text-base">💬</span>
                           <span className="text-xs font-bold">선생님 답변 완료 (학생이 확인하고 이해 여부를 체크 중입니다)</span>
@@ -1018,7 +1183,7 @@ export default function QnaPage() {
                           }
                           className={`w-full py-3 rounded-2xl text-xs font-black flex items-center justify-center gap-1.5 transition border shadow-2xs ${
                             !isTeacher
-                              ? item.status === 'RESOLVED'
+                              ? item.computedStatus === 'RESOLVED'
                                 ? 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
                                 : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-200'
                               : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border-indigo-200'
@@ -1027,7 +1192,7 @@ export default function QnaPage() {
                           <span>💬</span>
                           <span>
                             {!isTeacher
-                              ? item.status === 'RESOLVED'
+                              ? item.computedStatus === 'RESOLVED'
                                 ? '해결된 질문에 다시 추가 질문(재질문) 남기기'
                                 : '선생님 풀이에 추가 질문(재질문) 남기기'
                               : '학생에게 추가 풀이 / 힌트 남기기'}

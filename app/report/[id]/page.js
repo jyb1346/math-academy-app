@@ -218,15 +218,17 @@ export default function StudentReportPage() {
           </div>
         )}
 
-        {/* ✍️ 5. 선생님 피드백 코멘트 */}
-        <div className="px-5 sm:px-6 py-4 bg-slate-50 border-t border-slate-100 space-y-2">
-          <h4 className="text-xs font-black text-indigo-700 uppercase tracking-wider flex items-center gap-1">
-            <span>✍️</span> 선생님 피드백 코멘트
-          </h4>
-          <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-            {parsed.comment || '오늘도 집중력 있게 성실히 학습에 임했습니다!'}
-          </p>
-        </div>
+        {/* ✍️ 5. 선생님 피드백 코멘트 (작성된 경우에만 표시) */}
+        {parsed.comment && (
+          <div className="px-5 sm:px-6 py-4 bg-slate-50 border-t border-slate-100 space-y-2 animate-fade-in">
+            <h4 className="text-xs font-black text-indigo-700 uppercase tracking-wider flex items-center gap-1">
+              <span>✍️</span> 선생님 피드백 코멘트
+            </h4>
+            <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+              {parsed.comment}
+            </p>
+          </div>
+        )}
 
         {/* 💬 6. 학부모 답장 작성 섹션 */}
         <div className="px-5 sm:px-6 py-4 bg-white border-t border-slate-100 space-y-3">

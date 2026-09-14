@@ -899,18 +899,22 @@ export default function TeacherEvalPage() {
                 </div>
 
                 {/* 직전 총평 코멘트 & 직전 시험 성적 요약 */}
-                <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/60 text-xs space-y-1">
-                  {prevParsed.testScore && (
-                    <div className="text-indigo-300 font-extrabold flex items-center gap-1 pb-0.5">
-                      <span>📝 직전 {prevParsed.testType}:</span>
-                      <span className="text-amber-300 font-black">{prevParsed.testScore}</span>
-                    </div>
-                  )}
-                  <p className="text-slate-300 font-medium leading-relaxed">
-                    <span className="text-slate-400 font-bold mr-1">💬 직전 코멘트:</span>
-                    {prevParsed.comment || '작성된 코멘트가 없었습니다.'}
-                  </p>
-                </div>
+                {(prevParsed.testScore || prevParsed.comment) && (
+                  <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/60 text-xs space-y-1">
+                    {prevParsed.testScore && (
+                      <div className="text-indigo-300 font-extrabold flex items-center gap-1 pb-0.5">
+                        <span>📝 직전 {prevParsed.testType}:</span>
+                        <span className="text-amber-300 font-black">{prevParsed.testScore}</span>
+                      </div>
+                    )}
+                    {prevParsed.comment && (
+                      <p className="text-slate-300 font-medium leading-relaxed">
+                        <span className="text-slate-400 font-bold mr-1">💬 직전 코멘트:</span>
+                        {prevParsed.comment}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs font-bold text-slate-500 flex items-center gap-2">

@@ -346,12 +346,14 @@ export default function EvalHistoryPage() {
 
                       {/* 선생님 총평 & 학부모 답장 */}
                       <div className="space-y-3">
-                        <div className="bg-blue-50/60 p-4 rounded-xl border border-blue-100 space-y-1">
-                          <span className="text-xs font-bold text-blue-800 block">✍️ 선생님 학습 총평</span>
-                          <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed font-medium">
-                            {parsed.comment || '작성된 코멘트가 없습니다.'}
-                          </p>
-                        </div>
+                        {parsed.comment && (
+                          <div className="bg-blue-50/60 p-4 rounded-xl border border-blue-100 space-y-1">
+                            <span className="text-xs font-bold text-blue-800 block">✍️ 선생님 학습 총평</span>
+                            <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed font-medium">
+                              {parsed.comment}
+                            </p>
+                          </div>
+                        )}
 
                         {item.parent_reply && (
                           <div className="bg-emerald-50/70 p-4 rounded-xl border border-emerald-200 space-y-1">

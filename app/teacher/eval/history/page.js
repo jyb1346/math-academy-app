@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import EvaluationBarChart from '@/components/EvaluationBarChart';
-import { parseEvaluationRecord } from '@/lib/evalUtils';
+import { parseEvaluationRecord, markAlimtalkSentInComment } from '@/lib/evalUtils';
 
 function HexagonRadarChart({ scores, twoWeekAvgScores }) {
   const { concept = 8, calc = 8, app = 8, attitude = 8, homework = 8, perseverance = 8 } = scores;
@@ -122,7 +122,12 @@ export default function EvalHistoryPage() {
   const [selectedClassId, setSelectedClassId] = useState('ALL');
   const [selectedStudentId, setSelectedStudentId] = useState('ALL');
   const [selectedDate, setSelectedDate] = useState('');
+  const [filterTab, setFilterTab] = useState('ALL'); // 'ALL' | 'UNSENT' | 'SENT'
   const [loading, setLoading] = useState(true);
+
+  const [sendingId, setSendingId] = useState(null);
+  const [batchSending, setBatchSending] = useState(false);
+  const [batchSendProgress, setBatchSendProgress] = useState('');
 
   const router = useRouter();
 
@@ -163,7 +168,6 @@ export default function EvalHistoryPage() {
       const { data: evalData, error } = await supabase
         .from('daily_evaluations')
         .select('*, users!daily_evaluations_student_id_fkey(name, email, parent_phone)')
-        .select('*, users!daily_evaluations_student_id_fkey(name, email)')
         .eq('teacher_id', currentUser.id)
         .order('eval_date', { ascending: false });
 
@@ -176,8 +180,6 @@ export default function EvalHistoryPage() {
       setLoading(false);
     }
   };
-
-  const [sendingId, setSendingId] = useState(null);
 
   const handleResendNotification = async (item) => {
     const studentName = item.users?.name || '해당';
@@ -207,6 +209,14 @@ export default function EvalHistoryPage() {
       });
       const data = await res.json();
       if (data.success) {
+        const sentTime = data.alimtalkSentAt || new Date().toISOString();
+        setEvaluations((prev) =>
+          prev.map((ev) =>
+            ev.id === item.id
+              ? { ...ev, teacher_comment: markAlimtalkSentInComment(ev.teacher_comment, sentTime) }
+              : ev
+          )
+        );
         alert(`✅ [${studentName}] 학부모님(${parentPhone})께 피드백 리포트 알림이 성공적으로 발송되었습니다!`);
       } else {
         alert(`발송 실패: ${data.error || data.message}`);
@@ -216,6 +226,77 @@ export default function EvalHistoryPage() {
     } finally {
       setSendingId(null);
     }
+  };
+
+  // 미발송 학생 일괄 발송 핸들러
+  const handleBatchSendUnsent = async (unsentList) => {
+    if (!unsentList || unsentList.length === 0) {
+      return alert('미발송 상태의 학생이 없습니다.');
+    }
+
+    const withoutPhone = unsentList.filter((e) => !e.users?.parent_phone);
+    let confirmMsg = `🚀 현재 미발송 피드백 총 ${unsentList.length}건의 알림톡을 학부모님께 일괄 발송하시겠습니까?`;
+    if (withoutPhone.length > 0) {
+      confirmMsg += `\n\n(참고: 학부모 연락처 미등록 학생 ${withoutPhone.length}명은 자동 건너뜁니다)`;
+    }
+
+    if (!confirm(confirmMsg)) return;
+
+    setBatchSending(true);
+    let successCount = 0;
+    let failCount = 0;
+    let skippedCount = 0;
+
+    let currentEvals = [...evaluations];
+
+    for (let i = 0; i < unsentList.length; i++) {
+      const item = unsentList[i];
+      const studentName = item.users?.name || '학생';
+      const parentPhone = item.users?.parent_phone;
+
+      setBatchSendProgress(`(${i + 1}/${unsentList.length}) [${studentName}] 학생 알림톡 발송 중...`);
+
+      if (!parentPhone) {
+        skippedCount++;
+        continue;
+      }
+
+      try {
+        const res = await fetch('/api/solapi/send-eval', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            evalId: item.id,
+            studentId: item.student_id,
+            studentName,
+            evalDate: item.eval_date,
+            parentPhone,
+            teacherName: user?.name,
+          }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          successCount++;
+          const sentTime = data.alimtalkSentAt || new Date().toISOString();
+          currentEvals = currentEvals.map((ev) =>
+            ev.id === item.id
+              ? { ...ev, teacher_comment: markAlimtalkSentInComment(ev.teacher_comment, sentTime) }
+              : ev
+          );
+        } else {
+          failCount++;
+        }
+      } catch (err) {
+        console.error('Batch send error:', err);
+        failCount++;
+      }
+    }
+
+    setEvaluations(currentEvals);
+    setBatchSending(false);
+    setBatchSendProgress('');
+
+    alert(`🎉 알림톡 일괄 발송 완료!\n\n- 발송 성공: ${successCount}건\n- 실패: ${failCount}건\n- 연락처 없음(건너뜀): ${skippedCount}건`);
   };
 
   const handleCopyReportLink = (evalId) => {
@@ -325,6 +406,22 @@ export default function EvalHistoryPage() {
     return true;
   });
 
+  const parsedFiltered = filteredEvals.map((e) => ({
+    eval: e,
+    parsed: parseEvaluationRecord(e),
+  }));
+
+  const totalCount = parsedFiltered.length;
+  const sentCount = parsedFiltered.filter((p) => !!p.parsed.alimtalkSentAt).length;
+  const unsentCount = totalCount - sentCount;
+  const unsentList = parsedFiltered.filter((p) => !p.parsed.alimtalkSentAt).map((p) => p.eval);
+
+  const displayedList = parsedFiltered.filter((p) => {
+    if (filterTab === 'UNSENT') return !p.parsed.alimtalkSentAt;
+    if (filterTab === 'SENT') return !!p.parsed.alimtalkSentAt;
+    return true;
+  });
+
   if (loading) return <div className="p-8 text-center font-bold">로딩 중...</div>;
 
   return (
@@ -405,12 +502,114 @@ export default function EvalHistoryPage() {
             </div>
           </div>
 
+          {/* 📊 카카오 알림톡 발송 현황 대시보드 */}
+          <div className={`p-4 sm:p-5 rounded-2xl border transition ${
+            unsentCount > 0
+              ? 'bg-gradient-to-r from-amber-50/90 via-orange-50/50 to-amber-50/90 border-amber-200 shadow-2xs'
+              : 'bg-gradient-to-r from-emerald-50/80 via-teal-50/40 to-emerald-50/80 border-emerald-200 shadow-2xs'
+          }`}>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">{unsentCount > 0 ? '⚠️' : '✅'}</span>
+                  <span className="text-xs sm:text-sm font-black text-slate-800">
+                    피드백 알림톡 발송 현황 {selectedDate ? `(${selectedDate} 기준)` : '(조회 결과 기준)'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap text-xs font-bold">
+                  <span className="bg-white text-slate-700 px-2.5 py-1 rounded-lg border border-slate-200">
+                    총 {totalCount}건 작성됨
+                  </span>
+                  <span className="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-lg border border-emerald-300">
+                    ✅ 발송 완료 {sentCount}건
+                  </span>
+                  <span className={`px-2.5 py-1 rounded-lg border font-black ${
+                    unsentCount > 0
+                      ? 'bg-rose-100 text-rose-800 border-rose-300 animate-pulse'
+                      : 'bg-slate-100 text-slate-500 border-slate-200'
+                  }`}>
+                    {unsentCount > 0 ? `⚠️ 미발송 ${unsentCount}건 (발송 필요!)` : '⚠️ 미발송 0건 (전원 발송 완료)'}
+                  </span>
+                </div>
+              </div>
+
+              {unsentCount > 0 && (
+                <button
+                  onClick={() => handleBatchSendUnsent(unsentList)}
+                  disabled={batchSending}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-black shadow-md transition flex items-center justify-center gap-1.5 whitespace-nowrap self-stretch sm:self-auto ${
+                    batchSending
+                      ? 'bg-slate-400 text-white cursor-not-allowed'
+                      : 'bg-amber-600 hover:bg-amber-700 text-white active:scale-95'
+                  }`}
+                >
+                  <span className="text-base shrink-0">🚀</span>
+                  <span>{batchSending ? batchSendProgress || '일괄 발송 중...' : `미발송 (${unsentCount}명) 알림톡 일괄 발송`}</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* 🏷️ 발송 필터 탭 */}
+          <div className="flex items-center gap-1.5 border-b pb-2 overflow-x-auto">
+            <button
+              onClick={() => setFilterTab('ALL')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 whitespace-nowrap ${
+                filterTab === 'ALL'
+                  ? 'bg-slate-800 text-white shadow-xs'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <span>전체 보기</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                filterTab === 'ALL' ? 'bg-slate-600 text-white' : 'bg-slate-200 text-slate-700'
+              }`}>
+                {totalCount}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setFilterTab('UNSENT')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 whitespace-nowrap ${
+                filterTab === 'UNSENT'
+                  ? 'bg-rose-600 text-white shadow-xs'
+                  : 'text-rose-700 hover:bg-rose-50'
+              }`}
+            >
+              <span>⚠️ 미발송만 모아보기</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                filterTab === 'UNSENT' ? 'bg-rose-800 text-white' : unsentCount > 0 ? 'bg-rose-200 text-rose-900' : 'bg-slate-200 text-slate-600'
+              }`}>
+                {unsentCount}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setFilterTab('SENT')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 whitespace-nowrap ${
+                filterTab === 'SENT'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-emerald-700 hover:bg-emerald-50'
+              }`}
+            >
+              <span>✅ 발송 완료만</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                filterTab === 'SENT' ? 'bg-emerald-800 text-white' : 'bg-slate-200 text-slate-700'
+              }`}>
+                {sentCount}
+              </span>
+            </button>
+          </div>
+
           <div className="space-y-6">
-            {filteredEvals.length === 0 ? (
-              <p className="text-center py-12 text-slate-400 text-xs font-bold">작성하신 학습 피드백 내역이 없습니다.</p>
+            {displayedList.length === 0 ? (
+              <p className="text-center py-12 text-slate-400 text-xs font-bold">
+                {filterTab === 'UNSENT'
+                  ? '🎉 미발송 상태의 피드백이 없습니다. 모든 학생에게 알림톡이 발송되었습니다!'
+                  : '작성하신 학습 피드백 내역이 없습니다.'}
+              </p>
             ) : (
-              filteredEvals.map((item) => {
-                const parsed = parseEvaluationRecord(item);
+              displayedList.map(({ eval: item, parsed }) => {
 
                 return (
                   <div key={item.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
@@ -423,6 +622,19 @@ export default function EvalHistoryPage() {
                         </span>
                         
                         {renderAttendanceBadge(item.attendance_status, item.lateness_minutes)}
+
+                        {/* 알림톡 발송 상태 뱃지 */}
+                        {parsed.alimtalkSentAt ? (
+                          <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-extrabold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                            <span>✅</span>
+                            <span>알림톡 발송 완료 ({new Date(parsed.alimtalkSentAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })})</span>
+                          </span>
+                        ) : (
+                          <span className="bg-rose-100 text-rose-800 border border-rose-300 text-xs font-black px-2.5 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                            <span>⚠️</span>
+                            <span>알림톡 미발송</span>
+                          </span>
+                        )}
 
                         {parsed.lessonProgress && (
                           <span className="bg-slate-100 text-slate-800 border border-slate-300 text-xs font-bold px-2.5 py-0.5 rounded-full shadow-2xs">
@@ -446,12 +658,22 @@ export default function EvalHistoryPage() {
                         </button>
                         <button
                           onClick={() => handleResendNotification(item)}
-                          disabled={sendingId === item.id}
-                          className="px-2.5 py-1.5 text-xs font-black text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition flex items-center gap-1 shadow-2xs disabled:opacity-50 whitespace-nowrap"
-                          title="학부모님 휴대폰으로 알림톡/문자 전송"
+                          disabled={sendingId === item.id || batchSending}
+                          className={`px-2.5 py-1.5 text-xs font-black rounded-lg transition flex items-center gap-1 shadow-2xs disabled:opacity-50 whitespace-nowrap ${
+                            parsed.alimtalkSentAt
+                              ? 'text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300'
+                              : 'text-white bg-amber-600 hover:bg-amber-700 border border-amber-700 shadow-xs'
+                          }`}
+                          title={parsed.alimtalkSentAt ? '학부모님 휴대폰으로 알림톡 재전송' : '학부모님 휴대폰으로 알림톡 전송'}
                         >
-                          <span>📲</span>
-                          <span>{sendingId === item.id ? '발송 중...' : '학부모 알림 발송'}</span>
+                          <span>{parsed.alimtalkSentAt ? '↻' : '📲'}</span>
+                          <span>
+                            {sendingId === item.id
+                              ? '발송 중...'
+                              : parsed.alimtalkSentAt
+                              ? '알림톡 재발송'
+                              : '학부모 알림 발송'}
+                          </span>
                         </button>
                         <button
                           onClick={() => handleDeleteEval(item.id, item.users?.name, item.eval_date)}

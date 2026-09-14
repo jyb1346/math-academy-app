@@ -29,6 +29,8 @@ export default function TeacherEvalPage() {
   // 1) 1:1 개별수업 모드용 상태
   const [studentEvals, setStudentEvals] = useState([]);
   const [prevEval, setPrevEval] = useState(null);
+  const [todayEvalRecord, setTodayEvalRecord] = useState(null);
+  const [todayParsedRecord, setTodayParsedRecord] = useState(null);
   const [loadingPrevEval, setLoadingPrevEval] = useState(false);
   const [actionToast, setActionToast] = useState('');
   
@@ -192,6 +194,13 @@ export default function TeacherEvalPage() {
     }
   };
 
+  // 날짜 변경 시 판서수업 학생 상태 갱신
+  useEffect(() => {
+    if (selectedClassId && evalMode === 'LECTURE') {
+      fetchClassStudents(selectedClassId);
+    }
+  }, [evalDate]);
+
   // 선택된 학생이나 날짜가 변경될 때 해당 학생의 전체 기록 및 직전 기록 조회 (1:1 개별 모드)
   useEffect(() => {
     if (selectedStudentId) {
@@ -199,6 +208,8 @@ export default function TeacherEvalPage() {
     } else {
       setStudentEvals([]);
       setPrevEval(null);
+      setTodayEvalRecord(null);
+      setTodayParsedRecord(null);
     }
   }, [selectedStudentId, evalDate]);
 
@@ -216,6 +227,11 @@ export default function TeacherEvalPage() {
 
       const evals = data || [];
       setStudentEvals(evals);
+
+      // 현재 선택된 날짜의 평가가 이미 작성되었는지 확인
+      const todayEval = evals.find((e) => e.eval_date === currentDate);
+      setTodayEvalRecord(todayEval || null);
+      setTodayParsedRecord(todayEval ? parseEvaluationRecord(todayEval) : null);
 
       // 현재 선택된 날짜 이전의 가장 최근 평가 1건 찾기
       const prev = evals.find((e) => e.eval_date < currentDate) || (evals.length > 0 ? evals[0] : null);
@@ -721,7 +737,9 @@ export default function TeacherEvalPage() {
       // 2) 학생별 일괄 상태 객체 생성
       const initialBatchList = stList.map((st) => {
         const studentRecentEvals = allEvals.filter((e) => e.student_id === st.id);
-        const prev = studentRecentEvals.length > 0 ? studentRecentEvals[0] : null;
+        const todayEval = studentRecentEvals.find((e) => e.eval_date === evalDate);
+        const prev = studentRecentEvals.find((e) => e.eval_date < evalDate) || (studentRecentEvals.length > 0 ? studentRecentEvals[0] : null);
+        const parsedToday = todayEval ? parseEvaluationRecord(todayEval) : null;
 
         const scores = {
           concept: 8,
@@ -758,8 +776,8 @@ export default function TeacherEvalPage() {
           email: st.email,
           parent_phone: st.parent_phone,
           included: true,
-          attendanceStatus: 'ATTEND',
-          latenessMinutes: 5,
+          attendanceStatus: todayEval?.attendance_status || 'ATTEND',
+          latenessMinutes: todayEval?.lateness_minutes || 5,
           scores: { ...scores },
           initialScores: { ...scores },
           activeKeys,
@@ -770,7 +788,8 @@ export default function TeacherEvalPage() {
           comment: '',
           showScoreEditor: false,
           prevEvalSummary: prev ? `${prev.eval_date} 피드백` : '첫 피드백',
-          isSaved: false,
+          isSaved: !!todayEval,
+          alimtalkSentAt: parsedToday?.alimtalkSentAt || null,
         };
       });
 
@@ -1013,8 +1032,16 @@ export default function TeacherEvalPage() {
       saveRecentBooksToCache(commonHomeworkBooks);
       
       // 일괄 저장 완료 후 상태 업데이트
+      const sentTime = new Date().toISOString();
       setBatchStudents((prev) =>
-        prev.map((s) => (s.included ? { ...s, isSaved: true } : s))
+        prev.map((s) => {
+          if (!s.included) return s;
+          return {
+            ...s,
+            isSaved: true,
+            alimtalkSentAt: sendAlimtalk && s.parent_phone ? sentTime : s.alimtalkSentAt,
+          };
+        })
       );
 
       const alimNotice = sendAlimtalk ? `\n📲 학부모 알림톡 발송 완료: ${alimtalkSentCount}명` : '';
@@ -1371,9 +1398,21 @@ export default function TeacherEvalPage() {
                                   ({st.prevEvalSummary})
                                 </span>
                               </div>
-                              {st.isSaved && (
-                                <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
-                                  ✅ 등록완료
+                              {st.isSaved && st.alimtalkSentAt && (
+                                <span className="text-[10px] font-black text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                  <span>✅</span>
+                                  <span>작성 & 발송완료</span>
+                                </span>
+                              )}
+                              {st.isSaved && !st.alimtalkSentAt && (
+                                <span className="text-[10px] font-black text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                  <span>📝</span>
+                                  <span>작성됨 (알림톡 미발송)</span>
+                                </span>
+                              )}
+                              {!st.isSaved && (
+                                <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+                                  ⚪ 미작성
                                 </span>
                               )}
                             </div>
@@ -1606,6 +1645,75 @@ export default function TeacherEvalPage() {
                   />
                 </div>
               </div>
+
+              {/* 🎯 개별 학생의 당일 피드백 작성 & 발송 현황 안내 바 */}
+              {selectedStudentId && (
+                <div className={`p-3.5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 transition ${
+                  todayEvalRecord
+                    ? todayParsedRecord?.alimtalkSentAt
+                      ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
+                      : 'bg-amber-50/80 border-amber-200 text-amber-950'
+                    : 'bg-slate-100/70 border-slate-200 text-slate-700'
+                }`}>
+                  <div className="flex items-center gap-2 text-xs flex-wrap">
+                    <span className="font-extrabold">
+                      📌 [{currentStudentName}] {evalDate} 상태:
+                    </span>
+                    {todayEvalRecord ? (
+                      todayParsedRecord?.alimtalkSentAt ? (
+                        <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-black px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                          <span>✅</span>
+                          <span>작성 및 알림톡 발송 완료 ({new Date(todayParsedRecord.alimtalkSentAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })})</span>
+                        </span>
+                      ) : (
+                        <span className="bg-amber-100 text-amber-800 border border-amber-300 text-xs font-black px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                          <span>📝</span>
+                          <span>피드백 작성됨 (학부모 알림톡 미발송)</span>
+                        </span>
+                      )
+                    ) : (
+                      <span className="bg-white text-slate-500 text-xs font-bold px-2.5 py-0.5 rounded-full border border-slate-200">
+                        ⚪ 아직 미작성 상태
+                      </span>
+                    )}
+                  </div>
+
+                  {todayEvalRecord && !todayParsedRecord?.alimtalkSentAt && currentStudent?.parent_phone && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const res = await fetch('/api/solapi/send-eval', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              evalId: todayEvalRecord.id,
+                              studentId: selectedStudentId,
+                              studentName: currentStudentName,
+                              evalDate,
+                              parentPhone: currentStudent.parent_phone,
+                              teacherName: user?.name,
+                            }),
+                          });
+                          const alimData = await res.json();
+                          if (alimData.success) {
+                            alert(`✅ [${currentStudentName}] 학부모님께 카카오 알림톡이 성공적으로 발송되었습니다!`);
+                            fetchStudentEvaluationHistory(selectedStudentId, evalDate);
+                          } else {
+                            alert(`발송 실패: ${alimData.error || alimData.message}`);
+                          }
+                        } catch (e) {
+                          alert(`발송 오류: ${e.message}`);
+                        }
+                      }}
+                      className="text-xs font-black bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-xl shadow-xs transition flex items-center justify-center gap-1 shrink-0 self-start sm:self-auto active:scale-95"
+                    >
+                      <span>📲</span>
+                      <span>알림톡 즉시 발송하기</span>
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* 📖 오늘 수업 진도 및 새 숙제 부여 섹션 */}
               <div className="bg-indigo-50/70 p-4 sm:p-5 rounded-2xl border border-indigo-200/80 space-y-4">

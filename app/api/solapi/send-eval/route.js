@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sendSolapiMessage, cleanPhoneNumber } from '@/lib/solapi';
 import { supabase } from '@/lib/supabase';
+import { markAlimtalkSentInComment } from '@/lib/evalUtils';
 
 export async function POST(req) {
   try {
@@ -76,11 +77,32 @@ ${reportUrl}`;
       kakaoOptions,
     });
 
+    // 🎯 발송 성공 시 daily_evaluations 에 [ALIMTALK_SENT:ISO_STRING] 기록
+    const sentAt = new Date().toISOString();
+    try {
+      const { data: currentEval } = await supabase
+        .from('daily_evaluations')
+        .select('teacher_comment')
+        .eq('id', evalId)
+        .maybeSingle();
+
+      if (currentEval) {
+        const updatedComment = markAlimtalkSentInComment(currentEval.teacher_comment, sentAt);
+        await supabase
+          .from('daily_evaluations')
+          .update({ teacher_comment: updatedComment })
+          .eq('id', evalId);
+      }
+    } catch (updateErr) {
+      console.error('Failed to update alimtalk_sent timestamp in daily_evaluations:', updateErr);
+    }
+
     return NextResponse.json({
       success: true,
       result,
       reportUrl,
       sentTo: cleanTo,
+      alimtalkSentAt: sentAt,
     });
   } catch (err) {
     console.error('Solapi send-eval error:', err);

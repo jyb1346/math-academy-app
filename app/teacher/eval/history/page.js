@@ -182,16 +182,7 @@ export default function EvalHistoryPage() {
   };
 
   const handleResendNotification = async (item) => {
-    const studentName = item.users?.name || '해당';
-    const parentPhone = item.users?.parent_phone;
-
-    if (!parentPhone) {
-      return alert(`[${studentName}] 학생의 등록된 학부모 연락처가 없습니다.\n학생 정보 관리에서 학부모 연락처를 먼저 등록해 주세요.`);
-    }
-
-    if (!confirm(`[${studentName}] 학생의 학부모님(${parentPhone})께 ${item.eval_date} 일일 피드백 리포트 링크를 전송하시겠습니까?`)) {
-      return;
-    }
+    return alert('🧪 [1주일 현장 점검 모드] 현재는 화면 및 기능 테스트 기간으로 학부모 알림톡 발송이 일시 비활성화되어 있습니다.');
 
     setSendingId(item.id);
     try {
@@ -230,9 +221,7 @@ export default function EvalHistoryPage() {
 
   // 미발송 학생 일괄 발송 핸들러
   const handleBatchSendUnsent = async (unsentList) => {
-    if (!unsentList || unsentList.length === 0) {
-      return alert('미발송 상태의 학생이 없습니다.');
-    }
+    return alert('🧪 [1주일 현장 점검 모드] 현재는 화면 및 기능 테스트 기간으로 학부모 알림톡 발송이 일시 비활성화되어 있습니다.');
 
     const withoutPhone = unsentList.filter((e) => !e.users?.parent_phone);
     let confirmMsg = `🚀 현재 미발송 피드백 총 ${unsentList.length}건의 알림톡을 학부모님께 일괄 발송하시겠습니까?`;

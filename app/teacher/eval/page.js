@@ -1468,20 +1468,13 @@ export default function TeacherEvalPage() {
 
               {/* 4. 학부모 알림톡 발송 선택 체크박스 & 일괄 등록 버튼 */}
               <div className="space-y-2.5">
-                <div className="bg-amber-50/80 p-3.5 rounded-2xl border border-amber-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <label className="flex items-center gap-2.5 cursor-pointer text-xs font-extrabold text-amber-950 select-none">
-                    <input
-                      type="checkbox"
-                      checked={sendAlimtalk}
-                      onChange={(e) => setSendAlimtalk(e.target.checked)}
-                      className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
-                    />
-                    <span>📲 등록 완료 시 학부모님께 카카오 알림톡 자동 발송</span>
-                  </label>
-                  <span className={`text-[11px] font-black px-2.5 py-0.5 rounded-full self-start sm:self-auto ${
-                    sendAlimtalk ? 'bg-amber-200 text-amber-900 border border-amber-300' : 'bg-slate-200 text-slate-500'
-                  }`}>
-                    {sendAlimtalk ? '알림톡 ON (선택된 학생 전원 발송)' : '알림톡 OFF (과금 없음)'}
+                <div className="bg-slate-100 p-3 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-slate-600 font-bold text-xs">
+                    <span className="text-base">🧪</span>
+                    <span>[1주일 현장 점검 모드] 학부모 알림톡 발송이 일시 중단되어 있습니다. (과금 없음)</span>
+                  </div>
+                  <span className="bg-slate-200 text-slate-600 text-[11px] font-black px-2.5 py-0.5 rounded-full self-start sm:self-auto">
+                    알림톡 OFF
                   </span>
                 </div>
 
@@ -2011,20 +2004,13 @@ export default function TeacherEvalPage() {
 
               {/* 학부모 알림톡 발송 선택 체크박스 & 저장 버튼 */}
               <div className="space-y-2.5">
-                <div className="bg-amber-50/80 p-3.5 rounded-2xl border border-amber-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <label className="flex items-center gap-2.5 cursor-pointer text-xs font-extrabold text-amber-950 select-none">
-                    <input
-                      type="checkbox"
-                      checked={sendAlimtalk}
-                      onChange={(e) => setSendAlimtalk(e.target.checked)}
-                      className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
-                    />
-                    <span>📲 저장 완료 시 학부모님께 카카오 알림톡 자동 발송</span>
-                  </label>
-                  <span className={`text-[11px] font-black px-2.5 py-0.5 rounded-full self-start sm:self-auto ${
-                    sendAlimtalk ? 'bg-amber-200 text-amber-900 border border-amber-300' : 'bg-slate-200 text-slate-500'
-                  }`}>
-                    {sendAlimtalk ? '알림톡 ON (학부모 발송)' : '알림톡 OFF (과금 없음)'}
+                <div className="bg-slate-100 p-3 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-slate-600 font-bold text-xs">
+                    <span className="text-base">🧪</span>
+                    <span>[1주일 현장 점검 모드] 학부모 알림톡 발송이 일시 중단되어 있습니다. (과금 없음)</span>
+                  </div>
+                  <span className="bg-slate-200 text-slate-600 text-[11px] font-black px-2.5 py-0.5 rounded-full self-start sm:self-auto">
+                    알림톡 OFF
                   </span>
                 </div>
 

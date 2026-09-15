@@ -5,6 +5,14 @@ import { markAlimtalkSentInComment } from '@/lib/evalUtils';
 
 export async function POST(req) {
   try {
+    // 🛑 [1주일 현장 화면 점검 기간] 학부모 알림톡 실제 발송 일시 중단
+    return NextResponse.json({
+      success: false,
+      skipped: true,
+      disabled: true,
+      message: '현재 1주일 현장 점검 기간으로 학부모 알림톡 발송이 일시 중단되어 있습니다.',
+    });
+
     const body = await req.json();
     const { evalId, studentId, studentName, evalDate, parentPhone, teacherName } = body;
 

@@ -18,6 +18,14 @@ export default function QnaPage() {
   const [filePreviews, setFilePreviews] = useState([]); // string[] (object URLs)
   const [submittingQuestion, setSubmittingQuestion] = useState(false);
 
+  // 🎯 학생: 질문 대상 선생님 및 반 선택 상태
+  const [availableTargets, setAvailableTargets] = useState([]);
+  const [selectedTargetKey, setSelectedTargetKey] = useState('');
+
+  // 👨‍🏫 강사 목록 및 필터 (원장님용)
+  const [teachersList, setTeachersList] = useState([]);
+  const [teacherFilter, setTeacherFilter] = useState('ALL');
+
   // 선생님: 답변 작성/수정 상태 (qnaId -> { text, files, filePreviews, isEditing, submitting })
   const [answerState, setAnswerState] = useState({});
 
@@ -59,18 +67,109 @@ export default function QnaPage() {
     try {
       setLoading(true);
 
-      // 전체 사용자(학생 및 선생님) 이름/이메일 사전 로드
-      const { data: uData } = await supabase.from('users').select('id, name, email, role');
+      // 1. 전체 사용자(학생 및 선생님) 이름/이메일 사전 로드
+      const { data: uData } = await supabase.from('users').select('id, name, email, role, teacher_id');
       const uMap = {};
+      const tList = [];
       (uData || []).forEach((u) => {
         uMap[u.id] = u;
+        if (u.role === 'TEACHER' || u.role === 'HEAD_TEACHER') {
+          tList.push(u);
+        }
       });
       setUsersMap(uMap);
+      setTeachersList(tList);
 
-      // QnA 데이터 조회
+      // 2. 학생인 경우: 본인이 소속된 반 및 담당 선생님 목록 추출
+      if (currentUser.role === 'STUDENT') {
+        const { data: csData } = await supabase
+          .from('class_students')
+          .select('class_id')
+          .eq('student_id', currentUser.id);
+
+        const { data: clsData } = await supabase
+          .from('classes')
+          .select('id, name, teacher_id');
+
+        const classMap = {};
+        (clsData || []).forEach((c) => {
+          classMap[c.id] = c;
+        });
+
+        const teacherNameMap = {};
+        tList.forEach((t) => {
+          teacherNameMap[t.id] = t.name;
+        });
+
+        const targets = [];
+        const seenKeys = new Set();
+
+        // 1) 반 배정 기반 타겟
+        (csData || []).forEach((cs) => {
+          const cls = classMap[cs.class_id];
+          if (cls && cls.teacher_id && teacherNameMap[cls.teacher_id]) {
+            const key = `cls_${cls.id}`;
+            if (!seenKeys.has(key)) {
+              seenKeys.add(key);
+              targets.push({
+                key,
+                teacherId: cls.teacher_id,
+                teacherName: teacherNameMap[cls.teacher_id],
+                classId: cls.id,
+                className: cls.name,
+                label: `${teacherNameMap[cls.teacher_id]} 선생님 (${cls.name})`,
+              });
+            }
+          }
+        });
+
+        // 2) 사용자 테이블의 직접 지정 teacher_id 확인 (반 미지정 시 또는 추가 과외/수업 시)
+        const studentRecord = uMap[currentUser.id] || currentUser;
+        if (studentRecord?.teacher_id && teacherNameMap[studentRecord.teacher_id]) {
+          const key = `tch_${studentRecord.teacher_id}`;
+          const alreadyHasTeacher = targets.some((t) => t.teacherId === studentRecord.teacher_id);
+          if (!alreadyHasTeacher && !seenKeys.has(key)) {
+            seenKeys.add(key);
+            targets.push({
+              key,
+              teacherId: studentRecord.teacher_id,
+              teacherName: teacherNameMap[studentRecord.teacher_id],
+              classId: null,
+              className: null,
+              label: `${teacherNameMap[studentRecord.teacher_id]} 선생님 (담당 강사)`,
+            });
+          }
+        }
+
+        // 3) 만약 등록된 반/강사가 아예 없을 때의 예외 처리: 모든 강사 선택 가능하도록 제공
+        if (targets.length === 0 && tList.length > 0) {
+          tList.forEach((t) => {
+            targets.push({
+              key: `all_tch_${t.id}`,
+              teacherId: t.id,
+              teacherName: t.name,
+              classId: null,
+              className: null,
+              label: `${t.name} 선생님`,
+            });
+          });
+        }
+
+        setAvailableTargets(targets);
+        if (targets.length > 0) {
+          setSelectedTargetKey((prev) => {
+            const exists = targets.some((t) => t.key === prev);
+            return exists ? prev : targets[0].key;
+          });
+        }
+      }
+
+      // 3. QnA 데이터 조회
       let query = supabase.from('qna').select('*');
       if (currentUser.role === 'STUDENT') {
         query = query.eq('student_id', currentUser.id);
+      } else if (currentUser.role === 'HEAD_TEACHER') {
+        // 원장 선생님은 학원 전체 질문 조회 가능
       } else {
         query = query.eq('teacher_id', currentUser.id);
       }
@@ -133,23 +232,26 @@ export default function QnaPage() {
     if (!title.trim()) return alert('질문 제목을 입력해 주세요.');
     if (!questionText.trim()) return alert('질문 내용을 입력해 주세요.');
 
+    const selectedTarget = availableTargets.find((t) => t.key === selectedTargetKey) || availableTargets[0];
+    const targetTeacherId = selectedTarget?.teacherId || user?.teacher_id;
+    if (!targetTeacherId) {
+      return alert('질문을 전달할 담당 선생님을 선택해 주세요.');
+    }
+
     setSubmittingQuestion(true);
 
     try {
-      const { data: studentInfo } = await supabase
-        .from('users')
-        .select('teacher_id')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      const assignedTeacherId = studentInfo?.teacher_id || null;
-
       const imageUrls = await uploadFilesToStorage(selectedFiles);
+
+      let finalTitle = title.trim();
+      if (selectedTarget?.className && !finalTitle.startsWith(`[${selectedTarget.className}]`)) {
+        finalTitle = `[${selectedTarget.className}] ${finalTitle}`;
+      }
 
       const payload = {
         student_id: user.id,
-        teacher_id: assignedTeacherId,
-        title: title.trim(),
+        teacher_id: targetTeacherId,
+        title: finalTitle,
         question: questionText.trim(),
         question_image_url: imageUrls.length > 0 ? JSON.stringify(imageUrls) : null,
         status: 'PENDING',
@@ -159,15 +261,15 @@ export default function QnaPage() {
       const { error } = await supabase.from('qna').insert([payload]);
       if (error) throw error;
 
-      if (assignedTeacherId) {
+      if (targetTeacherId) {
         try {
           fetch('/api/push/send', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              userIds: [assignedTeacherId],
+              userIds: [targetTeacherId],
               title: `[1:1 질문] ${user.name} 학생의 새 질문`,
-              message: title.trim(),
+              message: finalTitle,
               url: '/qna',
             }),
           }).catch((e) => console.warn('QnA push warning:', e));
@@ -176,7 +278,7 @@ export default function QnaPage() {
         }
       }
 
-      alert('질문이 담당 선생님께 성공적으로 전달되었습니다!');
+      alert(`${selectedTarget?.teacherName || '담당'} 선생님께 질문이 성공적으로 전달되었습니다! 🚀`);
       setTitle('');
       setQuestionText('');
       setSelectedFiles([]);
@@ -539,11 +641,18 @@ export default function QnaPage() {
     computedStatus: getLifecycleStatus(q),
   }));
 
-  const pendingCount = questionsWithStatus.filter((q) => q.computedStatus === 'PENDING').length;
-  const answeredCount = questionsWithStatus.filter((q) => q.computedStatus === 'ANSWERED').length;
-  const resolvedCount = questionsWithStatus.filter((q) => q.computedStatus === 'RESOLVED').length;
+  const filteredByTeacher = questionsWithStatus.filter((q) => {
+    if (user?.role === 'HEAD_TEACHER' && teacherFilter !== 'ALL') {
+      return q.teacher_id === teacherFilter;
+    }
+    return true;
+  });
 
-  const filteredQuestions = questionsWithStatus.filter((q) => {
+  const pendingCount = filteredByTeacher.filter((q) => q.computedStatus === 'PENDING').length;
+  const answeredCount = filteredByTeacher.filter((q) => q.computedStatus === 'ANSWERED').length;
+  const resolvedCount = filteredByTeacher.filter((q) => q.computedStatus === 'RESOLVED').length;
+
+  const filteredQuestions = filteredByTeacher.filter((q) => {
     if (filterStatus === 'PENDING') return q.computedStatus === 'PENDING';
     if (filterStatus === 'ANSWERED') return q.computedStatus === 'ANSWERED';
     if (filterStatus === 'RESOLVED') return q.computedStatus === 'RESOLVED';
@@ -598,6 +707,91 @@ export default function QnaPage() {
             </h2>
 
             <form onSubmit={handleSubmitQuestion} className="space-y-4">
+              {/* 🎯 질문 대상 (선생님 및 소속 반 선택) */}
+              <div className="space-y-2 bg-slate-50 p-4 rounded-2xl border border-slate-200/90">
+                <label className="block text-xs font-black text-slate-700 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-base">🎯</span>
+                    <span>질문할 선생님 / 반 선택</span>
+                    <span className="text-amber-600 font-extrabold">*</span>
+                  </span>
+                  {availableTargets.length > 1 && (
+                    <span className="text-[11px] font-bold text-amber-800 bg-amber-100/70 px-2 py-0.5 rounded-full border border-amber-200/80">
+                      수업 {availableTargets.length}개 중 선택 가능
+                    </span>
+                  )}
+                </label>
+
+                {availableTargets.length > 1 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                    {availableTargets.map((target) => {
+                      const isSelected = selectedTargetKey === target.key;
+                      return (
+                        <button
+                          key={target.key}
+                          type="button"
+                          onClick={() => setSelectedTargetKey(target.key)}
+                          className={`p-3.5 rounded-2xl border text-left transition flex items-center gap-3 cursor-pointer ${
+                            isSelected
+                              ? 'bg-amber-50/90 border-amber-500 ring-2 ring-amber-500/20 shadow-xs'
+                              : 'bg-white hover:bg-slate-100/70 border-slate-200 text-slate-700'
+                          }`}
+                        >
+                          <div
+                            className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm shrink-0 transition ${
+                              isSelected
+                                ? 'bg-amber-600 text-white shadow-xs'
+                                : 'bg-slate-100 text-slate-500 border border-slate-200'
+                            }`}
+                          >
+                            {target.teacherName?.[0] || 'T'}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs font-black text-slate-900">
+                                {target.teacherName} 선생님
+                              </span>
+                              {isSelected && (
+                                <span className="text-[10px] font-black bg-amber-600 text-white px-1.5 py-0.2 rounded-md leading-tight">
+                                  선택됨 ✓
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] font-extrabold text-slate-500 truncate mt-0.5">
+                              {target.className ? `🏷️ ${target.className}` : '📋 담당 수업'}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : availableTargets.length === 1 ? (
+                  <div className="bg-white border border-amber-200/80 p-3 rounded-xl flex items-center justify-between gap-3 shadow-2xs">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-amber-600 text-white flex items-center justify-center font-black text-xs shrink-0">
+                        {availableTargets[0].teacherName?.[0] || 'T'}
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-[10px] font-bold text-amber-800 block leading-tight">질문 수신 대상</span>
+                        <span className="text-xs font-black text-slate-900">
+                          {availableTargets[0].teacherName} 선생님
+                          {availableTargets[0].className && (
+                            <span className="text-slate-500 font-bold ml-1">({availableTargets[0].className})</span>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-black bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full shrink-0">
+                      담당 강사 지정됨
+                    </span>
+                  </div>
+                ) : (
+                  <div className="text-xs font-bold text-slate-400 p-2">
+                    등록된 선생님 정보를 불러오는 중입니다...
+                  </div>
+                )}
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1">질문 제목</label>
                 <input
@@ -666,7 +860,7 @@ export default function QnaPage() {
                 <button
                   type="submit"
                   disabled={submittingQuestion}
-                  className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-6 py-3 rounded-2xl shadow-md shadow-amber-600/20 transition disabled:bg-slate-400"
+                  className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-6 py-3 rounded-2xl shadow-md shadow-amber-600/20 transition disabled:bg-slate-400 cursor-pointer"
                 >
                   {submittingQuestion ? '질문 전송 중...' : '담당 선생님께 질문 보내기 🚀'}
                 </button>
@@ -677,20 +871,20 @@ export default function QnaPage() {
 
         {/* 탭 필터 (전체 / 답변 대기 / 학생 확인 중 / 이해 완료) */}
         <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setFilterStatus('ALL')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
                 filterStatus === 'ALL'
                   ? 'bg-slate-800 text-white'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              📋 전체 ({questions.length})
+              📋 전체 ({filteredByTeacher.length})
             </button>
             <button
               onClick={() => setFilterStatus('PENDING')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition flex items-center gap-1 ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition flex items-center gap-1 cursor-pointer ${
                 filterStatus === 'PENDING'
                   ? 'bg-rose-600 text-white shadow-xs'
                   : 'bg-rose-50 text-rose-800 hover:bg-rose-100'
@@ -701,7 +895,7 @@ export default function QnaPage() {
             </button>
             <button
               onClick={() => setFilterStatus('ANSWERED')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition flex items-center gap-1 ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition flex items-center gap-1 cursor-pointer ${
                 filterStatus === 'ANSWERED'
                   ? 'bg-amber-500 text-white shadow-xs'
                   : 'bg-amber-50 text-amber-900 hover:bg-amber-100'
@@ -712,7 +906,7 @@ export default function QnaPage() {
             </button>
             <button
               onClick={() => setFilterStatus('RESOLVED')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition flex items-center gap-1 ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition flex items-center gap-1 cursor-pointer ${
                 filterStatus === 'RESOLVED'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
@@ -723,9 +917,30 @@ export default function QnaPage() {
             </button>
           </div>
 
-          <span className="text-[11px] text-slate-400 font-semibold hidden lg:inline">
-            🔒 학생 본인과 담당 선생님만 확인 가능합니다.
-          </span>
+          <div className="flex items-center gap-2">
+            {/* 👑 원장 선생님 전용: 강사별 필터 드롭다운 */}
+            {user?.role === 'HEAD_TEACHER' && teachersList.length > 0 && (
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-xl">
+                <span className="text-[11px] font-black text-slate-500">👨‍🏫 강사:</span>
+                <select
+                  value={teacherFilter}
+                  onChange={(e) => setTeacherFilter(e.target.value)}
+                  className="text-xs font-bold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                >
+                  <option value="ALL">전체 강사 질문</option>
+                  {teachersList.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} 선생님
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <span className="text-[11px] text-slate-400 font-semibold hidden lg:inline">
+              🔒 학생 본인과 담당 선생님만 확인 가능합니다.
+            </span>
+          </div>
         </div>
 
         {/* 질문 목록 */}
@@ -778,6 +993,9 @@ export default function QnaPage() {
                         </span>
                         <span className="text-xs font-black bg-indigo-50 text-indigo-800 border border-indigo-200 px-2.5 py-0.5 rounded-full shrink-0">
                           👤 {studentName} {studentInfo?.email ? `(${studentInfo.email.split('@')[0]})` : ''}의 1:1 질문
+                        </span>
+                        <span className="text-xs font-black bg-amber-50 text-amber-900 border border-amber-200 px-2.5 py-0.5 rounded-full shrink-0">
+                          👨‍🏫 {teacherName}
                         </span>
                         <span className="text-[11px] text-slate-400 font-medium whitespace-nowrap">
                           • {new Date(item.created_at).toLocaleString()}

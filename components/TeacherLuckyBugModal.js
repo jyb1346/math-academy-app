@@ -20,6 +20,7 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
   // 👑 보스 레이드 설정
   const [selectedBossId, setSelectedBossId] = useState('boss_stag_beetle');
   const [bossHp, setBossHp] = useState(30);
+  const [hitDamage, setHitDamage] = useState(5);
   const [perUserHitLimit, setPerUserHitLimit] = useState(5);
   const [bossRewardText, setBossRewardText] = useState('반 전체 단체 간식 파티 🍕🥤');
 
@@ -157,6 +158,8 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
     try {
       const bossInfo = getBugById(selectedBossId);
       const parsedHp = Number(bossHp) || 30;
+      const parsedHitDamage = Number(hitDamage) || 5;
+      const parsedLimit = Number(perUserHitLimit) || 5;
 
       const result = await createLuckyEvent({
         teacherId: user.id,
@@ -164,7 +167,8 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
         bugId: bossInfo.id,
         isBossRaid: true,
         bossHp: parsedHp,
-        perUserHitLimit: Number(perUserHitLimit) || 5,
+        hitDamage: parsedHitDamage,
+        perUserHitLimit: parsedLimit,
         rewardText: bossRewardText.trim(),
         speedMode: 'FAST',
         escapeGimmick: false,
@@ -186,7 +190,8 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
             isBossRaid: true,
             maxHp: parsedHp,
             currentHp: parsedHp,
-            perUserHitLimit: Number(perUserHitLimit) || 5,
+            hitDamage: parsedHitDamage,
+            perUserHitLimit: parsedLimit,
             rewardText: bossRewardText.trim(),
             speedMode: 'FAST',
             escapeGimmick: false,
@@ -602,7 +607,7 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
                 </div>
               </div>
 
-              {/* 🎯 보스 HP(체력) 직접 지정 (핵심 기능) */}
+              {/* 🎯 보스 HP(체력) 직접 지정 */}
               <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2">
                 <div className="flex justify-between items-center">
                   <label className="text-xs font-extrabold text-slate-800 flex items-center gap-1">
@@ -612,12 +617,12 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
                   <div className="flex items-center gap-1">
                     <input
                       type="number"
-                      min="10"
-                      max="300"
+                      min="5"
+                      max="500"
                       step="5"
                       value={bossHp}
-                      onChange={(e) => setBossHp(Math.max(5, Number(e.target.value)))}
-                      className="w-16 p-1 text-center bg-white border border-rose-300 rounded-lg text-xs font-black text-rose-600 shadow-2xs"
+                      onChange={(e) => setBossHp(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-20 p-1 text-center bg-white border border-rose-300 rounded-lg text-xs font-black text-rose-600 shadow-2xs focus:outline-none focus:ring-2 focus:ring-rose-400"
                     />
                     <span className="text-xs font-black text-slate-600">HP</span>
                   </div>
@@ -642,26 +647,97 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
                 </div>
               </div>
 
-              {/* 1인당 타격 제한 */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  ⚔️ 학생 1인당 최대 타격 수 (협동 강제)
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[3, 5, 10].map((limit) => (
+              {/* 💥 1회 타격당 데미지 직접 지정 */}
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-extrabold text-slate-800 flex items-center gap-1">
+                    <span>💥</span>
+                    <span>1회 타격당 데미지(DMG) 지정:</span>
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={hitDamage}
+                      onChange={(e) => setHitDamage(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-20 p-1 text-center bg-white border border-rose-300 rounded-lg text-xs font-black text-rose-600 shadow-2xs focus:outline-none focus:ring-2 focus:ring-rose-400"
+                    />
+                    <span className="text-xs font-black text-slate-600">DMG</span>
+                  </div>
+                </div>
+
+                {/* 빠른 데미지 선택 버튼 */}
+                <div className="grid grid-cols-4 gap-1.5 pt-1">
+                  {[1, 2, 5, 10].map((dmgVal) => (
+                    <button
+                      key={dmgVal}
+                      type="button"
+                      onClick={() => setHitDamage(dmgVal)}
+                      className={`py-1.5 rounded-lg text-xs font-black transition border ${
+                        hitDamage === dmgVal
+                          ? 'bg-rose-600 text-white border-rose-700 shadow-2xs'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      {dmgVal} DMG
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* ⚔️ 학생 1인당 최대 타격 수 직접 지정 */}
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-extrabold text-slate-800 flex items-center gap-1">
+                    <span>⚔️</span>
+                    <span>학생 1인당 최대 타격 수 지정:</span>
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={perUserHitLimit}
+                      onChange={(e) => setPerUserHitLimit(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-20 p-1 text-center bg-white border border-slate-300 rounded-lg text-xs font-black text-slate-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-slate-400"
+                    />
+                    <span className="text-xs font-black text-slate-600">회</span>
+                  </div>
+                </div>
+
+                {/* 빠른 타격수 선택 버튼 */}
+                <div className="grid grid-cols-4 gap-1.5 pt-1">
+                  {[3, 5, 10, 20].map((limit) => (
                     <button
                       key={limit}
                       type="button"
                       onClick={() => setPerUserHitLimit(limit)}
-                      className={`py-2 rounded-xl text-xs font-black transition border ${
+                      className={`py-1.5 rounded-lg text-xs font-black transition border ${
                         perUserHitLimit === limit
-                          ? 'bg-slate-900 text-white border-slate-950 shadow-xs'
-                          : 'bg-slate-50 border-slate-200 text-slate-700'
+                          ? 'bg-slate-900 text-white border-slate-950 shadow-2xs'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
                       }`}
                     >
-                      최대 {limit}타 (최소 {Math.ceil(bossHp / (limit * 5))}명 필요)
+                      {limit}회
                     </button>
                   ))}
+                </div>
+              </div>
+
+              {/* 💡 실시간 협동 밸런스 계산 안내 */}
+              <div className="bg-indigo-50/80 border border-indigo-200 p-3 rounded-2xl text-[11.5px] text-indigo-950 space-y-1">
+                <div className="flex justify-between font-bold">
+                  <span>💡 1인당 최대 총 딜량:</span>
+                  <span className="text-indigo-700 font-black">
+                    {Number(hitDamage) * Number(perUserHitLimit)} DMG ({perUserHitLimit}타 × {hitDamage} DMG)
+                  </span>
+                </div>
+                <div className="flex justify-between font-bold">
+                  <span>👥 보스 격파 최소 필요 인원:</span>
+                  <span className="text-rose-600 font-black">
+                    최소 {Math.max(1, Math.ceil(Number(bossHp) / ((Number(hitDamage) || 5) * (Number(perUserHitLimit) || 5))))}명 협동 필요
+                  </span>
                 </div>
               </div>
 
@@ -685,7 +761,11 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
                 className="w-full bg-gradient-to-r from-rose-600 via-red-600 to-amber-600 hover:from-rose-700 text-white font-black py-4 rounded-2xl text-sm shadow-lg transition flex items-center justify-center gap-2"
               >
                 <span>👑</span>
-                <span>{spawning ? '보스 소환 중...' : `지금 즉시 보스 레이드 소환! (HP: ${bossHp})`}</span>
+                <span>
+                  {spawning
+                    ? '보스 소환 중...'
+                    : `지금 즉시 보스 레이드 소환! (HP: ${bossHp} | 1타당 ${hitDamage} DMG)`}
+                </span>
               </button>
             </form>
           )}
@@ -753,8 +833,10 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
                       {isBoss ? (
                         <div className="bg-white p-3 rounded-xl border border-rose-200 text-xs space-y-1">
                           <div className="flex justify-between font-bold text-rose-950">
-                            <span>보스 설정 HP:</span>
-                            <span className="text-rose-600 font-black">{ev.maxHp || 30} HP</span>
+                            <span>보스 설정:</span>
+                            <span className="text-rose-600 font-black">
+                              HP {ev.maxHp || 30} (1타당 {ev.hitDamage || 5} DMG / 1인 최대 {ev.perUserHitLimit || 5}타)
+                            </span>
                           </div>
                           {ev.mvp && (
                             <div className="flex justify-between text-amber-900 font-bold">

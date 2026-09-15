@@ -98,6 +98,7 @@ export default function LuckyBugOverlay() {
               isBossRaid: Boolean(ev.isBossRaid),
               maxHp: Number(ev.maxHp) || 30,
               currentHp: Number(ev.currentHp) || Number(ev.maxHp) || 30,
+              hitDamage: Number(ev.hitDamage) || 5,
               perUserHitLimit: Number(ev.perUserHitLimit) || 5,
               targetCount: ev.targetCount || 2,
               rewardText: ev.rewardText || '선생님의 깜짝 선물',
@@ -302,6 +303,8 @@ export default function LuckyBugOverlay() {
       return;
     }
 
+    const dmgVal = Number(activeEvent?.hitDamage) || 5;
+
     setCatching(true);
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
       navigator.vibrate([60]);
@@ -311,20 +314,20 @@ export default function LuckyBugOverlay() {
     const dmgId = Date.now() + Math.random();
     setFloatingDamages((prev) => [
       ...prev,
-      { id: dmgId, x: bugPosition.left + (Math.random() * 10 - 5), y: bugPosition.top - 5, dmg: 5 },
+      { id: dmgId, x: bugPosition.left + (Math.random() * 10 - 5), y: bugPosition.top - 5, dmg: dmgVal },
     ]);
     setTimeout(() => {
       setFloatingDamages((prev) => prev.filter((d) => d.id !== dmgId));
     }, 900);
 
     try {
-      const res = await hitBossRaid(activeEvent.id, user.id, user.name, 5);
+      const res = await hitBossRaid(activeEvent.id, user.id, user.name, dmgVal);
       if (res.success) {
         setBossHp(res.currentHp);
         setMyHits(res.myHits);
         setMyHitLimit(res.myLimit);
 
-        const newLog = `${user.name} 학생이 보스 타격! (-5 HP)`;
+        const newLog = `${user.name} 학생이 보스 타격! (-${dmgVal} HP)`;
 
         if (channelRef.current) {
           channelRef.current.send({
@@ -335,7 +338,7 @@ export default function LuckyBugOverlay() {
               currentHp: res.currentHp,
               maxHp: res.maxHp,
               studentId: user.id,
-              damage: 5,
+              damage: dmgVal,
               log: { id: Date.now(), text: newLog },
             },
           });
@@ -457,10 +460,13 @@ export default function LuckyBugOverlay() {
 
               {/* 내 공격 횟수 및 실시간 자막 티커 */}
               <div className="flex justify-between items-center text-[10.5px] font-bold text-slate-300 pt-0.5">
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1.5">
                   <span>내 타격:</span>
                   <span className={`font-black ${myHits >= myHitLimit ? 'text-rose-400' : 'text-yellow-300'}`}>
                     {myHits} / {myHitLimit}회
+                  </span>
+                  <span className="text-[9.5px] bg-rose-900/60 text-rose-200 px-1.5 py-0.2 rounded font-bold">
+                    1타 {activeEvent.hitDamage || 5} DMG
                   </span>
                 </div>
 

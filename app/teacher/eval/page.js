@@ -581,6 +581,67 @@ export default function TeacherEvalPage() {
     );
   };
 
+  const handleBatchToggleDefaultKey = (studentId, key) => {
+    setBatchStudents((prev) =>
+      prev.map((s) => {
+        if (s.student_id !== studentId) return s;
+        const currentKeys = s.activeKeys || ['concept', 'calc', 'app', 'attitude', 'homework', 'perseverance'];
+        const newKeys = currentKeys.includes(key)
+          ? currentKeys.filter((k) => k !== key)
+          : [...currentKeys, key];
+        return { ...s, activeKeys: newKeys };
+      })
+    );
+  };
+
+  const handleBatchAddCustomItem = (studentId, name) => {
+    const trimmed = name?.trim();
+    if (!trimmed) return alert('항목명을 입력해 주세요.');
+    setBatchStudents((prev) =>
+      prev.map((s) => {
+        if (s.student_id !== studentId) return s;
+        const currentCustom = s.customItems || [];
+        if (currentCustom.some((c) => c.name === trimmed)) {
+          alert('이미 존재하는 항목입니다.');
+          return s;
+        }
+        return {
+          ...s,
+          customItems: [
+            ...currentCustom,
+            { id: `custom_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`, name: trimmed, score: 8 },
+          ],
+        };
+      })
+    );
+  };
+
+  const handleBatchRemoveCustomItem = (studentId, customId) => {
+    setBatchStudents((prev) =>
+      prev.map((s) => {
+        if (s.student_id !== studentId) return s;
+        return {
+          ...s,
+          customItems: (s.customItems || []).filter((c) => c.id !== customId),
+        };
+      })
+    );
+  };
+
+  const handleBatchCustomScoreChange = (studentId, customId, newScore) => {
+    setBatchStudents((prev) =>
+      prev.map((s) => {
+        if (s.student_id !== studentId) return s;
+        return {
+          ...s,
+          customItems: (s.customItems || []).map((c) =>
+            c.id === customId ? { ...c, score: Number(newScore) } : c
+          ),
+        };
+      })
+    );
+  };
+
   const renderScoreDiffBadge = (currentScore, prevScore) => {
     if (prevScore === undefined || prevScore === null) return null;
     const diff = Number(currentScore) - Number(prevScore);
@@ -700,14 +761,20 @@ export default function TeacherEvalPage() {
         let customItemsList = [];
         let activeKeys = ['concept', 'calc', 'app', 'attitude', 'homework', 'perseverance'];
 
-        if (prev) {
-          const parsed = parseEvaluationRecord(prev);
+        const sourceEval = todayEval || prev;
+        if (sourceEval) {
+          const parsed = parseEvaluationRecord(sourceEval);
+          const loadedActiveKeys = [];
           DEFAULT_EVAL_KEYS.forEach((def) => {
-            const val = prev[def.dbCol];
+            const val = sourceEval[def.dbCol];
             if (val !== null && val !== undefined) {
+              loadedActiveKeys.push(def.key);
               scores[def.key] = Number(val);
             }
           });
+          if (loadedActiveKeys.length > 0) {
+            activeKeys = loadedActiveKeys;
+          }
           if (parsed.customItems && parsed.customItems.length > 0) {
             customItemsList = parsed.customItems.map((c, idx) => ({
               id: `custom_${st.id}_${idx}`,
@@ -906,18 +973,19 @@ export default function TeacherEvalPage() {
           homeworkBooks: validBooks,
         });
 
+        const activeKeys = st.activeKeys || ['concept', 'calc', 'app', 'attitude', 'homework', 'perseverance'];
         const payload = {
           teacher_id: user.id,
           student_id: st.student_id,
           eval_date: evalDate,
           attendance_status: st.attendanceStatus,
           lateness_minutes: st.attendanceStatus === 'LATE' ? parseInt(st.latenessMinutes || 5) : 0,
-          concept_score: st.scores.concept,
-          calc_score: st.scores.calc,
-          app_score: st.scores.app,
-          attitude_score: st.scores.attitude,
-          homework_score: st.scores.homework,
-          perseverance_score: st.scores.perseverance,
+          concept_score: activeKeys.includes('concept') ? parseInt(st.scores.concept) : null,
+          calc_score: activeKeys.includes('calc') ? parseInt(st.scores.calc) : null,
+          app_score: activeKeys.includes('app') ? parseInt(st.scores.app) : null,
+          attitude_score: activeKeys.includes('attitude') ? parseInt(st.scores.attitude) : null,
+          homework_score: activeKeys.includes('homework') ? parseInt(st.scores.homework) : null,
+          perseverance_score: activeKeys.includes('perseverance') ? parseInt(st.scores.perseverance) : null,
           teacher_comment: combinedComment,
         };
 
@@ -1282,8 +1350,12 @@ export default function TeacherEvalPage() {
                 ) : (
                   <div className="space-y-3">
                     {batchStudents.map((st) => {
-                      const totalScore = Object.values(st.scores).reduce((a, b) => a + Number(b), 0);
-                      const avgScore = (totalScore / 6).toFixed(1);
+                      const activeDefaultKeys = st.activeKeys || ['concept', 'calc', 'app', 'attitude', 'homework', 'perseverance'];
+                      const activeDefaultScores = activeDefaultKeys.map((k) => Number(st.scores[k]) || 0);
+                      const customScores = (st.customItems || []).map((c) => Number(c.score) || 0);
+                      const allScoresList = [...activeDefaultScores, ...customScores];
+                      const totalScore = allScoresList.reduce((a, b) => a + b, 0);
+                      const avgScore = allScoresList.length > 0 ? (totalScore / allScoresList.length).toFixed(1) : '0.0';
 
                       return (
                         <div
@@ -1432,15 +1504,26 @@ export default function TeacherEvalPage() {
                             </div>
                           </div>
 
-                          {/* 펼쳐진 6대 역량 점수 슬라이더 에디터 */}
+                          {/* 펼쳐진 역량 점수 슬라이더 에디터 (기본 항목 + 추가 항목 자연스럽게 이어짐) */}
                           {st.showScoreEditor && (
                             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 text-xs animate-fade-in">
-                              {DEFAULT_EVAL_KEYS.map((def) => {
+                              {/* 1. 활성화된 기본 6대 역량 카드들 */}
+                              {DEFAULT_EVAL_KEYS.filter((def) => activeDefaultKeys.includes(def.key)).map((def) => {
                                 const prevVal = st.initialScores?.[def.key];
                                 return (
                                   <div key={def.key} className="bg-white p-2.5 rounded-xl border border-slate-200/90 space-y-1.5 shadow-2xs">
                                     <div className="flex justify-between items-center text-[11px] font-bold">
-                                      <span className="text-slate-700">{def.name}</span>
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-slate-700">{def.name}</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleBatchToggleDefaultKey(st.student_id, def.key)}
+                                          className="text-slate-300 hover:text-rose-500 text-[10px] font-bold px-0.5"
+                                          title="이 항목 제외하기"
+                                        >
+                                          ✕
+                                        </button>
+                                      </div>
                                       <div className="flex items-center gap-1.5 shrink-0">
                                         {renderScoreDiffBadge(st.scores[def.key], prevVal)}
                                         <span className="text-blue-600 font-black text-xs">{st.scores[def.key]}점</span>
@@ -1457,6 +1540,87 @@ export default function TeacherEvalPage() {
                                   </div>
                                 );
                               })}
+
+                              {/* 2. 추가된 커스텀 항목 카드들 (동일한 디자인으로 자연스럽게 연결) */}
+                              {(st.customItems || []).map((c) => (
+                                <div key={c.id} className="bg-white p-2.5 rounded-xl border border-slate-200/90 space-y-1.5 shadow-2xs">
+                                  <div className="flex justify-between items-center text-[11px] font-bold">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-slate-800 font-extrabold">📌 {c.name}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleBatchRemoveCustomItem(st.student_id, c.id)}
+                                        className="text-slate-300 hover:text-rose-500 text-[10px] font-bold px-0.5"
+                                        title="이 항목 삭제하기"
+                                      >
+                                        ✕
+                                      </button>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <span className="text-indigo-600 font-black text-xs">{c.score}점</span>
+                                    </div>
+                                  </div>
+                                  <input
+                                    type="range"
+                                    min="1"
+                                    max="10"
+                                    value={c.score}
+                                    onChange={(e) => handleBatchCustomScoreChange(st.student_id, c.id, e.target.value)}
+                                    className="w-full accent-indigo-600 h-1.5 cursor-pointer"
+                                  />
+                                </div>
+                              ))}
+
+                              {/* 3. 새 항목 추가 및 제외된 항목 복원 카드 */}
+                              <div className="bg-slate-100/80 p-2.5 rounded-xl border border-dashed border-slate-300 flex flex-col justify-center gap-1.5 text-xs">
+                                {DEFAULT_EVAL_KEYS.some((def) => !activeDefaultKeys.includes(def.key)) && (
+                                  <div className="flex flex-wrap gap-1">
+                                    {DEFAULT_EVAL_KEYS.filter((def) => !activeDefaultKeys.includes(def.key)).map((def) => (
+                                      <button
+                                        key={def.key}
+                                        type="button"
+                                        onClick={() => handleBatchToggleDefaultKey(st.student_id, def.key)}
+                                        className="text-[10.5px] bg-white hover:bg-blue-50 text-slate-600 hover:text-blue-700 border border-slate-300 px-1.5 py-0.5 rounded font-bold transition flex items-center gap-0.5"
+                                      >
+                                        <span>+</span>
+                                        <span>{def.name}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="text"
+                                    id={`batch_new_custom_${st.student_id}`}
+                                    placeholder="➕ 새 평가 항목 추가..."
+                                    className="w-full p-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-400 shadow-2xs"
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        const el = document.getElementById(`batch_new_custom_${st.student_id}`);
+                                        if (el && el.value.trim()) {
+                                          handleBatchAddCustomItem(st.student_id, el.value.trim());
+                                          el.value = '';
+                                        }
+                                      }
+                                    }}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const el = document.getElementById(`batch_new_custom_${st.student_id}`);
+                                      if (el && el.value.trim()) {
+                                        handleBatchAddCustomItem(st.student_id, el.value.trim());
+                                        el.value = '';
+                                      }
+                                    }}
+                                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-black px-2.5 py-1.5 rounded-lg shrink-0 shadow-2xs transition"
+                                  >
+                                    추가
+                                  </button>
+                                </div>
+                              </div>
                             </div>
                           )}
                         </div>

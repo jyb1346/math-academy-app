@@ -107,14 +107,44 @@ export default function TeacherDashboard() {
         .from('classes')
         .select('*')
         .eq('teacher_id', teacherId);
-      setClasses(cData || []);
+      const myClasses = cData || [];
+      setClasses(myClasses);
 
-      const { data: stData } = await supabase
+      // 1) 내가 직속 담당인 학생 조회
+      const { data: directStData } = await supabase
         .from('users')
         .select('*')
         .eq('role', 'STUDENT')
         .eq('teacher_id', teacherId);
-      setStudents(stData || []);
+
+      // 2) 내 개설 반에 배정된 학생 ID들 조회
+      const myClassIds = myClasses.map((c) => c.id);
+      let enrolledStudentIds = [];
+      if (myClassIds.length > 0) {
+        const { data: enrolledCS } = await supabase
+          .from('class_students')
+          .select('student_id')
+          .in('class_id', myClassIds);
+        enrolledStudentIds = (enrolledCS || []).map((item) => item.student_id);
+      }
+
+      // 3) 내 반에 속한 학생들 추가 조회 (직속 담당이 아니더라도 함께 표시)
+      let allTeacherStudents = directStData || [];
+      const missingIds = enrolledStudentIds.filter(
+        (id) => !allTeacherStudents.some((s) => s.id === id)
+      );
+
+      if (missingIds.length > 0) {
+        const { data: extraStData } = await supabase
+          .from('users')
+          .select('*')
+          .in('id', missingIds);
+        if (extraStData) {
+          allTeacherStudents = [...allTeacherStudents, ...extraStData];
+        }
+      }
+
+      setStudents(allTeacherStudents);
 
       const { data: tData } = await supabase
         .from('users')
@@ -304,7 +334,15 @@ export default function TeacherDashboard() {
     if (!classId) return alert('배정할 반을 선택해 주세요.');
 
     try {
-      await supabase.from('class_students').delete().eq('student_id', studentId);
+      // 내 반들 중에서만 기존 배정 해제 후 신규 배정 (다른 선생님의 반 배정은 안전하게 보존)
+      const myClassIds = (classes || []).map((c) => c.id);
+      if (myClassIds.length > 0) {
+        await supabase
+          .from('class_students')
+          .delete()
+          .eq('student_id', studentId)
+          .in('class_id', myClassIds);
+      }
 
       const { error } = await supabase.from('class_students').insert([
         { student_id: studentId, class_id: classId }
@@ -757,7 +795,13 @@ export default function TeacherDashboard() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-extrabold text-sm text-slate-800">{st.name}</span>
                         <span className="text-slate-400 text-xs font-semibold">({st.email})</span>
-                        
+
+                        {st.teacher_id && st.teacher_id !== user?.id && (
+                          <span className="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded-full font-bold text-[10px]">
+                            수강생 (주담당: {teachers.find((t) => t.id === st.teacher_id)?.name || '선생님'}T)
+                          </span>
+                        )}
+
                         {st.parent_phone ? (
                           <span className="bg-amber-100 text-amber-900 border border-amber-200 px-2.5 py-0.5 rounded-full font-bold text-[11px]">
                             📱 학부모: {st.parent_phone}

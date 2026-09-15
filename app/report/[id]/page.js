@@ -39,13 +39,27 @@ export default function StudentReportPage() {
 
       // 학생의 전체 평가 기록 조회 (누적 과제표용)
       if (data?.student_id) {
+        const { data: tData } = await supabase
+          .from('users')
+          .select('id, name')
+          .in('role', ['TEACHER', 'HEAD_TEACHER', 'ADMIN']);
+        const teacherMap = (tData || []).reduce((acc, t) => {
+          acc[t.id] = t.name;
+          return acc;
+        }, {});
+
         const { data: allEvals } = await supabase
           .from('daily_evaluations')
           .select('*')
           .eq('student_id', data.student_id)
           .order('eval_date', { ascending: true });
 
-        setStudentAllEvals(allEvals || []);
+        const enrichedAllEvals = (allEvals || []).map((ev) => ({
+          ...ev,
+          teacher_name: teacherMap[ev.teacher_id] || '',
+        }));
+
+        setStudentAllEvals(enrichedAllEvals);
       }
     } catch (err) {
       console.error(err);

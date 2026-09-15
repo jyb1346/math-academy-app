@@ -217,6 +217,16 @@ export default function TeacherEvalPage() {
   const fetchStudentEvaluationHistory = async (studentId, currentDate) => {
     try {
       setLoadingPrevEval(true);
+
+      const { data: tData } = await supabase
+        .from('users')
+        .select('id, name')
+        .in('role', ['TEACHER', 'HEAD_TEACHER', 'ADMIN']);
+      const teacherMap = (tData || []).reduce((acc, t) => {
+        acc[t.id] = t.name;
+        return acc;
+      }, {});
+
       const { data, error } = await supabase
         .from('daily_evaluations')
         .select('*')
@@ -225,16 +235,20 @@ export default function TeacherEvalPage() {
 
       if (error) throw error;
 
-      const evals = data || [];
+      const evals = (data || []).map((ev) => ({
+        ...ev,
+        teacher_name: teacherMap[ev.teacher_id] || (ev.teacher_id === user?.id ? user?.name : ''),
+      }));
       setStudentEvals(evals);
 
-      // 현재 선택된 날짜의 평가가 이미 작성되었는지 확인
-      const todayEval = evals.find((e) => e.eval_date === currentDate);
+      // 현재 선택된 날짜의 본인(선생님) 평가가 이미 작성되었는지 확인
+      const todayEval = evals.find((e) => e.eval_date === currentDate && (!e.teacher_id || e.teacher_id === user?.id));
       setTodayEvalRecord(todayEval || null);
       setTodayParsedRecord(todayEval ? parseEvaluationRecord(todayEval) : null);
 
-      // 현재 선택된 날짜 이전의 가장 최근 평가 1건 찾기
-      const prev = evals.find((e) => e.eval_date < currentDate) || (evals.length > 0 ? evals[0] : null);
+      // 현재 선택된 날짜 이전의 본인(선생님) 최근 평가 1건 찾기 (없으면 전체 최근)
+      const myTeacherEvals = evals.filter((e) => !e.teacher_id || e.teacher_id === user?.id);
+      const prev = myTeacherEvals.find((e) => e.eval_date < currentDate) || (myTeacherEvals.length > 0 ? myTeacherEvals[0] : (evals.length > 0 ? evals[0] : null));
       setPrevEval(prev);
 
       // 🎯 역량 평가 항목 및 점수 게이지 자동 반영
@@ -745,8 +759,9 @@ export default function TeacherEvalPage() {
       // 2) 학생별 일괄 상태 객체 생성
       const initialBatchList = stList.map((st) => {
         const studentRecentEvals = allEvals.filter((e) => e.student_id === st.id);
-        const todayEval = studentRecentEvals.find((e) => e.eval_date === evalDate);
-        const prev = studentRecentEvals.find((e) => e.eval_date < evalDate) || (studentRecentEvals.length > 0 ? studentRecentEvals[0] : null);
+        const myTeacherEvals = studentRecentEvals.filter((e) => !e.teacher_id || e.teacher_id === (user?.id || ''));
+        const todayEval = myTeacherEvals.find((e) => e.eval_date === evalDate);
+        const prev = myTeacherEvals.find((e) => e.eval_date < evalDate) || (myTeacherEvals.length > 0 ? myTeacherEvals[0] : (studentRecentEvals.length > 0 ? studentRecentEvals[0] : null));
         const parsedToday = todayEval ? parseEvaluationRecord(todayEval) : null;
 
         const scores = {
@@ -834,6 +849,7 @@ export default function TeacherEvalPage() {
         .select('id')
         .eq('student_id', selectedStudentId)
         .eq('eval_date', evalDate)
+        .eq('teacher_id', user.id)
         .maybeSingle();
 
       if (checkError) throw checkError;
@@ -995,6 +1011,7 @@ export default function TeacherEvalPage() {
           .select('id')
           .eq('student_id', st.student_id)
           .eq('eval_date', evalDate)
+          .eq('teacher_id', user.id)
           .maybeSingle();
 
         if (findErr) throw findErr;

@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase';
 import PushNotificationManager from '@/components/PushNotificationManager';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import StudentHomeworkTable from '@/components/StudentHomeworkTable';
+import StudentBugDexModal from '@/components/StudentBugDexModal';
+import { checkIfUserIsJangTeacherOrStudent } from '@/lib/luckyBugService';
 
 export default function StudentDashboard() {
   const [user, setUser] = useState(null);
@@ -13,6 +15,8 @@ export default function StudentDashboard() {
   const [qnaStats, setQnaStats] = useState({ pending: 0, answered: 0, resolved: 0, total: 0 });
   const [loadingEvals, setLoadingEvals] = useState(true);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showDexModal, setShowDexModal] = useState(false);
+  const [isJangStudent, setIsJangStudent] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -25,6 +29,7 @@ export default function StudentDashboard() {
       const parsedUser = JSON.parse(userData);
       setUser(parsedUser);
       fetchStudentData(parsedUser.id);
+      checkIfUserIsJangTeacherOrStudent(parsedUser).then((res) => setIsJangStudent(res));
     } catch (e) {
       router.push('/login');
     }
@@ -111,8 +116,18 @@ export default function StudentDashboard() {
             </button>
           </div>
 
-          {/* 2층: 액션 버튼 그룹 (비밀번호 변경 및 데스크톱 로그아웃) */}
+          {/* 2층: 액션 버튼 그룹 (도감, 비밀번호 변경 및 데스크톱 로그아웃) */}
           <div className="flex items-center gap-2 justify-end pt-1 sm:pt-0">
+            {isJangStudent && (
+              <button
+                onClick={() => setShowDexModal(true)}
+                className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold px-3 py-2 rounded-xl transition border border-indigo-200 flex items-center gap-1.5 whitespace-nowrap shadow-2xs"
+              >
+                <span>📖</span>
+                <span>내 도감 & 랭킹</span>
+              </button>
+            )}
+
             <button
               onClick={() => setShowPasswordModal(true)}
               className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3.5 py-2 rounded-xl transition border border-slate-200 whitespace-nowrap"
@@ -206,6 +221,14 @@ export default function StudentDashboard() {
         </div>
 
       </main>
+
+      {/* 📖 20종 벌레 도감 & 랭킹 모달 */}
+      {showDexModal && user && (
+        <StudentBugDexModal
+          user={user}
+          onClose={() => setShowDexModal(false)}
+        />
+      )}
 
       {/* 🔒 비밀번호 변경 모달 */}
       {showPasswordModal && user && (

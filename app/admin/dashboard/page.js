@@ -25,6 +25,11 @@ export default function AdminDashboard() {
   const [filterTeacher, setFilterTeacher] = useState('ALL');
   const [editingStudent, setEditingStudent] = useState(null);
 
+  // 🎯 반 원생 배정 모달 내 실시간 검색 및 필터 상태
+  const [assignModalSearch, setAssignModalSearch] = useState('');
+  const [assignModalTeacherFilter, setAssignModalTeacherFilter] = useState('ALL');
+  const [onlySelectedInModal, setOnlySelectedInModal] = useState(false);
+
   // 신규 강사 계정 생성 폼
   const [teacherName, setTeacherName] = useState('');
   const [teacherEmail, setTeacherEmail] = useState('');
@@ -175,6 +180,9 @@ export default function AdminDashboard() {
   // 학생 반 일괄 배정 모달 오픈
   const openClassAssignModal = (cls) => {
     setAssignTargetClass(cls);
+    setAssignModalSearch('');
+    setAssignModalTeacherFilter('ALL');
+    setOnlySelectedInModal(false);
     const currentStudentIds = classStudents
       .filter((cs) => cs.class_id === cls.id)
       .map((cs) => cs.student_id);
@@ -284,6 +292,17 @@ export default function AdminDashboard() {
       (st.email || '').toLowerCase().includes(studentSearch.toLowerCase());
     const matchTeacher = filterTeacher === 'ALL' || st.teacher_id === filterTeacher;
     return matchSearch && matchTeacher;
+  });
+
+  const modalFilteredStudents = allStudents.filter((st) => {
+    const matchSearch =
+      !assignModalSearch.trim() ||
+      (st.name || '').toLowerCase().includes(assignModalSearch.toLowerCase()) ||
+      (st.email || '').toLowerCase().includes(assignModalSearch.toLowerCase());
+    const matchTeacher =
+      assignModalTeacherFilter === 'ALL' || st.teacher_id === assignModalTeacherFilter;
+    const matchSelected = !onlySelectedInModal || selectedStudentIds.includes(st.id);
+    return matchSearch && matchTeacher && matchSelected;
   });
 
   if (loading) return (
@@ -651,59 +670,163 @@ export default function AdminDashboard() {
       {/* 🎯 모달 1: 원생 지정 일괄 배정 */}
       {assignTargetClass && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-lg space-y-5 shadow-2xl animate-in fade-in zoom-in-95 my-8">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-lg space-y-4 shadow-2xl animate-in fade-in zoom-in-95 my-8">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-base font-extrabold text-slate-800">
                   📘 [{assignTargetClass.name}] 반 원생 일괄 배정
                 </h3>
-                <p className="text-xs text-slate-400 mt-0.5">배정할 원생들을 선택해 주세요.</p>
+                <p className="text-xs text-slate-400 mt-0.5">배정할 원생들을 검색하거나 체크해 주세요.</p>
               </div>
               <button onClick={() => setAssignTargetClass(null)} className="text-slate-400 hover:text-slate-600 font-bold text-xs">✕</button>
             </div>
 
-            <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
-              {allStudents.map((st) => {
-                const isChecked = selectedStudentIds.includes(st.id);
-                const teacherObj = allTeachers.find((t) => t.id === st.teacher_id);
-                return (
-                  <label
-                    key={st.id}
-                    className={`flex items-center justify-between p-3 rounded-2xl border transition cursor-pointer ${
-                      isChecked ? 'bg-indigo-50/80 border-indigo-300' : 'bg-slate-50 border-slate-200'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => toggleStudentSelection(st.id)}
-                        className="w-4 h-4 text-indigo-600 accent-indigo-600 rounded"
-                      />
-                      <div>
-                        <span className="text-xs font-bold text-slate-800 block">{st.name}</span>
-                        <span className="text-[10px] text-slate-400">담당: {teacherObj?.name || '미지정'}T</span>
-                      </div>
-                    </div>
+            {/* 🔍 실시간 원생 검색 & 강사 필터 */}
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <div className="flex-1 relative">
+                  <input
+                    type="text"
+                    placeholder="🔍 학생 이름 또는 아이디로 검색..."
+                    value={assignModalSearch}
+                    onChange={(e) => setAssignModalSearch(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500"
+                    autoFocus
+                  />
+                  {assignModalSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setAssignModalSearch('')}
+                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
 
-                    {isChecked && (
-                      <span className="text-xs font-bold text-indigo-600">선택됨 ✓</span>
-                    )}
-                  </label>
-                );
-              })}
+                <select
+                  value={assignModalTeacherFilter}
+                  onChange={(e) => setAssignModalTeacherFilter(e.target.value)}
+                  className="p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none"
+                >
+                  <option value="ALL">전체 강사</option>
+                  {allTeachers.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}T 담당
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex justify-between items-center text-[11px] font-bold text-slate-500 px-1">
+                <button
+                  type="button"
+                  onClick={() => setOnlySelectedInModal(!onlySelectedInModal)}
+                  className={`px-2 py-1 rounded-lg border transition ${
+                    onlySelectedInModal
+                      ? 'bg-indigo-50 text-indigo-700 border-indigo-200 font-extrabold'
+                      : 'bg-white text-slate-500 border-slate-200'
+                  }`}
+                >
+                  {onlySelectedInModal ? '✓ 선택된 원생만 보기 중' : '선택된 원생만 모아보기'}
+                </button>
+
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const visibleIds = modalFilteredStudents.map((s) => s.id);
+                      const merged = Array.from(new Set([...selectedStudentIds, ...visibleIds]));
+                      setSelectedStudentIds(merged);
+                    }}
+                    className="text-indigo-600 hover:underline"
+                  >
+                    검색결과 전체선택
+                  </button>
+                  <span>·</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const visibleIds = modalFilteredStudents.map((s) => s.id);
+                      setSelectedStudentIds(selectedStudentIds.filter((id) => !visibleIds.includes(id)));
+                    }}
+                    className="text-slate-400 hover:underline"
+                  >
+                    검색결과 전체해제
+                  </button>
+                </div>
+              </div>
             </div>
 
-            <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl text-xs font-bold">
+            {/* 원생 목록 리스트 */}
+            <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+              {modalFilteredStudents.length === 0 ? (
+                <p className="text-xs text-slate-400 py-8 text-center font-bold">
+                  {assignModalSearch.trim() ? `'${assignModalSearch}' 검색 결과가 없습니다.` : '등록된 원생이 없습니다.'}
+                </p>
+              ) : (
+                modalFilteredStudents.map((st) => {
+                  const isChecked = selectedStudentIds.includes(st.id);
+                  const teacherObj = allTeachers.find((t) => t.id === st.teacher_id);
+                  const otherClasses = classStudents
+                    .filter((cs) => cs.student_id === st.id && cs.class_id !== assignTargetClass.id)
+                    .map((cs) => allClasses.find((c) => c.id === cs.class_id)?.name)
+                    .filter(Boolean);
+
+                  return (
+                    <label
+                      key={st.id}
+                      className={`flex items-center justify-between p-3 rounded-2xl border transition cursor-pointer ${
+                        isChecked ? 'bg-indigo-50/90 border-indigo-300 shadow-2xs' : 'bg-slate-50 border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleStudentSelection(st.id)}
+                          className="w-4 h-4 text-indigo-600 accent-indigo-600 rounded"
+                        />
+                        <div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs font-black text-slate-800">{st.name}</span>
+                            <span className="text-[10px] text-slate-400">({st.email})</span>
+                          </div>
+
+                          <div className="flex items-center gap-2 mt-0.5 text-[10.5px]">
+                            <span className="text-amber-800 font-bold">
+                              담당: {teacherObj?.role === 'HEAD_TEACHER' ? '👑' : '👨‍🏫'} {teacherObj?.name || '미지정'}T
+                            </span>
+                            {otherClasses.length > 0 && (
+                              <span className="bg-slate-200 text-slate-600 px-1.5 py-0.2 rounded text-[9.5px] font-semibold">
+                                타반: {otherClasses.join(', ')}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {isChecked && (
+                        <span className="text-xs font-black text-indigo-600 whitespace-nowrap">
+                          선택됨 ✓
+                        </span>
+                      )}
+                    </label>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl text-xs font-bold border border-slate-200/60">
               <span className="text-slate-600">선택된 원생:</span>
               <span className="text-indigo-600 font-extrabold">{selectedStudentIds.length}명</span>
             </div>
 
-            <div className="flex gap-2 pt-2">
+            <div className="flex gap-2 pt-1">
               <button
                 type="button"
                 onClick={() => setAssignTargetClass(null)}
-                className="w-1/2 bg-slate-100 text-slate-600 py-3 rounded-2xl text-xs font-bold"
+                className="w-1/2 bg-slate-100 hover:bg-slate-200 text-slate-600 py-3 rounded-2xl text-xs font-bold transition"
               >
                 취소
               </button>

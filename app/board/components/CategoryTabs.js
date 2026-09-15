@@ -5,82 +5,84 @@ export default function CategoryTabs({
   setCategory,
   selectedClassId,
   setSelectedClassId,
-  myClasses,
+  myClasses = [],
 }) {
   return (
     <div className="space-y-3">
-      {/* 1. 카테고리 탭 (Q&A는 전용 1:1 메뉴로 분리되어 일반 게시판 3대 카테고리 유지) */}
-      <div className="flex gap-1.5 overflow-x-auto pb-2 border-b border-slate-200 scrollbar-none">
+      {/* 1. 카테고리 4등분 컴팩트 세그먼트 탭 (가로 넘김 없이 1줄 4등분으로 화면에 쏙 맞춤) */}
+      <div className="grid grid-cols-4 gap-1 p-1 bg-slate-100 rounded-2xl border border-slate-200/80">
         <button
+          type="button"
           onClick={() => setCategory('ALL')}
-          className={`px-4 py-2.5 rounded-xl text-sm font-black transition whitespace-nowrap ${
+          className={`py-2.5 px-1 rounded-xl text-xs sm:text-sm font-black transition text-center flex items-center justify-center gap-1 ${
             category === 'ALL'
-              ? 'bg-blue-600 text-white shadow-md'
-              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
           }`}
         >
-          전체보기
+          <span>📋</span>
+          <span className="truncate">전체</span>
         </button>
+
         <button
+          type="button"
           onClick={() => setCategory('NOTICE_HOMEWORK')}
-          className={`px-4 py-2.5 rounded-xl text-sm font-black transition whitespace-nowrap ${
+          className={`py-2.5 px-1 rounded-xl text-xs sm:text-sm font-black transition text-center flex items-center justify-center gap-1 ${
             category === 'NOTICE_HOMEWORK'
-              ? 'bg-blue-600 text-white shadow-md'
-              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
           }`}
         >
-          1️⃣ 📝 숙제 및 공지사항
+          <span>📝</span>
+          <span className="truncate">숙제·공지</span>
         </button>
+
         <button
+          type="button"
           onClick={() => setCategory('VIDEO')}
-          className={`px-4 py-2.5 rounded-xl text-sm font-black transition whitespace-nowrap ${
+          className={`py-2.5 px-1 rounded-xl text-xs sm:text-sm font-black transition text-center flex items-center justify-center gap-1 ${
             category === 'VIDEO'
-              ? 'bg-blue-600 text-white shadow-md'
-              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
           }`}
         >
-          2️⃣ 🎬 복습영상 게시판
+          <span>🎬</span>
+          <span className="truncate">복습영상</span>
         </button>
+
         <button
+          type="button"
           onClick={() => setCategory('MATERIAL')}
-          className={`px-4 py-2.5 rounded-xl text-sm font-black transition whitespace-nowrap ${
+          className={`py-2.5 px-1 rounded-xl text-xs sm:text-sm font-black transition text-center flex items-center justify-center gap-1 ${
             category === 'MATERIAL'
-              ? 'bg-blue-600 text-white shadow-md'
-              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
           }`}
         >
-          3️⃣ 📄 수업자료 게시판
+          <span>📁</span>
+          <span className="truncate">수업자료</span>
         </button>
       </div>
 
-      {/* 2. 반별 탭: '전체 반' 제거, [🌐 학원 전체 공지] 고정 탭 + [담당/소속 반 목록] */}
-      <div className="flex gap-2 overflow-x-auto pt-1 pb-1 items-center scrollbar-none">
-        <button
-          onClick={() => setSelectedClassId('PUBLIC')}
-          className={`px-4 py-2 rounded-xl text-sm font-extrabold transition whitespace-nowrap flex items-center gap-1.5 ${
-            selectedClassId === 'PUBLIC'
-              ? 'bg-slate-800 text-white shadow-sm'
-              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-          }`}
+      {/* 2. 반 선택 드롭다운 (가로 스크롤 잘림 문제 해결) */}
+      <div className="flex items-center gap-2 bg-slate-50/80 p-2 sm:p-2.5 rounded-xl border border-slate-200">
+        <label className="text-xs font-black text-slate-700 shrink-0 flex items-center gap-1">
+          <span>🏫</span>
+          <span className="hidden sm:inline">공지 대상:</span>
+          <span className="sm:hidden">대상:</span>
+        </label>
+        <select
+          value={selectedClassId}
+          onChange={(e) => setSelectedClassId(e.target.value)}
+          className="flex-1 p-2 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm font-bold text-slate-800 shadow-2xs focus:outline-none focus:border-indigo-500 cursor-pointer"
         >
-          <span>🌐</span>
-          <span>학원 전체 공지사항</span>
-        </button>
-
-        {myClasses.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => setSelectedClassId(String(c.id))}
-            className={`px-4 py-2 rounded-xl text-sm font-extrabold transition whitespace-nowrap flex items-center gap-1 ${
-              String(selectedClassId) === String(c.id)
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'bg-indigo-50 border border-indigo-100 text-indigo-700 hover:bg-indigo-100'
-            }`}
-          >
-            <span>🎯</span>
-            <span>[{c.name}]</span>
-          </button>
-        ))}
+          <option value="PUBLIC">🌐 학원 전체 공지사항</option>
+          {myClasses.map((c) => (
+            <option key={c.id} value={String(c.id)}>
+              🎯 [{c.name}]
+            </option>
+          ))}
+        </select>
       </div>
     </div>
   );

@@ -12,15 +12,36 @@ export default function TeacherDashboard() {
   const [classes, setClasses] = useState([]);
   const [students, setStudents] = useState([]);
   const [classStudents, setClassStudents] = useState([]);
-  const [pendingQnaCount, setPendingQnaCount] = useState(0);
+  const [qnaStats, setQnaStats] = useState({ pending: 0, inProgress: 0, resolved: 0, total: 0 });
   const [loading, setLoading] = useState(true);
 
   // 비밀번호 변경 모달 상태
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showLuckyBugModal, setShowLuckyBugModal] = useState(false);
 
-  // 반 생성 폼
+  // 반 생성 폼 및 수업 유형 (판서수업 LECTURE / 개별수업 INDIVIDUAL)
   const [newClassName, setNewClassName] = useState('');
+  const [newClassType, setNewClassType] = useState('LECTURE');
+  const [classTypes, setClassTypes] = useState({});
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('poom_class_types');
+      if (stored) {
+        setClassTypes(JSON.parse(stored));
+      }
+    } catch (e) {}
+  }, []);
+
+  const handleToggleClassType = (classId) => {
+    const current = classTypes[classId] || 'LECTURE';
+    const nextType = current === 'LECTURE' ? 'INDIVIDUAL' : 'LECTURE';
+    const updated = { ...classTypes, [classId]: nextType };
+    setClassTypes(updated);
+    try {
+      localStorage.setItem('poom_class_types', JSON.stringify(updated));
+    } catch (e) {}
+  };
 
   // 📲 카카오톡 초대 및 앱 설치 안내 링크 복사/공유 (중복 URL 방지)
   const handleShareKakaoLink = async () => {
@@ -99,10 +120,33 @@ export default function TeacherDashboard() {
 
       const { data: qnaData } = await supabase
         .from('qna')
-        .select('id, status')
-        .eq('teacher_id', teacherId)
-        .eq('status', 'PENDING');
-      setPendingQnaCount(qnaData ? qnaData.length : 0);
+        .select('id, status, replies')
+        .eq('teacher_id', teacherId);
+
+      const parsedQna = (qnaData || []).map((q) => {
+        let replies = [];
+        if (Array.isArray(q.replies)) replies = q.replies;
+        else if (typeof q.replies === 'string') {
+          try { replies = JSON.parse(q.replies) || []; } catch { replies = []; }
+        }
+        const lastReply = replies.length > 0 ? replies[replies.length - 1] : null;
+        let computedStatus = q.status;
+        if (q.status === 'ANSWERED' && lastReply?.type === 'RESOLVED') {
+          computedStatus = 'RESOLVED';
+        }
+        return { ...q, computedStatus };
+      });
+
+      const pending = parsedQna.filter((q) => q.computedStatus === 'PENDING').length;
+      const inProgress = parsedQna.filter((q) => q.computedStatus === 'ANSWERED').length;
+      const resolved = parsedQna.filter((q) => q.computedStatus === 'RESOLVED').length;
+
+      setQnaStats({
+        pending,
+        inProgress,
+        resolved,
+        total: parsedQna.length,
+      });
 
     } catch (err) {
       console.error(err);
@@ -116,12 +160,20 @@ export default function TeacherDashboard() {
     if (!newClassName.trim()) return alert('반 이름을 입력해주세요.');
 
     try {
-      const { error } = await supabase.from('classes').insert([
+      const { data, error } = await supabase.from('classes').insert([
         { name: newClassName.trim(), teacher_id: user.id }
-      ]);
+      ]).select('id').single();
       if (error) throw error;
 
-      alert(`[${newClassName}] 반이 개설되었습니다.`);
+      if (data?.id) {
+        const updated = { ...classTypes, [data.id]: newClassType };
+        setClassTypes(updated);
+        try {
+          localStorage.setItem('poom_class_types', JSON.stringify(updated));
+        } catch (e) {}
+      }
+
+      alert(`[${newClassName}] 반(${newClassType === 'LECTURE' ? '판서수업' : '개별수업'})이 개설되었습니다.`);
       setNewClassName('');
       fetchTeacherData(user.id);
     } catch (err) {
@@ -219,6 +271,9 @@ export default function TeacherDashboard() {
   const handleDeleteStudent = async (studentId, studentName) => {
     if (!confirm(`[${studentName}] 학생을 삭제하시겠습니까?`)) return;
     try {
+      await supabase.from('class_students').delete().eq('student_id', studentId);
+      await supabase.from('push_subscriptions').delete().eq('user_id', studentId);
+
       const { error } = await supabase.from('users').delete().eq('id', studentId);
       if (error) throw error;
       fetchTeacherData(user.id);
@@ -444,11 +499,19 @@ export default function TeacherDashboard() {
 
               <div className="flex justify-between items-start">
                 <span className={`text-xs px-3.5 py-1 rounded-full font-black flex items-center gap-1.5 ${
-                  pendingQnaCount > 0
+                  qnaStats.pending > 0
                     ? 'bg-rose-600 text-white animate-pulse shadow-md'
-                    : 'bg-white/20 border border-white/20 text-white'
+                    : qnaStats.inProgress > 0
+                    ? 'bg-amber-400 text-slate-900 font-extrabold shadow-md'
+                    : 'bg-emerald-500/90 text-white border border-emerald-400/40 font-bold'
                 }`}>
-                  {pendingQnaCount > 0 ? `🚨 미답변 질문 ${pendingQnaCount}건` : '✅ 답변 완료'}
+                  {qnaStats.pending > 0 && qnaStats.inProgress > 0
+                    ? `🚨 미답변 ${qnaStats.pending}건 · 💬 확인 중 ${qnaStats.inProgress}건`
+                    : qnaStats.pending > 0
+                    ? `🚨 미답변 질문 ${qnaStats.pending}건`
+                    : qnaStats.inProgress > 0
+                    ? `💬 학생 확인 중 ${qnaStats.inProgress}건`
+                    : '💡 모든 질문 해결 완료'}
                 </span>
                 <span className="text-3xl text-white/60 group-hover:text-white group-hover:translate-x-1 transition-all">→</span>
               </div>
@@ -488,20 +551,49 @@ export default function TeacherDashboard() {
             <p className="text-xs text-slate-400">반을 개설하거나 내 반의 학생들을 지정해 일괄 배정하세요.</p>
           </div>
 
-          <form onSubmit={handleCreateClass} className="flex gap-2">
-            <input
-              type="text"
-              placeholder="신규 반 이름 입력 (예: 중3 심화A반)"
-              value={newClassName}
-              onChange={(e) => setNewClassName(e.target.value)}
-              className="flex-1 p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 transition"
-            />
-            <button
-              type="submit"
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 py-3 rounded-2xl text-xs shadow-sm transition whitespace-nowrap"
-            >
-              + 반 개설
-            </button>
+          <form onSubmit={handleCreateClass} className="space-y-2">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                placeholder="신규 반 이름 입력 (예: 중3 심화A반)"
+                value={newClassName}
+                onChange={(e) => setNewClassName(e.target.value)}
+                className="flex-1 p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 transition"
+              />
+              <div className="flex gap-1.5 p-1 bg-slate-100 rounded-2xl border border-slate-200 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setNewClassType('LECTURE')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition flex items-center gap-1 ${
+                    newClassType === 'LECTURE'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <span>👥 판서수업</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewClassType('INDIVIDUAL')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition flex items-center gap-1 ${
+                    newClassType === 'INDIVIDUAL'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <span>👤 개별수업</span>
+                </button>
+              </div>
+              <button
+                type="submit"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 py-3 rounded-2xl text-xs shadow-sm transition whitespace-nowrap"
+              >
+                + 반 개설
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-400 pl-1">
+              💡 {newClassType === 'LECTURE' ? '판서수업: 반 전체가 동일한 공통 진도 및 과제를 수행합니다. (피드백 일괄 작성 지원)' : '개별수업: 학생마다 개별 맞춤 진도와 과제를 다르게 부여합니다.'}
+            </p>
           </form>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-1">
@@ -510,14 +602,30 @@ export default function TeacherDashboard() {
             ) : (
               classes.map((cls) => {
                 const count = classStudents.filter((cs) => String(cs.class_id) === String(cls.id)).length;
+                const currentType = classTypes[cls.id] || 'LECTURE';
 
                 return (
                   <div
                     key={cls.id}
                     className="bg-slate-50/80 hover:bg-slate-50 border border-slate-200/80 p-4 rounded-2xl flex flex-col justify-between space-y-3 transition"
                   >
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-extrabold text-slate-800">📘 {cls.name}</span>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <span className="text-sm font-extrabold text-slate-800 block">📘 {cls.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleClassType(cls.id)}
+                          className={`mt-1.5 text-[11px] font-extrabold px-2.5 py-0.5 rounded-full border transition flex items-center gap-1 ${
+                            currentType === 'LECTURE'
+                              ? 'bg-indigo-100/80 text-indigo-700 border-indigo-200 hover:bg-indigo-200'
+                              : 'bg-emerald-100/80 text-emerald-700 border-emerald-200 hover:bg-emerald-200'
+                          }`}
+                          title="클릭하여 수업 방식을 전환할 수 있습니다"
+                        >
+                          <span>{currentType === 'LECTURE' ? '👥 판서수업' : '👤 개별수업'}</span>
+                          <span className="text-[10px] text-slate-400">🔄</span>
+                        </button>
+                      </div>
                       <button
                         onClick={() => handleDeleteClass(cls.id, cls.name)}
                         className="text-xs text-rose-500 font-bold hover:underline"
@@ -526,7 +634,7 @@ export default function TeacherDashboard() {
                       </button>
                     </div>
 
-                    <div className="flex justify-between items-center">
+                    <div className="flex justify-between items-center pt-1 border-t border-slate-200/60">
                       <span className="text-xs text-slate-500 font-bold">소속 학생: <span className="text-indigo-600 font-extrabold">{count}명</span></span>
                       
                       <button

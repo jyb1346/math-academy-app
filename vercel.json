@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/due-reminder",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/qna-reminder",
+      "schedule": "0 10 * * *"
     }
   ]
 }

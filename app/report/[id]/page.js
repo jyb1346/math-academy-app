@@ -3,12 +3,14 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useParams, useRouter } from 'next/navigation';
-import HexagonRadarChart from '@/components/HexagonRadarChart';
+import EvaluationBarChart from '@/components/EvaluationBarChart';
+import StudentHomeworkTable from '@/components/StudentHomeworkTable';
+import { parseEvaluationRecord } from '@/lib/evalUtils';
 
 export default function StudentReportPage() {
   const { id } = useParams();
   const [evalData, setEvalData] = useState(null);
-  const [twoWeekAvg, setTwoWeekAvg] = useState(null);
+  const [studentAllEvals, setStudentAllEvals] = useState([]);
   const [loading, setLoading] = useState(true);
   
   // 학부모 답장 상태
@@ -35,48 +37,15 @@ export default function StudentReportPage() {
         setReplyText(data.parent_reply);
       }
 
-      // 🎯 학생의 최근 2주 평균 데이터 조회 및 계산
-      if (data?.student_id && data?.eval_date) {
+      // 학생의 전체 평가 기록 조회 (누적 과제표용)
+      if (data?.student_id) {
         const { data: allEvals } = await supabase
           .from('daily_evaluations')
           .select('*')
           .eq('student_id', data.student_id)
-          .order('eval_date', { ascending: false });
+          .order('eval_date', { ascending: true });
 
-        if (allEvals && allEvals.length > 0) {
-          const targetDate = new Date(data.eval_date);
-          const twoWeeksAgo = new Date(targetDate);
-          twoWeeksAgo.setDate(targetDate.getDate() - 14);
-
-          const studentTwoWeekEvals = allEvals.filter((e) => {
-            const evalDateObj = new Date(e.eval_date);
-            return evalDateObj >= twoWeeksAgo && evalDateObj <= targetDate;
-          });
-
-          if (studentTwoWeekEvals.length > 0) {
-            const total = studentTwoWeekEvals.reduce(
-              (acc, curr) => ({
-                concept: acc.concept + (curr.concept_score || 0),
-                calc: acc.calc + (curr.calc_score || 0),
-                app: acc.app + (curr.app_score || 0),
-                attitude: acc.attitude + (curr.attitude_score || 0),
-                homework: acc.homework + (curr.homework_score || 0),
-                perseverance: acc.perseverance + (curr.perseverance_score || 0),
-              }),
-              { concept: 0, calc: 0, app: 0, attitude: 0, homework: 0, perseverance: 0 }
-            );
-
-            const count = studentTwoWeekEvals.length;
-            setTwoWeekAvg({
-              concept: Number((total.concept / count).toFixed(1)),
-              calc: Number((total.calc / count).toFixed(1)),
-              app: Number((total.app / count).toFixed(1)),
-              attitude: Number((total.attitude / count).toFixed(1)),
-              homework: Number((total.homework / count).toFixed(1)),
-              perseverance: Number((total.perseverance / count).toFixed(1)),
-            });
-          }
-        }
+        setStudentAllEvals(allEvals || []);
       }
     } catch (err) {
       console.error(err);
@@ -102,6 +71,28 @@ export default function StudentReportPage() {
         .eq('id', id);
 
       if (error) throw error;
+
+      // 🔔 담당 선생님께 실시간 웹 푸시 알림 발송
+      if (evalData?.teacher_id) {
+        try {
+          const studentName = evalData.users?.name || '학생';
+          const trimmedReply = replyText.trim();
+          const preview = trimmedReply.length > 50 ? `${trimmedReply.slice(0, 50)}...` : trimmedReply;
+
+          fetch('/api/push/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userIds: [evalData.teacher_id],
+              title: `💌 [학부모 답장] ${studentName} 학생 학부모님`,
+              message: `"${preview}"`,
+              url: '/teacher/eval/history',
+            }),
+          }).catch((err) => console.warn('Parent reply push send warning:', err));
+        } catch (pushErr) {
+          console.warn('Push dispatch error:', pushErr);
+        }
+      }
 
       alert('담당 선생님께 답장이 성공적으로 전달되었습니다!');
       fetchEvaluation();
@@ -132,9 +123,12 @@ export default function StudentReportPage() {
     return '🟢 정상 출석';
   };
 
+  const parsed = parseEvaluationRecord(evalData);
+  const studentName = evalData.users?.name || '학생';
+
   return (
-    <div className="min-h-screen bg-slate-100/80 py-6 px-4 flex flex-col items-center justify-center font-sans">
-      <div className="max-w-md w-full bg-white rounded-3xl shadow-xl border border-slate-200/80 overflow-hidden space-y-4">
+    <div className="min-h-screen bg-slate-100/80 py-6 px-3 sm:px-4 flex flex-col items-center justify-center font-sans">
+      <div className="max-w-xl w-full bg-white rounded-3xl shadow-xl border border-slate-200/80 overflow-hidden space-y-4">
         
         {/* 상단 리포트 헤더 */}
         <div className="bg-gradient-to-tr from-blue-600 to-indigo-700 text-white p-6 text-center space-y-2 shadow-md shadow-blue-500/10">
@@ -142,9 +136,9 @@ export default function StudentReportPage() {
             품수학 일일 학습 보고서
           </span>
           <h2 className="text-2xl font-black pt-1">
-            {(evalData.users?.name || '학생') + ' 피드백'}
+            {studentName + ' 피드백'}
           </h2>
-          <div className="flex items-center justify-center gap-2 pt-1">
+          <div className="flex items-center justify-center gap-2 pt-1 flex-wrap">
             <span className="text-xs text-blue-100 font-semibold">
               {'📅 수업 일자: ' + evalData.eval_date}
             </span>
@@ -154,50 +148,112 @@ export default function StudentReportPage() {
           </div>
         </div>
 
-        {/* 🎯 육각형 그래프 영역 (당일 성취도 + 최근 2주 평균 동시 표기) */}
-        <div className="px-5 py-2 flex flex-col items-center space-y-3">
-          <h3 className="text-sm font-black text-slate-800 text-center flex items-center gap-1.5">
-            <span>📊</span>
-            <span>6대 핵심 역량별 학습 분석</span>
-          </h3>
+        {/* 📖 1. 오늘의 수업 진도 & 숙제 요약 카드 */}
+        {(parsed.lessonProgress || (parsed.homeworkBooks && parsed.homeworkBooks.length > 0)) && (
+          <div className="mx-4 sm:mx-5 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-white p-4 sm:p-5 rounded-2xl shadow-md border border-slate-700/80 space-y-3">
+            <div className="flex items-center gap-2 border-b border-slate-700 pb-2">
+              <span className="text-base">📖</span>
+              <h4 className="text-xs sm:text-sm font-black text-slate-100">오늘의 진도 및 과제 안내</h4>
+            </div>
 
-          <div className="w-full flex justify-center">
-            <HexagonRadarChart
-              scores={{
-                concept: evalData.concept_score,
-                calc: evalData.calc_score,
-                app: evalData.app_score,
-                attitude: evalData.attitude_score,
-                homework: evalData.homework_score,
-                perseverance: evalData.perseverance_score,
-              }}
-              twoWeekAvgScores={twoWeekAvg}
-            />
-          </div>
+            {parsed.lessonProgress && (
+              <div className="bg-slate-800/80 p-3 rounded-xl border border-slate-700 space-y-0.5">
+                <span className="text-[10.5px] font-bold text-indigo-300 block">🎯 학습 진도</span>
+                <p className="text-xs sm:text-sm font-black text-white">{parsed.lessonProgress}</p>
+              </div>
+            )}
 
-          {/* 6대 역량 수치 그리드 */}
-          <div className="w-full grid grid-cols-3 gap-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 text-xs font-bold text-slate-700">
-            <div className="text-center">개념: <span className="text-blue-600 font-black">{(evalData.concept_score ?? '-') + '점'}</span></div>
-            <div className="text-center">연산: <span className="text-blue-600 font-black">{(evalData.calc_score ?? '-') + '점'}</span></div>
-            <div className="text-center">응용: <span className="text-blue-600 font-black">{(evalData.app_score ?? '-') + '점'}</span></div>
-            <div className="text-center">집중: <span className="text-blue-600 font-black">{(evalData.attitude_score ?? '-') + '점'}</span></div>
-            <div className="text-center">과제: <span className="text-blue-600 font-black">{(evalData.homework_score ?? '-') + '점'}</span></div>
-            <div className="text-center">끈기: <span className="text-blue-600 font-black">{(evalData.perseverance_score ?? '-') + '점'}</span></div>
+            {parsed.homeworkBooks && parsed.homeworkBooks.length > 0 && (
+              <div className="space-y-1.5">
+                <span className="text-[10.5px] font-bold text-slate-400 block">📚 부여된 과제 범위</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {parsed.homeworkBooks.map((b) => (
+                    <div key={b.name} className="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700 text-xs flex justify-between items-center">
+                      <span className="font-extrabold text-amber-300">{b.name}</span>
+                      <span className="font-bold text-slate-200">{b.range}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
+        )}
+
+        {/* 🎯 2. 학습 성취도 분석 영역 (가로 막대 게이지 바 차트) */}
+        <div className="px-4 sm:px-5 py-1">
+          <EvaluationBarChart items={parsed.items} />
         </div>
 
-        {/* 선생님 피드백 */}
-        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 space-y-2">
-          <h4 className="text-xs font-black text-indigo-700 uppercase tracking-wider flex items-center gap-1">
-            <span>✍️</span> 선생님 피드백 코멘트
-          </h4>
-          <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-            {evalData.teacher_comment || '오늘도 집중력 있게 성실히 학습에 임했습니다!'}
-          </p>
-        </div>
+        {/* 📝 3. 시험 성적 결과 카드 (입력된 경우에만 렌더링, 미입력 시 숨김) */}
+        {parsed.testScore && (
+          <div className="mx-4 sm:mx-5 bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 rounded-2xl p-4 text-white shadow-lg shadow-indigo-600/15 space-y-2 animate-fade-in">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-lg shadow-inner">
+                  {parsed.testType === '단원평가' ? '📘' : parsed.testType === '일일테스트' ? '⚡' : parsed.testType === '모의고사' ? '🎯' : parsed.testType === '주간테스트' ? '📝' : '✍️'}
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-indigo-200 block uppercase tracking-wide">
+                    {parsed.testType === '단원평가'
+                      ? 'Unit Test'
+                      : parsed.testType === '일일테스트'
+                      ? 'Daily Test'
+                      : parsed.testType === '모의고사'
+                      ? 'Mock Exam'
+                      : parsed.testType === '주간테스트'
+                      ? 'Weekly Test'
+                      : 'Evaluation Result'}
+                  </span>
+                  <h4 className="text-sm font-black text-white">{parsed.testType} 결과</h4>
+                </div>
+              </div>
+              <div className="bg-white text-indigo-950 px-3.5 py-1.5 rounded-xl shadow-md text-right border border-indigo-100 flex items-baseline gap-1">
+                <span className="text-[11px] font-bold text-slate-500">점수:</span>
+                <span className="text-base sm:text-lg font-black text-indigo-600">
+                  {parsed.testScore.endsWith('점') || parsed.testScore.includes('/') || parsed.testScore.includes('등급') ? parsed.testScore : `${parsed.testScore}점`}
+                </span>
+              </div>
+            </div>
+            <p className="text-[11px] text-indigo-100/90 font-medium pt-0.5">
+              {parsed.testType === '단원평가'
+                ? '💡 해당 단원의 핵심 개념 이해도 및 심화 문제 해결력을 점검한 단원평가 결과입니다.'
+                : parsed.testType === '일일테스트'
+                ? '💡 오늘 수업 내용의 당일 이해도와 기본 계산 정확도를 점검한 일일 테스트 결과입니다.'
+                : parsed.testType === '모의고사'
+                ? '💡 실전 시험 대비 모의고사 성취도 및 성적 평가 결과입니다.'
+                : parsed.testType === '주간테스트'
+                ? '💡 이번 주 학습 단원 이해도 점검 및 주간 성취도 평가 점수입니다.'
+                : `💡 ${parsed.testType} 성취도 평가 결과입니다.`}
+            </p>
+          </div>
+        )}
 
-        {/* 학부모 답장 작성 섹션 */}
-        <div className="px-6 py-4 bg-white border-t border-slate-100 space-y-3">
+        {/* 📑 4. 학부모용 학생 전체 누적 과제표 (엑셀 뷰) */}
+        {studentAllEvals.length > 0 && (
+          <div className="px-4 sm:px-5 py-2">
+            <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200">
+              <StudentHomeworkTable
+                studentName={studentName}
+                evaluations={studentAllEvals}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* ✍️ 5. 선생님 피드백 코멘트 (작성된 경우에만 표시) */}
+        {parsed.comment && (
+          <div className="px-5 sm:px-6 py-4 bg-slate-50 border-t border-slate-100 space-y-2 animate-fade-in">
+            <h4 className="text-xs font-black text-indigo-700 uppercase tracking-wider flex items-center gap-1">
+              <span>✍️</span> 선생님 피드백 코멘트
+            </h4>
+            <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+              {parsed.comment}
+            </p>
+          </div>
+        )}
+
+        {/* 💬 6. 학부모 답장 작성 섹션 */}
+        <div className="px-5 sm:px-6 py-4 bg-white border-t border-slate-100 space-y-3">
           <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1">
             <span>💬</span> 담당 선생님께 답장 남기기
           </h4>
@@ -207,7 +263,7 @@ export default function StudentReportPage() {
               onChange={(e) => setReplyText(e.target.value)}
               placeholder="선생님께 전달할 감사 인사나 문의사항을 입력해 주세요."
               rows={3}
-              className="w-full p-3.5 border border-slate-200/80 rounded-2xl text-xs font-semibold bg-slate-50 focus:outline-none focus:border-indigo-500"
+              className="w-full p-3.5 border border-slate-300 rounded-2xl text-xs font-semibold bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-inner"
             />
             <button
               type="submit"

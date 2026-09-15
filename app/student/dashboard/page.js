@@ -7,6 +7,7 @@ import PushNotificationManager from '@/components/PushNotificationManager';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import StudentHomeworkTable from '@/components/StudentHomeworkTable';
 import StudentBugDexModal from '@/components/StudentBugDexModal';
+import { checkIfUserIsJangTeacherOrStudent } from '@/lib/luckyBugService';
 
 export default function StudentDashboard() {
   const [user, setUser] = useState(null);
@@ -15,6 +16,7 @@ export default function StudentDashboard() {
   const [loadingEvals, setLoadingEvals] = useState(true);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showDexModal, setShowDexModal] = useState(false);
+  const [isJangStudent, setIsJangStudent] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -27,6 +29,7 @@ export default function StudentDashboard() {
       const parsedUser = JSON.parse(userData);
       setUser(parsedUser);
       fetchStudentData(parsedUser.id);
+      checkIfUserIsJangTeacherOrStudent(parsedUser).then((res) => setIsJangStudent(res));
     } catch (e) {
       router.push('/login');
     }
@@ -115,13 +118,15 @@ export default function StudentDashboard() {
 
           {/* 2층: 액션 버튼 그룹 (도감, 비밀번호 변경 및 데스크톱 로그아웃) */}
           <div className="flex items-center gap-2 justify-end pt-1 sm:pt-0">
-            <button
-              onClick={() => setShowDexModal(true)}
-              className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold px-3 py-2 rounded-xl transition border border-indigo-200 flex items-center gap-1.5 whitespace-nowrap shadow-2xs"
-            >
-              <span>📖</span>
-              <span>내 도감 & 랭킹</span>
-            </button>
+            {isJangStudent && (
+              <button
+                onClick={() => setShowDexModal(true)}
+                className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold px-3 py-2 rounded-xl transition border border-indigo-200 flex items-center gap-1.5 whitespace-nowrap shadow-2xs"
+              >
+                <span>📖</span>
+                <span>내 도감 & 랭킹</span>
+              </button>
+            )}
 
             <button
               onClick={() => setShowPasswordModal(true)}

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { getActiveLuckyEvent, getRecentFinishedLuckyEvent, catchLuckyBug, hitBossRaid } from '@/lib/luckyBugService';
+import { getActiveLuckyEvent, getRecentFinishedLuckyEvent, catchLuckyBug, hitBossRaid, checkIfUserIsJangTeacherOrStudent } from '@/lib/luckyBugService';
 import { getBugById } from '@/lib/bugCatalog';
 import StudentBugDexModal from './StudentBugDexModal';
 
@@ -70,6 +70,10 @@ export default function LuckyBugOverlay() {
 
   const initStudent = async (studentUser) => {
     try {
+      // 🛡️ 장영배 선생님의 담당 학생인지 확인 (타 선생님 담당 학생은 완전 미노출)
+      const isEligible = await checkIfUserIsJangTeacherOrStudent(studentUser);
+      if (!isEligible) return;
+
       const { data: csData } = await supabase
         .from('class_students')
         .select('class_id')

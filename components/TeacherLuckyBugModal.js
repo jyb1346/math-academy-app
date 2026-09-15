@@ -105,6 +105,8 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
                 title: `🚨 [${classNameLabel} 돌발] 황금 벌레 출현! 🐛`,
                 message: `선착순 ${targetCount}명! [${speedBadge}${gimmickBadge}] 화면의 황금 벌레를 잡으세요! (${rewardText})`,
                 url: '/student/dashboard',
+                tag: `lucky-bug-${event.id}`,
+                renotify: true,
               }),
             }).catch((e) => console.warn('Push send warning:', e));
       } catch (pushErr) {
@@ -139,6 +141,31 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
             }),
           })
           .eq('id', eventId);
+
+        // 💨 상단바 알림을 '마감/종료'로 자동 교체
+        try {
+          let targetUserIds = [];
+          if (targetEvent.classId) {
+            const { data: csData } = await supabase
+              .from('class_students')
+              .select('student_id')
+              .eq('class_id', targetEvent.classId);
+            targetUserIds = (csData || []).map((cs) => cs.student_id);
+          }
+
+          fetch('/api/push/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userIds: targetUserIds.length > 0 ? targetUserIds : undefined,
+              title: '💨 [황금 벌레 마감] 이벤트 종료 ⚡',
+              message: '황금 벌레 소환 이벤트가 종료되었습니다. 다음 돌발 이벤트를 기대하세요!',
+              url: '/student/dashboard',
+              tag: `lucky-bug-${eventId}`,
+              renotify: false,
+            }),
+          }).catch((e) => console.warn('Push end warning:', e));
+        } catch (e) {}
 
         if (channelRef.current) {
           channelRef.current.send({

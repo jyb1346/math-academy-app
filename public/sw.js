@@ -9,11 +9,18 @@ self.addEventListener('push', function (event) {
       body: data.body || '새로운 학원 알림이 도착했습니다.',
       icon: data.icon || '/favicon.ico',
       badge: '/favicon.ico',
-      vibrate: [100, 50, 100],
+      vibrate: data.vibrate || [100, 50, 100],
       data: {
         url: data.url || '/',
       },
     };
+
+    if (data.tag) {
+      options.tag = data.tag;
+    }
+    if (typeof data.renotify === 'boolean') {
+      options.renotify = data.renotify;
+    }
 
     event.waitUntil(self.registration.showNotification(title, options));
   } catch (err) {

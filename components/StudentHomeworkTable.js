@@ -126,6 +126,8 @@ export default function StudentHomeworkTable({
       rawDate: row.rawDate,
       formattedDate: row.formattedDate,
       lessonProgress: row.lessonProgress !== '-' ? row.lessonProgress : '',
+      testType: row.testType || '단원평가',
+      testScore: row.testScore && row.testScore !== '-' ? String(row.testScore) : '',
       books: (row.rawHomeworkBooks || []).map((b, idx) => ({
         id: `edit_book_${Date.now()}_${idx}`,
         name: b.name,
@@ -172,7 +174,9 @@ export default function StudentHomeworkTable({
       await onUpdateEvaluation(
         editingRow.evalId,
         editingRow.lessonProgress.trim(),
-        validBooks
+        validBooks,
+        editingRow.testType?.trim() || '단원평가',
+        editingRow.testScore?.trim() || ''
       );
       setEditingRow(null);
     } catch (err) {
@@ -233,8 +237,11 @@ export default function StudentHomeworkTable({
               <th className="py-2.5 px-2 border-r border-slate-300 w-12 sm:w-14 whitespace-nowrap">
                 날짜
               </th>
-              <th className="py-2.5 px-3 border-r border-slate-300 min-w-[140px] text-left">
+              <th className="py-2.5 px-3 border-r border-slate-300 min-w-[130px] text-left">
                 진도
+              </th>
+              <th className="py-2.5 px-2 border-r border-slate-300 min-w-[85px] sm:min-w-[95px] whitespace-nowrap bg-amber-50/80 text-amber-950 font-black">
+                📝 테스트 점수
               </th>
               {allBookNames.map((bName) => (
                 <th key={bName} colSpan={2} className="py-2.5 px-2 border-r border-slate-300 min-w-[130px]">
@@ -270,7 +277,25 @@ export default function StudentHomeworkTable({
                   )}
                 </td>
 
-                {/* 3. 교재별 과제 범위 & 체크 드롭다운/뱃지 */}
+                {/* 3. 📝 테스트 점수 (누적 점수 컬럼) */}
+                <td className="py-3 px-2 border-r border-slate-200 whitespace-nowrap text-center">
+                  {row.testScore && String(row.testScore).trim() && String(row.testScore).trim() !== '-' ? (
+                    <div className="flex flex-col items-center justify-center gap-0.5">
+                      <span className="inline-block bg-amber-100 text-amber-950 border border-amber-300/90 font-black px-2 py-0.5 rounded-lg text-xs shadow-2xs">
+                        {String(row.testScore).includes('점') ? row.testScore : `${row.testScore}점`}
+                      </span>
+                      {row.testType && (
+                        <span className="text-[10px] font-bold text-amber-800/80 leading-tight">
+                          {row.testType}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-slate-300 text-xs">-</span>
+                  )}
+                </td>
+
+                {/* 4. 교재별 과제 범위 & 체크 드롭다운/뱃지 */}
                 {allBookNames.map((bName) => {
                   const bookData = row.rowBooks[bName];
                   const hasData = Boolean(bookData && bookData.range && bookData.range !== '-');
@@ -431,6 +456,38 @@ export default function StudentHomeworkTable({
                 placeholder="예: 02. 항등식과 나머지정리 (p.24~31)"
                 className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600 bg-slate-50 focus:bg-white"
               />
+            </div>
+
+            {/* 📝 테스트 점수 및 시험 종류 수정 */}
+            <div className="grid grid-cols-2 gap-2.5 p-3 bg-amber-50/70 rounded-2xl border border-amber-200">
+              <div className="space-y-1">
+                <label className="block text-[11px] font-black text-amber-950">
+                  📝 시험 종류:
+                </label>
+                <input
+                  type="text"
+                  value={editingRow.testType || ''}
+                  onChange={(e) =>
+                    setEditingRow({ ...editingRow, testType: e.target.value })
+                  }
+                  placeholder="예: 일일테스트, 단원평가"
+                  className="w-full p-2 bg-white border border-amber-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="block text-[11px] font-black text-amber-950">
+                  💯 획득 점수:
+                </label>
+                <input
+                  type="text"
+                  value={editingRow.testScore || ''}
+                  onChange={(e) =>
+                    setEditingRow({ ...editingRow, testScore: e.target.value })
+                  }
+                  placeholder="예: 95점 / 100점 (없으면 빈칸)"
+                  className="w-full p-2 bg-white border border-amber-300 rounded-xl text-xs font-black text-amber-900 focus:outline-none"
+                />
+              </div>
             </div>
 
             {/* 교재별 과제 범위 및 상태 수정 */}

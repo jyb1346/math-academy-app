@@ -60,11 +60,13 @@ export default function StudentHomeworkTable({
       // 날짜 포맷 (예: 2026-03-05 ➔ 3/5)
       const dateParts = (ev.eval_date || '').split('-');
       const formattedDate = dateParts.length >= 3 ? `${parseInt(dateParts[1])}/${parseInt(dateParts[2])}` : ev.eval_date;
+      const teacherName = ev.users?.name || ev.teacher_name || ev.teacher?.name || '';
 
       rows.push({
         id: ev.id,
         rawDate: ev.eval_date,
         formattedDate,
+        teacherName,
         lessonProgress: parsed.lessonProgress || '-',
         testType: parsed.testType,
         testScore: parsed.testScore,
@@ -125,6 +127,7 @@ export default function StudentHomeworkTable({
       evalId: row.id,
       rawDate: row.rawDate,
       formattedDate: row.formattedDate,
+      teacherName: row.teacherName,
       lessonProgress: row.lessonProgress !== '-' ? row.lessonProgress : '',
       testType: row.testType || '단원평가',
       testScore: row.testScore && row.testScore !== '-' ? String(row.testScore) : '',
@@ -263,9 +266,16 @@ export default function StudentHomeworkTable({
                   idx % 2 === 1 ? 'bg-slate-50/40' : 'bg-white'
                 }`}
               >
-                {/* 1. 날짜 */}
-                <td className="py-3 px-1 border-r border-slate-200 font-black text-slate-700 text-xs sm:text-sm whitespace-nowrap">
-                  {row.formattedDate}
+                {/* 1. 날짜 & 담당 선생님 뱃지 */}
+                <td className="py-2.5 px-1 border-r border-slate-200 font-black text-slate-700 text-xs sm:text-sm whitespace-nowrap text-center">
+                  <div className="flex flex-col items-center justify-center">
+                    <span>{row.formattedDate}</span>
+                    {row.teacherName && (
+                      <span className="inline-block mt-0.5 text-[9.5px] font-black bg-indigo-50 text-indigo-700 border border-indigo-200/90 px-1.5 py-0.2 rounded-md leading-tight whitespace-nowrap shadow-2xs">
+                        {row.teacherName}T
+                      </span>
+                    )}
+                  </div>
                 </td>
 
                 {/* 2. 진도 */}
@@ -425,9 +435,9 @@ export default function StudentHomeworkTable({
             {/* 모달 헤더 */}
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div>
-                <h4 className="text-base font-black text-slate-900 flex items-center gap-1.5">
+                <h4 className="text-base font-black text-slate-900 flex items-center gap-1.5 flex-wrap">
                   <span>✏️</span>
-                  <span>{editingRow.formattedDate} 수업 진도 및 과제 수정</span>
+                  <span>{editingRow.formattedDate} {editingRow.teacherName ? `(${editingRow.teacherName}T)` : ''} 수업 진도 및 과제 수정</span>
                 </h4>
                 <p className="text-[11px] text-slate-400 mt-0.5">
                   과거에 잘못 등록된 진도 내용이나 숙제 범위를 바로잡습니다.

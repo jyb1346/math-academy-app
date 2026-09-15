@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { getActiveLuckyEvent, getRecentFinishedLuckyEvent, catchLuckyBug, hitBossRaid, checkIfUserIsJangTeacherOrStudent } from '@/lib/luckyBugService';
 import { getBugById } from '@/lib/bugCatalog';
+import { getRandomMathQuiz, ACTIVE_MATH_CHAPTER } from '@/lib/mathQuizCatalog';
 import StudentBugDexModal from './StudentBugDexModal';
 
 export default function LuckyBugOverlay() {
@@ -18,6 +19,10 @@ export default function LuckyBugOverlay() {
   const [bugPosition, setBugPosition] = useState({ top: 35, left: 50, rotate: 0 });
   const [showDexModal, setShowDexModal] = useState(false);
 
+  // ⚡ 고1 수학 퀴즈 크리티컬 상태
+  const [mathQuiz, setMathQuiz] = useState(null);
+  const [criticalFlash, setCriticalFlash] = useState(false);
+
   // 💨 특수 기믹 상태
   const [escapeCount, setEscapeCount] = useState(0);
   const [isTired, setIsTired] = useState(false);
@@ -29,7 +34,7 @@ export default function LuckyBugOverlay() {
   const [myHits, setMyHits] = useState(0);
   const [myHitLimit, setMyHitLimit] = useState(5);
   const [combatLogs, setCombatLogs] = useState([]);
-  const [floatingDamages, setFloatingDamages] = useState([]); // [ { id, x, y, damage } ]
+  const [floatingDamages, setFloatingDamages] = useState([]); // [ { id, x, y, damage, isCrit } ]
 
   const channelRef = useRef(null);
   const moveTimerRef = useRef(null);
@@ -303,31 +308,55 @@ export default function LuckyBugOverlay() {
       return;
     }
 
+    // ⚡ 35% 확률로 [도형의 방정식] 스피드 수학 퀴즈 찬스 발동!
+    if (!mathQuiz && Math.random() < 0.35) {
+      setMathQuiz(getRandomMathQuiz());
+      return;
+    }
+
     const dmgVal = Number(activeEvent?.hitDamage) || 5;
+    executeBossAttack(dmgVal, false);
+  };
+
+  const executeBossAttack = async (damageToApply, isCrit = false, customLog = null) => {
+    if (!activeEvent || !user || catching) return;
 
     setCatching(true);
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      navigator.vibrate([60]);
+      navigator.vibrate(isCrit ? [80, 40, 120] : [60]);
+    }
+
+    if (isCrit) {
+      setCriticalFlash(true);
+      setTimeout(() => setCriticalFlash(false), 700);
     }
 
     // 플로팅 대미지 숫자 추가
     const dmgId = Date.now() + Math.random();
     setFloatingDamages((prev) => [
       ...prev,
-      { id: dmgId, x: bugPosition.left + (Math.random() * 10 - 5), y: bugPosition.top - 5, dmg: dmgVal },
+      {
+        id: dmgId,
+        x: bugPosition.left + (Math.random() * 10 - 5),
+        y: bugPosition.top - 5,
+        dmg: damageToApply,
+        isCrit,
+      },
     ]);
     setTimeout(() => {
       setFloatingDamages((prev) => prev.filter((d) => d.id !== dmgId));
     }, 900);
 
     try {
-      const res = await hitBossRaid(activeEvent.id, user.id, user.name, dmgVal);
+      const res = await hitBossRaid(activeEvent.id, user.id, user.name, damageToApply);
       if (res.success) {
         setBossHp(res.currentHp);
         setMyHits(res.myHits);
         setMyHitLimit(res.myLimit);
 
-        const newLog = `${user.name} 학생이 보스 타격! (-${dmgVal} HP)`;
+        const newLog = customLog || (isCrit
+          ? `⚡ ${user.name} 학생의 [도형의 방정식] 퀴즈 크리티컬 일격! (-${damageToApply} HP)`
+          : `${user.name} 학생이 보스 타격! (-${damageToApply} HP)`);
 
         if (channelRef.current) {
           channelRef.current.send({
@@ -338,7 +367,8 @@ export default function LuckyBugOverlay() {
               currentHp: res.currentHp,
               maxHp: res.maxHp,
               studentId: user.id,
-              damage: dmgVal,
+              damage: damageToApply,
+              isCrit,
               log: { id: Date.now(), text: newLog },
             },
           });
@@ -496,16 +526,111 @@ export default function LuckyBugOverlay() {
         </>
       )}
 
+      {/* ⚡ 크리티컬 발동 시 화면 섬광 효과 */}
+      {criticalFlash && (
+        <div className="fixed inset-0 z-60 bg-yellow-400/25 pointer-events-none animate-pulse transition-opacity duration-300" />
+      )}
+
       {/* 💥 플로팅 대미지 이펙트 (-5! CRITICAL) */}
       {floatingDamages.map((dmg) => (
         <div
           key={dmg.id}
           style={{ top: `${dmg.y}%`, left: `${dmg.x}%` }}
-          className="fixed z-55 text-red-400 font-black text-xl sm:text-2xl pointer-events-none animate-bounce drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]"
+          className={`fixed z-55 font-black pointer-events-none animate-bounce drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)] ${
+            dmg.isCrit
+              ? 'text-yellow-300 text-2xl sm:text-3xl bg-slate-950/90 border-2 border-yellow-400 px-3 py-1 rounded-2xl shadow-2xl animate-pulse'
+              : 'text-red-400 text-xl sm:text-2xl'
+          }`}
         >
-          💥 -{dmg.dmg} HP!
+          {dmg.isCrit ? `⚡ -${dmg.dmg} HP CRITICAL!` : `💥 -${dmg.dmg} HP!`}
         </div>
       ))}
+
+      {/* ⚡ 고1 [도형의 방정식] 스피드 수학 퀴즈 모달 (3배 크리티컬 찬스) */}
+      {mathQuiz && activeEvent && (
+        <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 select-none">
+          <div className="bg-gradient-to-b from-slate-900 via-indigo-950 to-slate-950 rounded-3xl p-6 max-w-md w-full shadow-2xl border-2 border-amber-400 text-white space-y-4 animate-scale-up">
+            <div className="flex justify-between items-center border-b border-indigo-800/80 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl animate-bounce">⚡</span>
+                <div>
+                  <span className="text-[10px] font-black text-amber-300 bg-amber-400/20 px-2 py-0.5 rounded-full border border-amber-400/30">
+                    {ACTIVE_MATH_CHAPTER.title} • {mathQuiz.category}
+                  </span>
+                  <h3 className="text-base font-black text-white pt-0.5">
+                    스피드 수학 퀴즈 찬스!
+                  </h3>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="text-xs font-black text-yellow-400 bg-yellow-900/60 px-2 py-1 rounded-xl border border-yellow-500/50 block">
+                  정답 시 3배 ({Number(activeEvent.hitDamage || 5) * 3} DMG)
+                </span>
+              </div>
+            </div>
+
+            {/* 문제 본문 */}
+            <div className="bg-slate-800/90 p-4 rounded-2xl border border-indigo-500/40 text-center space-y-2">
+              <span className="text-xs text-indigo-300 font-bold block">
+                Q. 다음 문제를 맞히고 보스에게 크리티컬 일격을 가하세요!
+              </span>
+              <p className="text-base sm:text-lg font-black text-white py-1">
+                {mathQuiz.question}
+              </p>
+            </div>
+
+            {/* 4지선다 보기 버튼 */}
+            <div className="grid grid-cols-2 gap-2.5 pt-1">
+              {mathQuiz.options.map((option, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => {
+                    const dmgVal = Number(activeEvent?.hitDamage) || 5;
+                    const isCorrect = idx === mathQuiz.answerIndex;
+                    setMathQuiz(null);
+                    if (isCorrect) {
+                      const critDamage = dmgVal * 3;
+                      executeBossAttack(
+                        critDamage,
+                        true,
+                        `⚡ ${user.name} 학생의 [도형의 방정식] 퀴즈 정답! 3배 크리티컬 일격! (-${critDamage} HP)`
+                      );
+                    } else {
+                      executeBossAttack(
+                        dmgVal,
+                        false,
+                        `${user.name} 학생이 보스 타격! (-${dmgVal} HP)`
+                      );
+                    }
+                  }}
+                  className="bg-indigo-900/60 hover:bg-amber-500 hover:text-slate-950 border border-indigo-400/50 hover:border-amber-300 p-3 rounded-2xl text-sm font-black transition text-center shadow-md active:scale-95 group"
+                >
+                  <span className="text-xs opacity-70 group-hover:opacity-100 mr-1.5 font-bold">
+                    {idx + 1}.
+                  </span>
+                  <span>{option}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* 하단 건너뛰기 버튼 */}
+            <div className="pt-2 text-center">
+              <button
+                type="button"
+                onClick={() => {
+                  const dmgVal = Number(activeEvent?.hitDamage) || 5;
+                  setMathQuiz(null);
+                  executeBossAttack(dmgVal, false);
+                }}
+                className="text-xs text-slate-400 hover:text-slate-200 underline font-semibold transition"
+              >
+                건너뛰기 (일반 공격 -{activeEvent.hitDamage || 5} DMG 적용)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 🐛 2. 화면 위를 이동하는 벌레 / 거대 보스 (z-50) */}
       {activeEvent && (

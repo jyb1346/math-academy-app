@@ -124,7 +124,7 @@ export default function StudentDashboard() {
                 className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold px-3 py-2 rounded-xl transition border border-indigo-200 flex items-center gap-1.5 whitespace-nowrap shadow-2xs"
               >
                 <span>📖</span>
-                <span>내 도감 & 랭킹</span>
+                <span>도감 • 사육장 • 연구실</span>
               </button>
             )}
 

@@ -102,6 +102,7 @@ export default function LuckyBugOverlay() {
               targetCount: ev.targetCount || 2,
               rewardText: ev.rewardText || '선생님의 깜짝 선물',
               speedMode: ev.speedMode || bugInfo.defaultSpeed || 'FAST',
+              customSpeedSec: ev.customSpeedSec ? Number(ev.customSpeedSec) : undefined,
               escapeGimmick: ev.escapeGimmick !== false,
             };
             setActiveEvent(newEv);
@@ -114,7 +115,7 @@ export default function LuckyBugOverlay() {
             setIsTired(false);
             setGimmickBubble(null);
             playChimeSound();
-            startBugMovement(newEv.speedMode, newEv.isBossRaid);
+            startBugMovement(newEv.speedMode, newEv.isBossRaid, newEv.customSpeedSec);
 
             if (typeof window !== 'undefined' && window.location.pathname !== '/student/dashboard') {
               router.push('/student/dashboard');
@@ -174,7 +175,7 @@ export default function LuckyBugOverlay() {
       setEscapeCount(0);
       setIsTired(false);
       setGimmickBubble(null);
-      startBugMovement(event.speedMode, event.isBossRaid);
+      startBugMovement(event.speedMode, event.isBossRaid, event.customSpeedSec);
     } else if (studentId) {
       const finishedEvent = await getRecentFinishedLuckyEvent(classIds, studentId);
       if (finishedEvent) {
@@ -190,16 +191,19 @@ export default function LuckyBugOverlay() {
     }
   };
 
-  const getIntervalMs = (mode, isBoss = false) => {
+  const getIntervalMs = (mode, isBoss = false, customSpeedSec = null) => {
+    if (customSpeedSec && Number(customSpeedSec) > 0) {
+      return Math.round(Number(customSpeedSec) * 1000);
+    }
     if (isBoss) return 1000; // 보스는 화면을 묵직하게 배회
     if (mode === 'EXTREME') return 100;
     if (mode === 'NORMAL') return 1200;
     return 250;
   };
 
-  const startBugMovement = (speedMode = 'FAST', isBoss = false) => {
+  const startBugMovement = (speedMode = 'FAST', isBoss = false, customSpeedSec = null) => {
     if (moveTimerRef.current) clearInterval(moveTimerRef.current);
-    const interval = getIntervalMs(speedMode, isBoss);
+    const interval = getIntervalMs(speedMode, isBoss, customSpeedSec);
 
     moveTimerRef.current = setInterval(() => {
       const randomTop = Math.floor(Math.random() * (isBoss ? 45 : 68)) + (isBoss ? 25 : 14);
@@ -238,7 +242,7 @@ export default function LuckyBugOverlay() {
         setIsTired(false);
         setEscapeCount(0);
         setGimmickBubble(null);
-        startBugMovement(activeEvent?.speedMode, activeEvent?.isBossRaid);
+        startBugMovement(activeEvent?.speedMode, activeEvent?.isBossRaid, activeEvent?.customSpeedSec);
       }, 1800);
     }
   };

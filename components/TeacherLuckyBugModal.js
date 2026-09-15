@@ -14,6 +14,7 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
   const [targetCount, setTargetCount] = useState(2);
   const [rewardText, setRewardText] = useState('선착순 깜짝 선물 🎁 (간식/기프티콘)');
   const [speedMode, setSpeedMode] = useState('FAST');
+  const [customSpeedSec, setCustomSpeedSec] = useState('0.25');
   const [escapeGimmick, setEscapeGimmick] = useState(true);
 
   // 👑 보스 레이드 설정
@@ -69,6 +70,7 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
 
     try {
       let finalBug = selectedBugId === 'RANDOM' ? getRandomBug() : getBugById(selectedBugId);
+      const parsedSpeedSec = customSpeedSec ? Number(customSpeedSec) : undefined;
 
       const result = await createLuckyEvent({
         teacherId: user.id,
@@ -78,6 +80,7 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
         targetCount: Number(targetCount) || 2,
         rewardText: rewardText.trim(),
         speedMode,
+        customSpeedSec: parsedSpeedSec,
         escapeGimmick,
       });
 
@@ -98,6 +101,7 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
             targetCount: Number(targetCount),
             rewardText: rewardText.trim(),
             speedMode,
+            customSpeedSec: parsedSpeedSec,
             escapeGimmick,
           },
         });
@@ -388,7 +392,9 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
                     setSelectedBugId(e.target.value);
                     if (e.target.value !== 'RANDOM') {
                       const b = getBugById(e.target.value);
-                      setSpeedMode(b.defaultSpeed || 'FAST');
+                      const sMode = b.defaultSpeed || 'FAST';
+                      setSpeedMode(sMode);
+                      setCustomSpeedSec(sMode === 'EXTREME' ? '0.1' : sMode === 'NORMAL' ? '1.2' : '0.25');
                       setEscapeGimmick(b.escapeGimmick !== false);
                     }
                   }}
@@ -418,21 +424,37 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
                 </select>
               </div>
 
-              {/* 등장 벌레 수 */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  🎯 선착순 당첨 인원수
-                </label>
-                <div className="grid grid-cols-4 gap-2">
+              {/* 선착순 당첨 인원수 직접 입력 + 프리셋 */}
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-extrabold text-slate-800 flex items-center gap-1">
+                    <span>🎯</span>
+                    <span>선착순 당첨 인원수 직접 지정:</span>
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={targetCount}
+                      onChange={(e) => setTargetCount(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-16 p-1 text-center bg-white border border-amber-300 rounded-lg text-xs font-black text-amber-700 shadow-2xs focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                    <span className="text-xs font-black text-slate-600">명</span>
+                  </div>
+                </div>
+
+                {/* 빠른 인원 선택 프리셋 버튼 */}
+                <div className="grid grid-cols-4 gap-1.5 pt-1">
                   {[1, 2, 3, 5].map((cnt) => (
                     <button
                       key={cnt}
                       type="button"
                       onClick={() => setTargetCount(cnt)}
-                      className={`py-2 rounded-xl text-xs font-black transition border ${
+                      className={`py-1.5 rounded-lg text-xs font-black transition border ${
                         targetCount === cnt
-                          ? 'bg-amber-500 text-white border-amber-600 shadow-sm'
-                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                          ? 'bg-amber-500 text-white border-amber-600 shadow-2xs'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
                       }`}
                     >
                       {cnt}명
@@ -455,22 +477,55 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
                 />
               </div>
 
-              {/* ⚡ 속도 및 도망 기믹 */}
-              <div className="grid grid-cols-3 gap-2">
-                {['NORMAL', 'FAST', 'EXTREME'].map((sm) => (
-                  <button
-                    key={sm}
-                    type="button"
-                    onClick={() => setSpeedMode(sm)}
-                    className={`p-2 rounded-xl text-[11px] font-black transition border text-center ${
-                      speedMode === sm
-                        ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs'
-                        : 'bg-slate-50 border-slate-200 text-slate-700'
-                    }`}
-                  >
-                    {sm === 'NORMAL' ? '🟢 보통 (1.2s)' : sm === 'FAST' ? '⚡ 빠름 (0.25s)' : '🌪️ 광속 (0.1s)'}
-                  </button>
-                ))}
+              {/* ⚡ 속도 프리셋 & 초 단위 직접 입력 */}
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2.5">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-extrabold text-slate-800 flex items-center gap-1">
+                    <span>⚡</span>
+                    <span>벌레 이동 속도 (초 단위 직접 입력):</span>
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="0.05"
+                      max="10"
+                      step="0.05"
+                      value={customSpeedSec}
+                      onChange={(e) => setCustomSpeedSec(e.target.value)}
+                      className="w-20 p-1 text-center bg-white border border-indigo-300 rounded-lg text-xs font-black text-indigo-700 shadow-2xs focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      placeholder="0.25"
+                    />
+                    <span className="text-xs font-black text-slate-600">초</span>
+                  </div>
+                </div>
+
+                {/* 빠른 속도 프리셋 버튼 */}
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { mode: 'NORMAL', sec: '1.2', label: '🟢 보통 (1.2초)' },
+                    { mode: 'FAST', sec: '0.25', label: '⚡ 빠름 (0.25초)' },
+                    { mode: 'EXTREME', sec: '0.1', label: '🌪️ 광속 (0.1초)' },
+                  ].map((item) => (
+                    <button
+                      key={item.mode}
+                      type="button"
+                      onClick={() => {
+                        setSpeedMode(item.mode);
+                        setCustomSpeedSec(item.sec);
+                      }}
+                      className={`p-2 rounded-xl text-[11px] font-black transition border text-center ${
+                        String(customSpeedSec) === item.sec
+                          ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10.5px] text-slate-500 font-semibold">
+                  💡 숫자가 작을수록 벌레가 더 빠르게 순간이동합니다. (예: 0.08초 = 극한 난이도, 1.5초 = 쉬운 난이도)
+                </p>
               </div>
 
               <button

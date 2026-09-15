@@ -38,7 +38,7 @@ export default function PushNotificationManager({ user }) {
         checkExistingSubscription();
       }
     }
-  }, []);
+  }, [user]);
 
   const checkExistingSubscription = async () => {
     try {
@@ -46,6 +46,17 @@ export default function PushNotificationManager({ user }) {
       const sub = await reg.pushManager.getSubscription();
       if (sub) {
         setIsSubscribed(true);
+        // 🔄 계정 전환 시 현재 로그인된 계정의 user_id로 푸시 구독 자동 업데이트
+        if (user?.id) {
+          fetch('/api/push/subscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              subscription: sub,
+              userId: user.id,
+            }),
+          }).catch((e) => console.warn('Auto push sync error:', e));
+        }
       }
     } catch (e) {
       console.warn('Subscription check error:', e);

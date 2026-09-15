@@ -832,7 +832,6 @@ export default function TeacherEvalPage() {
           comment: '',
           showScoreEditor: false,
           prevEvalSummary: prev ? `${prev.eval_date} 피드백` : '첫 피드백',
-          isSaved: false,
           isSaved: !!todayEval,
           alimtalkSentAt: parsedToday?.alimtalkSentAt || null,
         };

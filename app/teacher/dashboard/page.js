@@ -316,13 +316,52 @@ export default function TeacherDashboard() {
   };
 
   const handleDeleteStudent = async (studentId, studentName) => {
-    if (!confirm(`[${studentName}] 학생을 삭제하시겠습니까?`)) return;
+    // 1. 일반 선생님인 경우: 학생 계정을 삭제하지 않고, 내 담당 반(수업)에서만 안전하게 제외(배정 해제)
+    if (user?.role !== 'HEAD_TEACHER') {
+      if (!confirm(`[${studentName}] 학생을 내 담당 수업(반)에서 제외하시겠습니까?\n\n※ 다른 선생님의 수업 및 학생 계정/성적 기록은 안전하게 유지됩니다.`)) {
+        return;
+      }
+      try {
+        const myClassIds = (classes || []).map((c) => c.id);
+        if (myClassIds.length > 0) {
+          await supabase
+            .from('class_students')
+            .delete()
+            .eq('student_id', studentId)
+            .in('class_id', myClassIds);
+        }
+
+        // 직속 teacher_id가 본인으로 되어 있다면 연결 해제
+        const targetStudent = students.find((s) => s.id === studentId);
+        if (targetStudent?.teacher_id === user.id) {
+          await supabase
+            .from('users')
+            .update({ teacher_id: null })
+            .eq('id', studentId);
+        }
+
+        alert(`[${studentName}] 학생이 내 담당 수업에서 제외되었습니다.`);
+        fetchTeacherData(user.id);
+      } catch (err) {
+        alert(`제외 실패: ${err.message}`);
+      }
+      return;
+    }
+
+    // 2. 원장 선생님(HEAD_TEACHER)인 경우: 학원 전체 영구 삭제 권한
+    const confirmDelete = confirm(
+      `⚠️ [${studentName}] 원생을 학원에서 영구 삭제하시겠습니까?\n\n※ 삭제 시 학생 계정, 모든 반 배정 및 로그인 정보가 영구 제거됩니다.\n(내 수업에서만 제외하려면 취소 후 [반 배정]을 수정하세요)`
+    );
+    if (!confirmDelete) return;
+
     try {
       await supabase.from('class_students').delete().eq('student_id', studentId);
       await supabase.from('push_subscriptions').delete().eq('user_id', studentId);
 
       const { error } = await supabase.from('users').delete().eq('id', studentId);
       if (error) throw error;
+
+      alert(`[${studentName}] 원생이 영구 삭제되었습니다.`);
       fetchTeacherData(user.id);
     } catch (err) {
       alert(`삭제 실패: ${err.message}`);
@@ -854,10 +893,12 @@ export default function TeacherDashboard() {
                       </button>
 
                       <button
+                        type="button"
                         onClick={() => handleDeleteStudent(st.id, st.name)}
-                        className="text-rose-500 hover:underline font-bold px-1 text-xs"
+                        className="text-rose-500 hover:text-rose-700 hover:underline font-bold px-1 text-xs cursor-pointer"
+                        title={isHeadTeacher ? '원생을 학원에서 영구 삭제합니다' : '내 담당 수업에서 이 학생을 제외합니다 (학생 계정 유지)'}
                       >
-                        삭제
+                        {isHeadTeacher ? '삭제' : '제외'}
                       </button>
                     </div>
                   </div>

@@ -10,6 +10,7 @@ import { parseEvaluationRecord } from '@/lib/evalUtils';
 export default function StudentReportPage() {
   const { id } = useParams();
   const [evalData, setEvalData] = useState(null);
+  const [authorTeacherName, setAuthorTeacherName] = useState('');
   const [studentAllEvals, setStudentAllEvals] = useState([]);
   const [loading, setLoading] = useState(true);
   
@@ -37,17 +38,22 @@ export default function StudentReportPage() {
         setReplyText(data.parent_reply);
       }
 
+      // 담당 선생님 목록 및 작성자 강사명 조회
+      const { data: tData } = await supabase
+        .from('users')
+        .select('id, name')
+        .in('role', ['TEACHER', 'HEAD_TEACHER', 'ADMIN']);
+      const teacherMap = (tData || []).reduce((acc, t) => {
+        acc[t.id] = t.name;
+        return acc;
+      }, {});
+
+      if (data?.teacher_id && teacherMap[data.teacher_id]) {
+        setAuthorTeacherName(teacherMap[data.teacher_id]);
+      }
+
       // 학생의 전체 평가 기록 조회 (누적 과제표용)
       if (data?.student_id) {
-        const { data: tData } = await supabase
-          .from('users')
-          .select('id, name')
-          .in('role', ['TEACHER', 'HEAD_TEACHER', 'ADMIN']);
-        const teacherMap = (tData || []).reduce((acc, t) => {
-          acc[t.id] = t.name;
-          return acc;
-        }, {});
-
         const { data: allEvals } = await supabase
           .from('daily_evaluations')
           .select('*')
@@ -146,9 +152,17 @@ export default function StudentReportPage() {
         
         {/* 상단 리포트 헤더 */}
         <div className="bg-gradient-to-tr from-blue-600 to-indigo-700 text-white p-6 text-center space-y-2 shadow-md shadow-blue-500/10">
-          <span className="bg-white/20 text-white text-xs px-3.5 py-1 rounded-full font-bold">
-            품수학 일일 학습 보고서
-          </span>
+          <div className="flex items-center justify-center gap-2 flex-wrap">
+            <span className="bg-white/20 text-white text-xs px-3.5 py-1 rounded-full font-bold">
+              품수학 일일 학습 보고서
+            </span>
+            {authorTeacherName && (
+              <span className="bg-amber-400 text-slate-950 text-xs px-3 py-1 rounded-full font-black shadow-xs flex items-center gap-1">
+                <span>👨‍🏫</span>
+                <span>{authorTeacherName} 선생님 수업</span>
+              </span>
+            )}
+          </div>
           <h2 className="text-2xl font-black pt-1">
             {studentName + ' 피드백'}
           </h2>
@@ -257,8 +271,9 @@ export default function StudentReportPage() {
         {/* ✍️ 5. 선생님 피드백 코멘트 (작성된 경우에만 표시) */}
         {parsed.comment && (
           <div className="px-5 sm:px-6 py-4 bg-slate-50 border-t border-slate-100 space-y-2 animate-fade-in">
-            <h4 className="text-xs font-black text-indigo-700 uppercase tracking-wider flex items-center gap-1">
-              <span>✍️</span> 선생님 피드백 코멘트
+            <h4 className="text-xs font-black text-indigo-700 uppercase tracking-wider flex items-center gap-1.5">
+              <span>✍️</span>
+              <span>{authorTeacherName ? `${authorTeacherName} 선생님` : '선생님'} 피드백 코멘트</span>
             </h4>
             <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
               {parsed.comment}
@@ -268,21 +283,22 @@ export default function StudentReportPage() {
 
         {/* 💬 6. 학부모 답장 작성 섹션 */}
         <div className="px-5 sm:px-6 py-4 bg-white border-t border-slate-100 space-y-3">
-          <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1">
-            <span>💬</span> 담당 선생님께 답장 남기기
+          <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+            <span>💬</span>
+            <span>{authorTeacherName ? `${authorTeacherName} 선생님께` : '담당 선생님께'} 답장 남기기</span>
           </h4>
           <form onSubmit={handleReplySubmit} className="space-y-2.5">
             <textarea
               value={replyText}
               onChange={(e) => setReplyText(e.target.value)}
-              placeholder="선생님께 전달할 감사 인사나 문의사항을 입력해 주세요."
+              placeholder={`${authorTeacherName ? `${authorTeacherName} 선생님께` : '선생님께'} 전달할 감사 인사나 문의사항을 입력해 주세요.`}
               rows={3}
               className="w-full p-3.5 border border-slate-300 rounded-2xl text-xs font-semibold bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-inner"
             />
             <button
               type="submit"
               disabled={submittingReply}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl text-xs transition shadow-md shadow-indigo-600/10 disabled:bg-slate-300"
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl text-xs transition shadow-md shadow-indigo-600/10 disabled:bg-slate-300 cursor-pointer"
             >
               {submittingReply ? '전송 중...' : '✉️ 답장 전송하기'}
             </button>

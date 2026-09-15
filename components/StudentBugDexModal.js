@@ -37,17 +37,8 @@ export default function StudentBugDexModal({ user, onClose }) {
       ]);
       setDexData(dex);
       setLeaderboard(ranks);
-
-      // 사육장 벌레 초기 위치 지정
       if (dex?.terrariumBugs) {
-        const positions = {};
-        dex.terrariumBugs.forEach((bug, idx) => {
-          positions[bug.instanceId] = {
-            x: 10 + (idx * 17) % 80 + (Math.random() * 8 - 4),
-            y: 15 + (idx * 23) % 65 + (Math.random() * 8 - 4),
-          };
-        });
-        setTerrariumPositions(positions);
+        randomizeTerrariumPositions(dex.terrariumBugs);
       }
     } catch (e) {
       console.error('Dex load error:', e);
@@ -56,25 +47,42 @@ export default function StudentBugDexModal({ user, onClose }) {
     }
   };
 
-  // 🌿 사육장 벌레 자율 배회 애니메이션 (2.5초마다 부드럽게 스스로 돌아다님)
+  // 🎲 사육장 벌레 완전 무작위 위치 생성 함수 (사육장 탭 진입 시마다 실행)
+  const randomizeTerrariumPositions = (bugs = dexData?.terrariumBugs) => {
+    if (!bugs || bugs.length === 0) return;
+    const positions = {};
+    bugs.forEach((bug) => {
+      positions[bug.instanceId] = {
+        x: Math.floor(Math.random() * 70) + 14, // 14% ~ 84%
+        y: Math.floor(Math.random() * 58) + 16, // 16% ~ 74%
+        rot: Math.round(Math.random() * 40 - 20),
+      };
+    });
+    setTerrariumPositions(positions);
+  };
+
+  // 🌿 사육장 진입 시마다 완전 무작위 재배치 & 1.3초마다 활발한 자율 배회 애니메이션
   useEffect(() => {
     if (tab !== 'TERRARIUM' || !dexData?.terrariumBugs?.length) return;
+
+    // 사육장 탭에 들어올 때마다 벌레들의 위치를 완전 랜덤으로 즉시 재배치
+    randomizeTerrariumPositions(dexData.terrariumBugs);
 
     const interval = setInterval(() => {
       setTerrariumPositions((prev) => {
         const nextPos = { ...prev };
         dexData.terrariumBugs.forEach((bug) => {
           const cur = nextPos[bug.instanceId] || { x: 50, y: 50, rot: 0 };
-          const deltaX = Math.random() * 20 - 10;
-          const deltaY = Math.random() * 16 - 8;
-          const newX = Math.max(8, Math.min(88, cur.x + deltaX));
-          const newY = Math.max(12, Math.min(78, cur.y + deltaY));
-          const newRot = Math.round(Math.random() * 24 - 12);
+          const deltaX = Math.random() * 24 - 12;
+          const deltaY = Math.random() * 20 - 10;
+          const newX = Math.max(10, Math.min(88, cur.x + deltaX));
+          const newY = Math.max(14, Math.min(76, cur.y + deltaY));
+          const newRot = Math.round(Math.random() * 40 - 20);
           nextPos[bug.instanceId] = { x: newX, y: newY, rot: newRot };
         });
         return nextPos;
       });
-    }, 2500);
+    }, 1300);
 
     return () => clearInterval(interval);
   }, [tab, dexData?.terrariumBugs]);
@@ -537,7 +545,7 @@ export default function StudentBugDexModal({ user, onClose }) {
                           top: `${pos.y}%`,
                           transform: 'translate(-50%, -50%)',
                         }}
-                        className={`absolute cursor-pointer transition-all duration-1000 ease-in-out select-none group ${
+                        className={`absolute cursor-pointer transition-all duration-700 ease-out select-none group ${
                           react?.active ? 'scale-135 -translate-y-2' : 'hover:scale-120 active:scale-90'
                         }`}
                       >

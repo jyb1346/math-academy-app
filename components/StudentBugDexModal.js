@@ -56,6 +56,29 @@ export default function StudentBugDexModal({ user, onClose }) {
     }
   };
 
+  // 🌿 사육장 벌레 자율 배회 애니메이션 (2.5초마다 부드럽게 스스로 돌아다님)
+  useEffect(() => {
+    if (tab !== 'TERRARIUM' || !dexData?.terrariumBugs?.length) return;
+
+    const interval = setInterval(() => {
+      setTerrariumPositions((prev) => {
+        const nextPos = { ...prev };
+        dexData.terrariumBugs.forEach((bug) => {
+          const cur = nextPos[bug.instanceId] || { x: 50, y: 50, rot: 0 };
+          const deltaX = Math.random() * 20 - 10;
+          const deltaY = Math.random() * 16 - 8;
+          const newX = Math.max(8, Math.min(88, cur.x + deltaX));
+          const newY = Math.max(12, Math.min(78, cur.y + deltaY));
+          const newRot = Math.round(Math.random() * 24 - 12);
+          nextPos[bug.instanceId] = { x: newX, y: newY, rot: newRot };
+        });
+        return nextPos;
+      });
+    }, 2500);
+
+    return () => clearInterval(interval);
+  }, [tab, dexData?.terrariumBugs]);
+
   // 🌿 사육장 벌레 터치 인터랙션
   const handleTerrariumBugClick = (instanceId, bugName) => {
     const messages = [
@@ -177,19 +200,19 @@ export default function StudentBugDexModal({ user, onClose }) {
           </button>
         </div>
 
-        {/* 탭 바 */}
-        <div className="flex border-b border-slate-200 bg-slate-50 px-3 sm:px-4 pt-2.5 gap-1.5 sm:gap-2 shrink-0 overflow-x-auto scrollbar-none">
+        {/* 4분할 탭 바 (모바일 스크롤 없이 1줄로 완벽 노출) */}
+        <div className="grid grid-cols-4 border-b border-slate-200 bg-slate-50 p-1.5 gap-1 shrink-0">
           <button
             onClick={() => setTab('DEX')}
-            className={`px-3.5 py-2.5 text-xs font-black rounded-t-xl transition flex items-center gap-1.5 whitespace-nowrap ${
+            className={`py-2 px-1 text-[11px] sm:text-xs font-black rounded-xl transition flex flex-col sm:flex-row items-center justify-center gap-1 text-center ${
               tab === 'DEX'
-                ? 'bg-white text-indigo-900 border-t-2 border-indigo-600 shadow-xs'
+                ? 'bg-white text-indigo-900 shadow-xs border border-indigo-200'
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            <span>📖 20종 도감</span>
+            <span>📖 도감</span>
             {dexData && (
-              <span className="bg-indigo-100 text-indigo-800 text-[10px] font-extrabold px-1.5 py-0.2 rounded-full">
+              <span className="bg-indigo-100 text-indigo-800 text-[9.5px] font-extrabold px-1.5 py-0.2 rounded-full">
                 {dexData.caughtKindsCount}/20
               </span>
             )}
@@ -197,45 +220,42 @@ export default function StudentBugDexModal({ user, onClose }) {
 
           <button
             onClick={() => setTab('TERRARIUM')}
-            className={`px-3.5 py-2.5 text-xs font-black rounded-t-xl transition flex items-center gap-1.5 whitespace-nowrap ${
+            className={`py-2 px-1 text-[11px] sm:text-xs font-black rounded-xl transition flex flex-col sm:flex-row items-center justify-center gap-1 text-center ${
               tab === 'TERRARIUM'
-                ? 'bg-white text-emerald-900 border-t-2 border-emerald-600 shadow-xs'
+                ? 'bg-white text-emerald-900 shadow-xs border border-emerald-200'
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            <span>🌿 내 사육장</span>
+            <span>🌿 사육장</span>
             {dexData?.terrariumBugs?.length > 0 && (
-              <span className="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-1.5 py-0.2 rounded-full">
-                {dexData.terrariumBugs.length}마리
+              <span className="bg-emerald-100 text-emerald-800 text-[9.5px] font-extrabold px-1.5 py-0.2 rounded-full">
+                {dexData.terrariumBugs.length}
               </span>
             )}
           </button>
 
           <button
             onClick={() => setTab('LAB')}
-            className={`px-3.5 py-2.5 text-xs font-black rounded-t-xl transition flex items-center gap-1.5 whitespace-nowrap ${
+            className={`py-2 px-1 text-[11px] sm:text-xs font-black rounded-xl transition flex flex-col sm:flex-row items-center justify-center gap-1 text-center ${
               tab === 'LAB'
-                ? 'bg-white text-purple-900 border-t-2 border-purple-600 shadow-xs'
+                ? 'bg-white text-purple-900 shadow-xs border border-purple-200'
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            <span>⚗️ 벌레 연구실</span>
-            <span className="bg-purple-100 text-purple-800 text-[10px] font-extrabold px-1.5 py-0.2 rounded-full">
-              합성 & 부화
-            </span>
+            <span>⚗️ 연구실</span>
           </button>
 
           <button
             onClick={() => setTab('LEADERBOARD')}
-            className={`px-3.5 py-2.5 text-xs font-black rounded-t-xl transition flex items-center gap-1.5 whitespace-nowrap ${
+            className={`py-2 px-1 text-[11px] sm:text-xs font-black rounded-xl transition flex flex-col sm:flex-row items-center justify-center gap-1 text-center ${
               tab === 'LEADERBOARD'
-                ? 'bg-white text-indigo-900 border-t-2 border-indigo-600 shadow-xs'
+                ? 'bg-white text-amber-900 shadow-xs border border-amber-200'
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            <span>🏆 월간 랭킹</span>
+            <span>🏆 랭킹</span>
             {myRankInfo && (
-              <span className="bg-amber-100 text-amber-900 text-[10px] font-extrabold px-1.5 py-0.2 rounded-full">
+              <span className="bg-amber-100 text-amber-900 text-[9.5px] font-extrabold px-1.5 py-0.2 rounded-full">
                 {myRankInfo.rank}위
               </span>
             )}
@@ -517,8 +537,8 @@ export default function StudentBugDexModal({ user, onClose }) {
                           top: `${pos.y}%`,
                           transform: 'translate(-50%, -50%)',
                         }}
-                        className={`absolute cursor-pointer transition-all duration-700 ease-out group ${
-                          react?.active ? 'scale-125 -translate-y-2' : 'hover:scale-115 active:scale-90'
+                        className={`absolute cursor-pointer transition-all duration-1000 ease-in-out select-none group ${
+                          react?.active ? 'scale-135 -translate-y-2' : 'hover:scale-120 active:scale-90'
                         }`}
                       >
                         {/* 터치 시 말풍선 / 하트 */}
@@ -528,22 +548,23 @@ export default function StudentBugDexModal({ user, onClose }) {
                           </div>
                         )}
 
-                        {/* 벌레 원형 아이콘 */}
+                        {/* 곤충 본체 (원형 배경 제거) */}
                         <div className="relative flex flex-col items-center">
-                          <div
-                            className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-2xl shadow-lg border border-white/40 transition-transform ${
-                              bug.auraClass || 'bg-emerald-500/40'
-                            }`}
+                          {bug.hasCrown && (
+                            <span className="absolute -top-4 left-1/2 transform -translate-x-1/2 text-sm drop-shadow-md z-10 animate-bounce">
+                              👑
+                            </span>
+                          )}
+                          <span
+                            className="text-3xl sm:text-4xl filter drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)] select-none inline-block transition-transform duration-700"
+                            style={{
+                              transform: `rotate(${pos.rot || 0}deg)`,
+                            }}
                           >
-                            {bug.hasCrown && (
-                              <span className="absolute -top-2 left-1/2 transform -translate-x-1/2 text-xs drop-shadow">
-                                👑
-                              </span>
-                            )}
-                            <span className="animate-pulse">{bug.emoji}</span>
-                          </div>
+                            {bug.emoji}
+                          </span>
 
-                          <span className="text-[9px] font-black text-emerald-100 bg-black/60 px-1.5 py-0.2 rounded-full mt-0.5 truncate max-w-[70px]">
+                          <span className="text-[9px] font-black text-emerald-100 bg-black/60 px-1.5 py-0.2 rounded-full mt-0.5 truncate max-w-[70px] shadow-xs">
                             {bug.name}
                           </span>
                         </div>

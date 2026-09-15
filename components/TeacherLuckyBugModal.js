@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import { createLuckyEvent, getLuckyEventHistory, getJangStudentUserIds } from '@/lib/luckyBugService';
+import { createLuckyEvent, getLuckyEventHistory, deleteLuckyEvent, getJangStudentUserIds } from '@/lib/luckyBugService';
 import { getNormalBugs, getBossBugs, getBugById, getRandomBug } from '@/lib/bugCatalog';
 
 export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
@@ -307,6 +307,30 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
       fetchHistory();
     } catch (e) {
       alert('종료 실패: ' + e.message);
+    }
+  };
+
+  // 🗑️ 히스토리 이벤트 삭제 핸들러 (테스트 기록 삭제용)
+  const handleDeleteEvent = async (eventId) => {
+    if (!confirm('정말 이 벌레 이벤트를 히스토리에서 완전히 삭제하시겠습니까?\n(테스트 기록 정리 시 유용하며 해당 이벤트 포획 데이터도 함께 삭제됩니다)')) return;
+
+    try {
+      const res = await deleteLuckyEvent(eventId);
+      if (!res.success) throw new Error(res.error);
+
+      if (channelRef.current) {
+        channelRef.current.send({
+          type: 'broadcast',
+          event: 'BUG_FINISHED',
+          payload: { eventId },
+        });
+      }
+
+      setSpawnSuccessMessage('🗑️ 이벤트 기록이 안전하게 삭제되었습니다.');
+      setTimeout(() => setSpawnSuccessMessage(null), 3000);
+      fetchHistory();
+    } catch (err) {
+      alert('삭제 실패: ' + err.message);
     }
   };
 
@@ -830,15 +854,25 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
                           </p>
                         </div>
 
-                        {isActive && (
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {isActive && (
+                            <button
+                              type="button"
+                              onClick={() => handleEndEvent(ev.id)}
+                              className="bg-rose-600 hover:bg-rose-700 text-white text-[10.5px] font-black px-2.5 py-1 rounded-lg transition"
+                            >
+                              강제 종료
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={() => handleEndEvent(ev.id)}
-                            className="bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-black px-2.5 py-1 rounded-lg transition"
+                            onClick={() => handleDeleteEvent(ev.id)}
+                            className="bg-slate-200 hover:bg-rose-100 hover:text-rose-700 text-slate-600 text-[10.5px] font-black px-2 py-1 rounded-lg transition"
+                            title="히스토리 삭제"
                           >
-                            강제 종료
+                            🗑️ 삭제
                           </button>
-                        )}
+                        </div>
                       </div>
 
                       {/* 보스 레이드일 때 MVP 및 격파 정보 */}

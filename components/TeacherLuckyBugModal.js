@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import { createLuckyEvent, getLuckyEventHistory } from '@/lib/luckyBugService';
+import { createLuckyEvent, getLuckyEventHistory, getJangStudentUserIds } from '@/lib/luckyBugService';
 import { getNormalBugs, getBossBugs, getBugById, getRandomBug } from '@/lib/bugCatalog';
 
 export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
@@ -108,7 +108,7 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
         });
       }
 
-      // 2. 푸시 알림
+      // 2. 푸시 알림 (선생님 제외, 담당 학생에게만 발송)
       try {
         let targetUserIds = [];
         if (selectedClassId) {
@@ -117,24 +117,28 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
             .select('student_id')
             .eq('class_id', selectedClassId);
           targetUserIds = (csData || []).map((cs) => cs.student_id);
+        } else {
+          targetUserIds = await getJangStudentUserIds(user.id);
         }
 
         const classNameLabel = selectedClassId
           ? classes.find((c) => String(c.id) === String(selectedClassId))?.name || '우리 반'
           : '학원 전체';
 
-        fetch('/api/push/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userIds: targetUserIds.length > 0 ? targetUserIds : undefined,
-            title: `🚨 [${classNameLabel} 돌발] ${finalBug.name} 출현! ${finalBug.emoji}`,
-            message: `선착순 ${targetCount}명! 화면의 ${finalBug.name}을(를) 잡으세요! (${rewardText})`,
-            url: '/student/dashboard',
-            tag: `lucky-bug-${event.id}`,
-            renotify: true,
-          }),
-        }).catch((e) => console.warn('Push send warning:', e));
+        if (targetUserIds && targetUserIds.length > 0) {
+          fetch('/api/push/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userIds: targetUserIds,
+              title: `🚨 [${classNameLabel} 돌발] ${finalBug.name} 출현! ${finalBug.emoji}`,
+              message: `선착순 ${targetCount}명! 화면의 ${finalBug.name}을(를) 잡으세요! (${rewardText})`,
+              url: '/student/dashboard',
+              tag: `lucky-bug-${event.id}`,
+              renotify: true,
+            }),
+          }).catch((e) => console.warn('Push send warning:', e));
+        }
       } catch (pushErr) {}
 
       setSpawnSuccessMessage(
@@ -199,7 +203,7 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
         });
       }
 
-      // 2. 푸시 알림
+      // 2. 푸시 알림 (선생님 제외, 담당 학생에게만 발송)
       try {
         let targetUserIds = [];
         if (selectedClassId) {
@@ -208,24 +212,28 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
             .select('student_id')
             .eq('class_id', selectedClassId);
           targetUserIds = (csData || []).map((cs) => cs.student_id);
+        } else {
+          targetUserIds = await getJangStudentUserIds(user.id);
         }
 
         const classNameLabel = selectedClassId
           ? classes.find((c) => String(c.id) === String(selectedClassId))?.name || '우리 반'
           : '학원 전체';
 
-        fetch('/api/push/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userIds: targetUserIds.length > 0 ? targetUserIds : undefined,
-            title: `👑 [${classNameLabel} 긴급] ${bossInfo.name} 레이드 출현!`,
-            message: `보스 HP: ${parsedHp}! 반 전체가 힘을 합쳐 보스를 쓰러뜨리세요! (${bossRewardText})`,
-            url: '/student/dashboard',
-            tag: `lucky-bug-${event.id}`,
-            renotify: true,
-          }),
-        }).catch((e) => console.warn('Push send warning:', e));
+        if (targetUserIds && targetUserIds.length > 0) {
+          fetch('/api/push/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userIds: targetUserIds,
+              title: `👑 [${classNameLabel} 긴급] ${bossInfo.name} 레이드 출현!`,
+              message: `보스 HP: ${parsedHp}! 반 전체가 힘을 합쳐 보스를 쓰러뜨리세요! (${bossRewardText})`,
+              url: '/student/dashboard',
+              tag: `lucky-bug-${event.id}`,
+              renotify: true,
+            }),
+          }).catch((e) => console.warn('Push send warning:', e));
+        }
       } catch (pushErr) {}
 
       setSpawnSuccessMessage(
@@ -268,20 +276,24 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
               .select('student_id')
               .eq('class_id', targetEvent.classId);
             targetUserIds = (csData || []).map((cs) => cs.student_id);
+          } else {
+            targetUserIds = await getJangStudentUserIds(user.id);
           }
 
-          fetch('/api/push/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userIds: targetUserIds.length > 0 ? targetUserIds : undefined,
-              title: '💨 [황금 벌레 마감] 이벤트 종료 ⚡',
-              message: '이벤트가 종료되었습니다. 다음 돌발 이벤트를 기대하세요!',
-              url: '/student/dashboard',
-              tag: `lucky-bug-${eventId}`,
-              renotify: false,
-            }),
-          }).catch((e) => console.warn('Push end warning:', e));
+          if (targetUserIds && targetUserIds.length > 0) {
+            fetch('/api/push/send', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                userIds: targetUserIds,
+                title: '💨 [황금 벌레 마감] 이벤트 종료 ⚡',
+                message: '이벤트가 종료되었습니다. 다음 돌발 이벤트를 기대하세요!',
+                url: '/student/dashboard',
+                tag: `lucky-bug-${eventId}`,
+                renotify: false,
+              }),
+            }).catch((e) => console.warn('Push end warning:', e));
+          }
         } catch (e) {}
 
         if (channelRef.current) {

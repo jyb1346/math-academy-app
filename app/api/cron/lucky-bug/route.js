@@ -41,6 +41,8 @@ export async function GET(req) {
           title: '🚨 [돌발 이벤트] 학원에 황금 벌레 출현! 🐛',
           message: '선착순 2명! 지금 앱에 접속해서 황금 벌레를 먼저 잡으세요!',
           url: '/student/dashboard',
+          tag: `lucky-bug-${result.event.id}`,
+          renotify: true,
         }),
       }).catch((e) => console.warn('Push error:', e));
     } catch (e) {}

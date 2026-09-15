@@ -5,7 +5,7 @@ import webpush from '@/lib/webpush';
 export async function POST(req) {
   try {
     const body = await req.json();
-    const { userIds, title, message, url } = body;
+    const { userIds, title, message, url, tag, renotify } = body;
 
     let query = supabase.from('push_subscriptions').select('*');
     if (userIds && Array.isArray(userIds) && userIds.length > 0) {
@@ -26,6 +26,8 @@ export async function POST(req) {
       title: title || '품수학 학원',
       body: message || '새로운 공지 또는 알림이 도착했습니다.',
       url: url || '/',
+      tag: tag || undefined,
+      renotify: typeof renotify === 'boolean' ? renotify : undefined,
     });
 
     const sendPromises = subscriptions.map((sub) => {

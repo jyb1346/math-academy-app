@@ -643,66 +643,61 @@ export default function LuckyBugOverlay() {
             transform: `translate(-50%, -50%) rotate(${isTired || isGroggy ? 0 : bugPosition.rotate || 0}deg)`,
           }}
           className={`fixed z-50 cursor-pointer select-none transition-all duration-300 ease-out ${
-            activeEvent.isBossRaid ? 'scale-135 sm:scale-150' : isTired ? 'scale-125 animate-pulse' : 'hover:scale-110 active:scale-95'
+            activeEvent.isBossRaid ? 'scale-125 sm:scale-140' : isTired ? 'scale-115 animate-pulse' : 'hover:scale-115 active:scale-90'
           }`}
         >
-          <div className="relative group">
-            {/* 오라 효과 */}
+          <div className="relative flex flex-col items-center justify-center text-center group">
+            {/* 은은한 발광 아우라 (원형 테두리 없이) */}
             <div
-              className={`absolute -inset-4 rounded-full blur-md animate-pulse ${
+              className={`absolute inset-0 rounded-full blur-xl animate-pulse pointer-events-none ${
                 isEnraged
-                  ? 'bg-rose-600/90 animate-ping'
+                  ? 'bg-rose-600/70 animate-ping'
                   : isGroggy
-                  ? 'bg-amber-400/80'
-                  : bugInfo.auraClass || 'bg-amber-400/60'
+                  ? 'bg-amber-400/60'
+                  : bugInfo.auraClass ? 'bg-amber-400/40' : 'bg-yellow-300/30'
               }`}
             />
 
-            <div
-              className={`relative border-2 shadow-2xl rounded-full ${
-                activeEvent.isBossRaid ? 'w-22 h-22 sm:w-26 sm:h-26 border-rose-300' : 'w-16 h-16 sm:w-20 sm:h-20 border-yellow-200'
-              } flex flex-col items-center justify-center text-center p-1 bg-gradient-to-tr from-amber-400 via-yellow-200 to-amber-500`}
-            >
-              {/* 👑 보스 전용 머리 위 황금 왕관 */}
-              {activeEvent.isBossRaid && (
-                <span className="absolute -top-3.5 left-1/2 transform -translate-x-1/2 text-2xl sm:text-3xl animate-bounce drop-shadow-md z-10">
-                  👑
+            {/* 👑 보스 전용 머리 위 황금 왕관 */}
+            {activeEvent.isBossRaid && (
+              <span className="absolute -top-6 left-1/2 transform -translate-x-1/2 text-2xl sm:text-3xl animate-bounce drop-shadow-lg z-10">
+                👑
+              </span>
+            )}
+
+            {/* 곤충 캐릭터 본체 (순수 벌레 모습) */}
+            <div className="relative py-1">
+              <span
+                className={`text-5xl sm:text-6xl inline-block filter drop-shadow-[0_4px_12px_rgba(0,0,0,0.6)] select-none ${
+                  isTired || isGroggy ? 'animate-bounce' : 'animate-pulse'
+                }`}
+                style={{ animationDuration: isEnraged ? '0.4s' : '2s' }}
+              >
+                {isTired || isGroggy ? '😵' : bugInfo.emoji}
+              </span>
+
+              {/* 특수 속성 심볼 (⚡, 🔥, ❄️, ✨, 💎, 🌈 등) */}
+              {bugInfo.iconSymbol && bugInfo.iconSymbol !== '👑' && !isTired && !isGroggy && (
+                <span className="absolute -right-2 -top-1 text-sm sm:text-base animate-ping">
+                  {bugInfo.iconSymbol}
                 </span>
               )}
-
-              {/* 곤충 캐릭터 및 속성 뱃지 */}
-              <div className="relative">
-                <span
-                  className={`text-3xl sm:text-4xl inline-block ${
-                    isTired || isGroggy ? 'animate-bounce' : 'animate-spin'
-                  }`}
-                  style={{ animationDuration: isEnraged ? '0.5s' : '3s' }}
-                >
-                  {isTired || isGroggy ? '😵' : bugInfo.emoji}
-                </span>
-
-                {/* 특수 속성 심볼 (⚡, 🔥, ❄️, ✨, 💎, 🌈 등) */}
-                {bugInfo.iconSymbol && bugInfo.iconSymbol !== '👑' && !isTired && !isGroggy && (
-                  <span className="absolute -right-2 -top-1 text-xs sm:text-sm animate-ping">
-                    {bugInfo.iconSymbol}
-                  </span>
-                )}
-              </div>
-
-              <span className="text-[9px] sm:text-[10px] font-black leading-none mt-0.5 px-1.5 py-0.5 rounded-full shadow-2xs whitespace-nowrap bg-yellow-100/95 text-amber-950">
-                {activeEvent.isBossRaid
-                  ? myHits >= myHitLimit
-                    ? '타격 완료! 👏'
-                    : '공격하기! ⚔️'
-                  : isTired
-                  ? '지금 잡기! 🎯'
-                  : '터치해서 포획!'}
-              </span>
             </div>
+
+            {/* 깔끔한 하단 미니 상태 뱃지 */}
+            <span className="text-[10px] sm:text-[11px] font-black leading-none px-2.5 py-1 rounded-full shadow-xl whitespace-nowrap bg-slate-950/90 text-yellow-300 border border-yellow-400/50 backdrop-blur-xs mt-1">
+              {activeEvent.isBossRaid
+                ? myHits >= myHitLimit
+                  ? '타격 완료! 👏'
+                  : '공격하기! ⚔️'
+                : isTired
+                ? '지금 잡기! 🎯'
+                : '터치해서 포획!'}
+            </span>
 
             {/* 말풍선 */}
             {gimmickBubble && (
-              <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white text-[11px] font-black px-2.5 py-1 rounded-full whitespace-nowrap shadow-xl border border-amber-400 animate-bounce">
+              <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white text-[11px] font-black px-2.5 py-1 rounded-full whitespace-nowrap shadow-xl border border-amber-400 animate-bounce z-20">
                 {gimmickBubble}
               </div>
             )}

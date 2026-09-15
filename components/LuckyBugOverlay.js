@@ -165,7 +165,7 @@ export default function LuckyBugOverlay() {
   };
 
   const checkActiveEvent = async (classIds, studentId) => {
-    const event = await getActiveLuckyEvent(classIds);
+    const event = await getActiveLuckyEvent(classIds, studentId);
     if (event) {
       setActiveEvent(event);
       setBossHp(event.currentHp);
@@ -368,11 +368,20 @@ export default function LuckyBugOverlay() {
               },
             });
           }
+        } else if (res.myHits >= res.myLimit) {
+          // 👏 최대 타격을 모두 소진한 학생은 학습에 집중할 수 있도록 안내 후 오버레이 해제
+          setGimmickBubble(`🎉 최대 타격(${res.myLimit}회) 완료! 친구들의 승리를 응원합니다! 👏`);
+          setTimeout(() => {
+            setActiveEvent(null);
+          }, 2200);
         }
       } else {
         if (res.reason === 'HIT_LIMIT') {
           setGimmickBubble(`⚠️ ${res.message}`);
-          setTimeout(() => setGimmickBubble(null), 3000);
+          setTimeout(() => {
+            setGimmickBubble(null);
+            setActiveEvent(null);
+          }, 2500);
         } else {
           setMissedAlert(res.message);
           setActiveEvent(null);

@@ -533,12 +533,6 @@ export default function TeacherEvalPage() {
   };
 
   // 👥 판서수업: 학생별 상태 조작 핸들러들
-  const handleToggleBatchStudentInclude = (studentId) => {
-    setBatchStudents((prev) =>
-      prev.map((s) => (s.student_id === studentId ? { ...s, included: !s.included } : s))
-    );
-  };
-
   const handleBatchAttendanceChange = (studentId, status) => {
     setBatchStudents((prev) =>
       prev.map((s) => (s.student_id === studentId ? { ...s, attendanceStatus: status } : s))
@@ -585,53 +579,6 @@ export default function TeacherEvalPage() {
     setBatchStudents((prev) =>
       prev.map((s) => (s.student_id === studentId ? { ...s, comment } : s))
     );
-  };
-
-  // 👥 판서수업: 일괄 빠른 변경 도구들
-  const handleSetAllStudentsAttendance = (status) => {
-    setBatchStudents((prev) =>
-      prev.map((s) => ({ ...s, attendanceStatus: status }))
-    );
-    showToast(`✅ 모든 학생의 출결 상태가 '${status === 'ATTEND' ? '출석' : status === 'LATE' ? '지각' : '결석'}'(으)로 일괄 변경되었습니다.`);
-  };
-
-  const handleSetAllStudentsScore = (targetScore) => {
-    setBatchStudents((prev) =>
-      prev.map((s) => ({
-        ...s,
-        scores: {
-          concept: targetScore,
-          calc: targetScore,
-          app: targetScore,
-          attitude: targetScore,
-          homework: targetScore,
-          perseverance: targetScore,
-        },
-      }))
-    );
-    showToast(`🎯 모든 학생의 6대 역량 점수가 ${targetScore}점으로 일괄 변경되었습니다.`);
-  };
-
-  const handleSetAllStudentsPrevScores = () => {
-    setBatchStudents((prev) =>
-      prev.map((s) => ({
-        ...s,
-        scores: s.initialScores || {
-          concept: 8,
-          calc: 8,
-          app: 8,
-          attitude: 8,
-          homework: 8,
-          perseverance: 8,
-        },
-      }))
-    );
-    showToast('🔄 모든 학생의 점수가 직전 피드백 점수로 일괄 복원되었습니다.');
-  };
-
-  const handleToggleSelectAllStudents = () => {
-    const allIncluded = batchStudents.every((s) => s.included);
-    setBatchStudents((prev) => prev.map((s) => ({ ...s, included: !allIncluded })));
   };
 
   const renderScoreDiffBadge = (currentScore, prevScore) => {
@@ -918,9 +865,9 @@ export default function TeacherEvalPage() {
   const handleBatchSubmit = async (e) => {
     e.preventDefault();
 
-    const targets = batchStudents.filter((s) => s.included);
+    const targets = batchStudents;
     if (targets.length === 0) {
-      return alert('등록할 학생을 최소 1명 이상 선택해 주세요.');
+      return alert('이 반에 소속된 학생이 없습니다.');
     }
 
     const validBooks = commonHomeworkBooks.filter((b) => b.name && b.range);
@@ -1321,47 +1268,10 @@ export default function TeacherEvalPage() {
 
               {/* 3. 👥 반 학생 목록 및 개별 항목 체크 테이블 */}
               <div className="space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-extrabold text-slate-800">
-                      👥 소속 학생 명단 (총 {batchStudents.length}명)
-                    </span>
-                    <span className="text-xs bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-md border border-indigo-100">
-                      {batchStudents.filter((s) => s.included).length}명 선택됨
-                    </span>
-                  </div>
-
-                  {/* 일괄 빠른 도구들 */}
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={handleToggleSelectAllStudents}
-                      className="text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-lg border"
-                    >
-                      전체 선택/해제
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleSetAllStudentsAttendance('ATTEND')}
-                      className="text-[11px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-lg border border-emerald-200"
-                    >
-                      모두 출석
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleSetAllStudentsScore(8)}
-                      className="text-[11px] font-bold bg-blue-50 hover:bg-blue-100 text-blue-800 px-2.5 py-1 rounded-lg border border-blue-200"
-                    >
-                      모두 8점
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSetAllStudentsPrevScores}
-                      className="text-[11px] font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-800 px-2.5 py-1 rounded-lg border border-indigo-200"
-                    >
-                      모두 직전점수
-                    </button>
-                  </div>
+                <div className="border-b pb-2 flex items-center justify-between">
+                  <span className="text-sm font-extrabold text-slate-800">
+                    👥 소속 학생 명단 (총 {batchStudents.length}명)
+                  </span>
                 </div>
 
                 {/* 학생 카드 리스트 */}
@@ -1379,22 +1289,14 @@ export default function TeacherEvalPage() {
                         <div
                           key={st.student_id}
                           className={`p-4 rounded-2xl border transition space-y-3 ${
-                            !st.included
-                              ? 'bg-slate-50/60 border-slate-200 opacity-60'
-                              : st.isSaved
+                            st.isSaved
                               ? 'bg-emerald-50/40 border-emerald-300 ring-1 ring-emerald-200'
                               : 'bg-white border-slate-200/90 shadow-2xs hover:border-indigo-300'
                           }`}
                         >
-                          {/* 1행: 체크박스 + 이름 + 출결 버튼 + 점수 슬라이더 토글 */}
+                          {/* 1행: 이름 + 작성상태 + 출결 버튼 + 점수 슬라이더 토글 */}
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                            <div className="flex items-center gap-2.5">
-                              <input
-                                type="checkbox"
-                                checked={st.included}
-                                onChange={() => handleToggleBatchStudentInclude(st.student_id)}
-                                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                              />
+                            <div className="flex items-center gap-2.5 flex-wrap">
                               <div>
                                 <span className="text-sm font-extrabold text-slate-800">{st.name}</span>
                                 <span className="text-[11px] text-slate-400 font-medium ml-1.5">
@@ -1596,7 +1498,7 @@ export default function TeacherEvalPage() {
                   <span className="leading-snug">
                     {batchSubmitting
                       ? batchProgressText || '일괄 등록 진행 중...'
-                      : `[${currentClassName || '반'}] 학생 전체 (${batchStudents.filter((s) => s.included).length}명) 피드백 일괄 등록`}
+                      : `[${currentClassName || '반'}] 학생 전체 (${batchStudents.length}명) 피드백 일괄 등록`}
                   </span>
                 </button>
               </div>

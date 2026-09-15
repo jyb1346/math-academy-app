@@ -269,13 +269,23 @@ export default function StudentBugDexModal({ user, onClose }) {
                       <div className="space-y-1 pt-1">
                         {/* 벌레 아이콘 (포획: 컬러 / 미포획: 흑백 실루엣) */}
                         <div
-                          className={`w-14 h-14 mx-auto rounded-full flex items-center justify-center text-3xl transition ${
+                          className={`w-14 h-14 mx-auto rounded-full flex items-center justify-center text-3xl relative transition ${
                             bug.isCaught
                               ? `${bug.auraClass} shadow-inner`
                               : 'bg-slate-200 text-slate-400 grayscale'
                           }`}
                         >
+                          {bug.isCaught && bug.hasCrown && (
+                            <span className="absolute -top-1.5 left-1/2 transform -translate-x-1/2 text-sm drop-shadow animate-bounce">
+                              👑
+                            </span>
+                          )}
                           {bug.isCaught ? bug.emoji : '❓'}
+                          {bug.isCaught && bug.iconSymbol && bug.iconSymbol !== '👑' && (
+                            <span className="absolute -bottom-1 -right-1 text-xs">
+                              {bug.iconSymbol}
+                            </span>
+                          )}
                         </div>
 
                         {/* 이름 및 등급 */}
@@ -405,8 +415,18 @@ export default function StudentBugDexModal({ user, onClose }) {
         {selectedBug && (
           <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
             <div className="bg-white rounded-3xl p-6 max-w-xs w-full text-center space-y-4 shadow-2xl border border-slate-200 animate-scale-up">
-              <div className={`w-20 h-20 mx-auto rounded-full flex items-center justify-center text-4xl shadow-inner ${selectedBug.auraClass}`}>
+              <div className={`w-20 h-20 mx-auto rounded-full flex items-center justify-center text-4xl relative shadow-inner ${selectedBug.auraClass}`}>
+                {selectedBug.isCaught && selectedBug.hasCrown && (
+                  <span className="absolute -top-2 left-1/2 transform -translate-x-1/2 text-lg drop-shadow animate-bounce">
+                    👑
+                  </span>
+                )}
                 {selectedBug.isCaught ? selectedBug.emoji : '❓'}
+                {selectedBug.isCaught && selectedBug.iconSymbol && selectedBug.iconSymbol !== '👑' && (
+                  <span className="absolute -bottom-1 -right-1 text-sm">
+                    {selectedBug.iconSymbol}
+                  </span>
+                )}
               </div>
 
               <div className="space-y-1">

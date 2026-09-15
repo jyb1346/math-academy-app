@@ -512,17 +512,34 @@ export default function LuckyBugOverlay() {
 
             <div
               className={`relative border-2 shadow-2xl rounded-full ${
-                activeEvent.isBossRaid ? 'w-20 h-20 sm:w-24 sm:h-24' : 'w-16 h-16 sm:w-20 sm:h-20'
-              } flex flex-col items-center justify-center text-center p-1 bg-gradient-to-tr from-amber-400 via-yellow-200 to-amber-500 border-yellow-200`}
+                activeEvent.isBossRaid ? 'w-22 h-22 sm:w-26 sm:h-26 border-rose-300' : 'w-16 h-16 sm:w-20 sm:h-20 border-yellow-200'
+              } flex flex-col items-center justify-center text-center p-1 bg-gradient-to-tr from-amber-400 via-yellow-200 to-amber-500`}
             >
-              <span
-                className={`text-3xl sm:text-4xl inline-block ${
-                  isTired || isGroggy ? 'animate-bounce' : 'animate-spin'
-                }`}
-                style={{ animationDuration: isEnraged ? '0.5s' : '3s' }}
-              >
-                {isTired || isGroggy ? '😵' : bugInfo.emoji}
-              </span>
+              {/* 👑 보스 전용 머리 위 황금 왕관 */}
+              {activeEvent.isBossRaid && (
+                <span className="absolute -top-3.5 left-1/2 transform -translate-x-1/2 text-2xl sm:text-3xl animate-bounce drop-shadow-md z-10">
+                  👑
+                </span>
+              )}
+
+              {/* 곤충 캐릭터 및 속성 뱃지 */}
+              <div className="relative">
+                <span
+                  className={`text-3xl sm:text-4xl inline-block ${
+                    isTired || isGroggy ? 'animate-bounce' : 'animate-spin'
+                  }`}
+                  style={{ animationDuration: isEnraged ? '0.5s' : '3s' }}
+                >
+                  {isTired || isGroggy ? '😵' : bugInfo.emoji}
+                </span>
+
+                {/* 특수 속성 심볼 (⚡, 🔥, ❄️, ✨, 💎, 🌈 등) */}
+                {bugInfo.iconSymbol && bugInfo.iconSymbol !== '👑' && !isTired && !isGroggy && (
+                  <span className="absolute -right-2 -top-1 text-xs sm:text-sm animate-ping">
+                    {bugInfo.iconSymbol}
+                  </span>
+                )}
+              </div>
 
               <span className="text-[9px] sm:text-[10px] font-black leading-none mt-0.5 px-1.5 py-0.5 rounded-full shadow-2xs whitespace-nowrap bg-yellow-100/95 text-amber-950">
                 {activeEvent.isBossRaid

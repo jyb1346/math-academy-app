@@ -47,42 +47,74 @@ export default function StudentBugDexModal({ user, onClose }) {
     }
   };
 
-  // 🎲 사육장 벌레 완전 무작위 위치 생성 함수 (사육장 탭 진입 시마다 실행)
+  // 🎲 사육장 벌레 완전 무작위 위치 생성 함수 (0~360도 무작위 각도 & 위치)
   const randomizeTerrariumPositions = (bugs = dexData?.terrariumBugs) => {
     if (!bugs || bugs.length === 0) return;
     const positions = {};
     bugs.forEach((bug) => {
       positions[bug.instanceId] = {
-        x: Math.floor(Math.random() * 70) + 14, // 14% ~ 84%
-        y: Math.floor(Math.random() * 58) + 16, // 16% ~ 74%
-        rot: Math.round(Math.random() * 40 - 20),
+        x: Math.floor(Math.random() * 70) + 15, // 15% ~ 85%
+        y: Math.floor(Math.random() * 56) + 18, // 18% ~ 74%
+        rot: Math.floor(Math.random() * 360), // 0 ~ 359도 전방위 회전
       };
     });
     setTerrariumPositions(positions);
   };
 
-  // 🌿 사육장 진입 시마다 완전 무작위 재배치 & 1.3초마다 활발한 자율 배회 애니메이션
+  // 🌿 사육장 진입 시마다 완전 랜덤 배치 & 0~360도 회전 후 얼굴(머리) 방향으로 전진 이동
   useEffect(() => {
     if (tab !== 'TERRARIUM' || !dexData?.terrariumBugs?.length) return;
 
-    // 사육장 탭에 들어올 때마다 벌레들의 위치를 완전 랜덤으로 즉시 재배치
+    // 사육장 탭에 들어올 때마다 벌레들의 위치와 0~360도 각도를 완전 랜덤으로 즉시 재배치
     randomizeTerrariumPositions(dexData.terrariumBugs);
 
     const interval = setInterval(() => {
       setTerrariumPositions((prev) => {
         const nextPos = { ...prev };
         dexData.terrariumBugs.forEach((bug) => {
-          const cur = nextPos[bug.instanceId] || { x: 50, y: 50, rot: 0 };
-          const deltaX = Math.random() * 24 - 12;
-          const deltaY = Math.random() * 20 - 10;
-          const newX = Math.max(10, Math.min(88, cur.x + deltaX));
-          const newY = Math.max(14, Math.min(76, cur.y + deltaY));
-          const newRot = Math.round(Math.random() * 40 - 20);
-          nextPos[bug.instanceId] = { x: newX, y: newY, rot: newRot };
+          const cur = nextPos[bug.instanceId] || {
+            x: 50,
+            y: 50,
+            rot: Math.floor(Math.random() * 360),
+          };
+
+          // 1. 0~360도 회전 결정 (40% 확률로 새로운 각도 탐색, 60% 확률로 부드러운 전방 조향)
+          let headingRot = cur.rot;
+          if (Math.random() < 0.4) {
+            headingRot = (cur.rot + (Math.floor(Math.random() * 240) - 120) + 360) % 360;
+          } else {
+            headingRot = (cur.rot + (Math.floor(Math.random() * 50) - 25) + 360) % 360;
+          }
+
+          // 2. 머리(얼굴)가 향한 각도 방향으로 전진 거리(벡터) 계산
+          // 0° = 위(-y), 90° = 오른쪽(+x), 180° = 아래(+y), 270° = 왼쪽(-x)
+          const step = Math.random() * 7 + 6; // 6% ~ 13% 전진
+          const rad = (headingRot * Math.PI) / 180;
+          let nextX = cur.x + step * Math.sin(rad);
+          let nextY = cur.y - step * Math.cos(rad);
+
+          // 3. 사육장 유리벽 충돌 검사 (벽에 닿으면 사육장 중심 방향으로 회전 전환)
+          if (nextX < 12 || nextX > 86 || nextY < 16 || nextY > 74) {
+            const centerX = 49;
+            const centerY = 45;
+            const dx = centerX - cur.x;
+            const dy = cur.y - centerY;
+            const centerRad = Math.atan2(dx, dy);
+            headingRot = Math.round((centerRad * 180 / Math.PI + (Math.random() * 40 - 20) + 360) % 360);
+            const bounceRad = (headingRot * Math.PI) / 180;
+            nextX = Math.max(12, Math.min(86, cur.x + (step * 0.8) * Math.sin(bounceRad)));
+            nextY = Math.max(16, Math.min(74, cur.y - (step * 0.8) * Math.cos(bounceRad)));
+          }
+
+          nextPos[bug.instanceId] = {
+            x: Math.round(nextX * 10) / 10,
+            y: Math.round(nextY * 10) / 10,
+            rot: Math.round(headingRot),
+          };
         });
         return nextPos;
       });
-    }, 1300);
+    }, 1200);
 
     return () => clearInterval(interval);
   }, [tab, dexData?.terrariumBugs]);
@@ -108,12 +140,14 @@ export default function StudentBugDexModal({ user, onClose }) {
       navigator.vibrate([40]);
     }
 
-    // 위치 살짝 이동
+    // 터치 시 놀라서 점프하며 방향 전환
     setTerrariumPositions((prev) => {
-      const current = prev[instanceId] || { x: 50, y: 50 };
-      const newX = Math.max(8, Math.min(85, current.x + (Math.random() * 20 - 10)));
-      const newY = Math.max(12, Math.min(75, current.y + (Math.random() * 20 - 10)));
-      return { ...prev, [instanceId]: { x: newX, y: newY } };
+      const current = prev[instanceId] || { x: 50, y: 50, rot: 0 };
+      const leapRot = (current.rot + (Math.floor(Math.random() * 180) - 90) + 360) % 360;
+      const rad = (leapRot * Math.PI) / 180;
+      const newX = Math.max(12, Math.min(86, current.x + 8 * Math.sin(rad)));
+      const newY = Math.max(16, Math.min(74, current.y - 8 * Math.cos(rad)));
+      return { ...prev, [instanceId]: { x: newX, y: newY, rot: leapRot } };
     });
 
     setTimeout(() => {

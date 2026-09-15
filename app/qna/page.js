@@ -707,23 +707,20 @@ export default function QnaPage() {
             </h2>
 
             <form onSubmit={handleSubmitQuestion} className="space-y-4">
-              {/* 🎯 질문 대상 (선생님 및 소속 반 선택) */}
-              <div className="space-y-2 bg-slate-50 p-4 rounded-2xl border border-slate-200/90">
-                <label className="block text-xs font-black text-slate-700 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <span className="text-base">🎯</span>
-                    <span>질문할 선생님 / 반 선택</span>
-                    <span className="text-amber-600 font-extrabold">*</span>
-                  </span>
-                  {availableTargets.length > 1 && (
-                    <span className="text-[11px] font-bold text-amber-800 bg-amber-100/70 px-2 py-0.5 rounded-full border border-amber-200/80">
-                      수업 {availableTargets.length}개 중 선택 가능
+              {/* 🎯 질문 대상 (선생님 및 소속 반 선택 - 컴팩트 칩 스타일) */}
+              {availableTargets.length > 1 ? (
+                <div className="space-y-1.5 bg-slate-50/90 p-3 rounded-2xl border border-slate-200">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-xs font-black text-slate-700 flex items-center gap-1.5">
+                      <span>🎯 질문할 반 / 선생님 선택</span>
+                      <span className="text-amber-600 font-extrabold">*</span>
+                    </label>
+                    <span className="text-[10.5px] font-extrabold text-amber-800 bg-amber-100/70 px-2 py-0.5 rounded-full border border-amber-200/80">
+                      {availableTargets.length}개 반 중 선택
                     </span>
-                  )}
-                </label>
+                  </div>
 
-                {availableTargets.length > 1 ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
                     {availableTargets.map((target) => {
                       const isSelected = selectedTargetKey === target.key;
                       return (
@@ -731,66 +728,36 @@ export default function QnaPage() {
                           key={target.key}
                           type="button"
                           onClick={() => setSelectedTargetKey(target.key)}
-                          className={`p-3.5 rounded-2xl border text-left transition flex items-center gap-3 cursor-pointer ${
+                          className={`px-3 py-1.5 rounded-xl text-xs font-black transition flex items-center gap-1.5 cursor-pointer border ${
                             isSelected
-                              ? 'bg-amber-50/90 border-amber-500 ring-2 ring-amber-500/20 shadow-xs'
-                              : 'bg-white hover:bg-slate-100/70 border-slate-200 text-slate-700'
+                              ? 'bg-amber-600 text-white border-amber-700 shadow-2xs ring-2 ring-amber-400/30'
+                              : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200/90 shadow-2xs'
                           }`}
                         >
-                          <div
-                            className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm shrink-0 transition ${
-                              isSelected
-                                ? 'bg-amber-600 text-white shadow-xs'
-                                : 'bg-slate-100 text-slate-500 border border-slate-200'
-                            }`}
-                          >
-                            {target.teacherName?.[0] || 'T'}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-xs font-black text-slate-900">
-                                {target.teacherName} 선생님
-                              </span>
-                              {isSelected && (
-                                <span className="text-[10px] font-black bg-amber-600 text-white px-1.5 py-0.2 rounded-md leading-tight">
-                                  선택됨 ✓
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-[11px] font-extrabold text-slate-500 truncate mt-0.5">
-                              {target.className ? `🏷️ ${target.className}` : '📋 담당 수업'}
-                            </p>
-                          </div>
+                          <span>{isSelected ? '✓' : '🏷️'}</span>
+                          <span>{target.className || '수업'}</span>
+                          <span className={`text-[11px] ${isSelected ? 'text-amber-100 font-extrabold' : 'text-slate-400 font-semibold'}`}>
+                            ({target.teacherName}T)
+                          </span>
                         </button>
                       );
                     })}
                   </div>
-                ) : availableTargets.length === 1 ? (
-                  <div className="bg-white border border-amber-200/80 p-3 rounded-xl flex items-center justify-between gap-3 shadow-2xs">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-8 h-8 rounded-lg bg-amber-600 text-white flex items-center justify-center font-black text-xs shrink-0">
-                        {availableTargets[0].teacherName?.[0] || 'T'}
-                      </div>
-                      <div className="min-w-0">
-                        <span className="text-[10px] font-bold text-amber-800 block leading-tight">질문 수신 대상</span>
-                        <span className="text-xs font-black text-slate-900">
-                          {availableTargets[0].teacherName} 선생님
-                          {availableTargets[0].className && (
-                            <span className="text-slate-500 font-bold ml-1">({availableTargets[0].className})</span>
-                          )}
-                        </span>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-black bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full shrink-0">
-                      담당 강사 지정됨
-                    </span>
+                </div>
+              ) : availableTargets.length === 1 ? (
+                <div className="bg-amber-50/60 border border-amber-200/70 px-3 py-2 rounded-xl flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-xs font-black text-slate-800">
+                    <span className="text-amber-700">🎯 질문 대상:</span>
+                    <span>{availableTargets[0].teacherName} 선생님</span>
+                    {availableTargets[0].className && (
+                      <span className="text-slate-500 font-bold">({availableTargets[0].className})</span>
+                    )}
                   </div>
-                ) : (
-                  <div className="text-xs font-bold text-slate-400 p-2">
-                    등록된 선생님 정보를 불러오는 중입니다...
-                  </div>
-                )}
-              </div>
+                  <span className="text-[10px] font-black bg-white text-amber-800 border border-amber-300 px-2 py-0.2 rounded-md shrink-0">
+                    자동 지정
+                  </span>
+                </div>
+              ) : null}
 
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1">질문 제목</label>

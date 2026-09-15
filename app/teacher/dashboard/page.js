@@ -11,6 +11,7 @@ export default function TeacherDashboard() {
   const [user, setUser] = useState(null);
   const [classes, setClasses] = useState([]);
   const [students, setStudents] = useState([]);
+  const [teachers, setTeachers] = useState([]);
   const [classStudents, setClassStudents] = useState([]);
   const [qnaStats, setQnaStats] = useState({ pending: 0, inProgress: 0, resolved: 0, total: 0 });
   const [loading, setLoading] = useState(true);
@@ -114,6 +115,13 @@ export default function TeacherDashboard() {
         .eq('role', 'STUDENT')
         .eq('teacher_id', teacherId);
       setStudents(stData || []);
+
+      const { data: tData } = await supabase
+        .from('users')
+        .select('id, name, email, role')
+        .in('role', ['TEACHER', 'HEAD_TEACHER', 'ADMIN'])
+        .order('name');
+      setTeachers(tData || []);
 
       const { data: csData } = await supabase.from('class_students').select('*');
       setClassStudents(csData || []);
@@ -249,18 +257,27 @@ export default function TeacherDashboard() {
     if (!editingStudent) return;
 
     try {
+      const targetTeacherId = editingStudent.teacher_id || user.id;
+      const isTeacherChanged = targetTeacherId !== user.id;
+
       const { error } = await supabase
         .from('users')
         .update({
           name: editingStudent.name,
           email: editingStudent.email,
           parent_phone: editingStudent.parent_phone ? editingStudent.parent_phone.replace(/[^0-9]/g, '') : '',
+          teacher_id: targetTeacherId,
         })
         .eq('id', editingStudent.id);
 
       if (error) throw error;
 
-      alert('학생 정보가 수정되었습니다.');
+      if (isTeacherChanged) {
+        const targetTeacher = teachers.find((t) => t.id === targetTeacherId);
+        alert(`학생 정보가 수정되었습니다.\n담당 선생님이 [${targetTeacher?.name || '선생님'}]으로 변경되어 해당 선생님의 목록으로 이전되었습니다.`);
+      } else {
+        alert('학생 정보가 수정되었습니다.');
+      }
       setEditingStudent(null);
       fetchTeacherData(user.id);
     } catch (err) {
@@ -927,6 +944,24 @@ export default function TeacherDashboard() {
                   onChange={(e) => setEditingStudent({ ...editingStudent, parent_phone: e.target.value })}
                   className="w-full p-3 bg-amber-50/50 border border-amber-200 rounded-2xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-amber-400"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">👨‍🏫 직속 담당 선생님 (Q&A 및 관리)</label>
+                <select
+                  value={editingStudent.teacher_id || user.id}
+                  onChange={(e) => setEditingStudent({ ...editingStudent, teacher_id: e.target.value })}
+                  className="w-full p-3 bg-indigo-50/60 border border-indigo-200 rounded-2xl text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500"
+                >
+                  {teachers.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.role === 'HEAD_TEACHER' ? '👑' : '👨‍🏫'} {t.name} 선생님 {t.id === user.id ? '(현재 본인)' : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10.5px] text-slate-400 mt-1.5 leading-relaxed">
+                  💡 담당 선생님을 변경하면 해당 선생님 교무실로 학생이 인계되며, 1:1 Q&A 질문도 변경된 선생님께 전송됩니다. (과거 작성된 평가/피드백/벌레 도감 데이터는 100% 보존됩니다)
+                </p>
               </div>
 
               <div className="flex gap-2 pt-2">

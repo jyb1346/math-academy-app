@@ -20,6 +20,11 @@ export default function AdminDashboard() {
   const [assignTargetClass, setAssignTargetClass] = useState(null);
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
 
+  // 🔍 원생 검색, 강사 필터, 수정 모달 상태
+  const [studentSearch, setStudentSearch] = useState('');
+  const [filterTeacher, setFilterTeacher] = useState('ALL');
+  const [editingStudent, setEditingStudent] = useState(null);
+
   // 신규 강사 계정 생성 폼
   const [teacherName, setTeacherName] = useState('');
   const [teacherEmail, setTeacherEmail] = useState('');
@@ -213,6 +218,73 @@ export default function AdminDashboard() {
       alert(`배정 실패: ${err.message}`);
     }
   };
+
+  // 👨‍🏫 원생 담당 선생님 원클릭 즉시 변경
+  const handleQuickChangeTeacher = async (studentId, newTeacherId) => {
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ teacher_id: newTeacherId })
+        .eq('id', studentId);
+      if (error) throw error;
+
+      const teacherObj = allTeachers.find((t) => t.id === newTeacherId);
+      alert(`담당 선생님이 [${teacherObj?.name || '선생님'}]으로 변경되었습니다.`);
+      fetchAdminData(user.id);
+    } catch (err) {
+      alert(`담당 선생님 변경 실패: ${err.message}`);
+    }
+  };
+
+  // ✏️ 원생 상세 정보 수정
+  const handleUpdateStudent = async (e) => {
+    e.preventDefault();
+    if (!editingStudent) return;
+
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({
+          name: editingStudent.name,
+          email: editingStudent.email,
+          parent_phone: editingStudent.parent_phone ? editingStudent.parent_phone.replace(/[^0-9]/g, '') : '',
+          teacher_id: editingStudent.teacher_id,
+        })
+        .eq('id', editingStudent.id);
+
+      if (error) throw error;
+
+      alert('원생 정보가 수정되었습니다.');
+      setEditingStudent(null);
+      fetchAdminData(user.id);
+    } catch (err) {
+      alert(`수정 실패: ${err.message}`);
+    }
+  };
+
+  // 🗑️ 원생 삭제
+  const handleDeleteStudent = async (studentId, studentName) => {
+    if (!confirm(`[${studentName}] 원생을 학원에서 삭제하시겠습니까?\n삭제 시 반 배정 및 로그인 정보가 영구 제거됩니다.`)) return;
+    try {
+      await supabase.from('class_students').delete().eq('student_id', studentId);
+      await supabase.from('push_subscriptions').delete().eq('user_id', studentId);
+      const { error } = await supabase.from('users').delete().eq('id', studentId);
+      if (error) throw error;
+
+      alert(`[${studentName}] 원생이 삭제되었습니다.`);
+      fetchAdminData(user.id);
+    } catch (err) {
+      alert(`원생 삭제 실패: ${err.message}`);
+    }
+  };
+
+  const filteredStudents = allStudents.filter((st) => {
+    const matchSearch = !studentSearch.trim() || 
+      (st.name || '').toLowerCase().includes(studentSearch.toLowerCase()) || 
+      (st.email || '').toLowerCase().includes(studentSearch.toLowerCase());
+    const matchTeacher = filterTeacher === 'ALL' || st.teacher_id === filterTeacher;
+    return matchSearch && matchTeacher;
+  });
 
   if (loading) return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center font-bold text-slate-600">
@@ -429,9 +501,154 @@ export default function AdminDashboard() {
           </div>
         </section>
 
+        {/* 🎓 3. 학원 전체 원생 관리 & 직속 담당 강사 지정 */}
+        <section className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-5">
+          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 border-b border-slate-100 pb-4">
+            <div>
+              <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
+                <span>🎓</span> 학원 전체 원생 관리 & 담당 선생님 배정
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                원생별 직속 담당 선생님(Q&A 및 전담)을 변경하거나 원생 정보를 수정·삭제합니다.
+              </p>
+            </div>
+            <span className="bg-blue-50 text-blue-700 text-xs font-bold px-3 py-1 rounded-full border border-blue-100 self-start sm:self-auto">
+              총 {allStudents.length}명 원생
+            </span>
+          </div>
+
+          {/* 검색 및 필터 바 */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex-1 relative">
+              <input
+                type="text"
+                placeholder="🔍 학생 이름 또는 아이디로 검색..."
+                value={studentSearch}
+                onChange={(e) => setStudentSearch(e.target.value)}
+                className="w-full p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
+              />
+              {studentSearch && (
+                <button
+                  type="button"
+                  onClick={() => setStudentSearch('')}
+                  className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            <select
+              value={filterTeacher}
+              onChange={(e) => setFilterTeacher(e.target.value)}
+              className="p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-bold text-slate-700 focus:outline-none"
+            >
+              <option value="ALL">👨‍🏫 전체 담당 선생님 보기</option>
+              {allTeachers.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.role === 'HEAD_TEACHER' ? '👑' : '👨‍🏫'} {t.name} 선생님 담당
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 원생 리스트 */}
+          <div className="space-y-3">
+            {filteredStudents.length === 0 ? (
+              <div className="text-center py-10 text-slate-400 text-xs font-bold">
+                검색 조건에 맞는 원생이 없습니다.
+              </div>
+            ) : (
+              filteredStudents.map((st) => {
+                const assignedClassInfo = classStudents.find((cs) => cs.student_id === st.id);
+                const assignedClass = allClasses.find((c) => String(c.id) === String(assignedClassInfo?.class_id));
+                const teacherObj = allTeachers.find((t) => t.id === st.teacher_id);
+
+                return (
+                  <div
+                    key={st.id}
+                    className="bg-slate-50/80 hover:bg-slate-50 border border-slate-200/80 p-4 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 transition"
+                  >
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-extrabold text-sm text-slate-800">{st.name}</span>
+                        <span className="text-slate-400 text-xs font-semibold">({st.email})</span>
+                        {st.parent_phone ? (
+                          <span className="bg-amber-100 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-full font-bold text-[10px]">
+                            📱 {st.parent_phone}
+                          </span>
+                        ) : (
+                          <span className="bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full font-semibold text-[10px]">
+                            연락처 미등록
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-3 text-xs flex-wrap">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-slate-400 font-bold">소속 반:</span>
+                          {assignedClass ? (
+                            <span className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded-lg font-bold text-[11px]">
+                              📘 {assignedClass.name}
+                            </span>
+                          ) : (
+                            <span className="bg-rose-50 text-rose-600 border border-rose-100 px-2 py-0.5 rounded-lg font-bold text-[11px]">
+                              미배정
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-slate-400 font-bold">직속 담당:</span>
+                          <span className="bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-lg font-extrabold text-[11px]">
+                            {teacherObj?.role === 'HEAD_TEACHER' ? '👑' : '👨‍🏫'} {teacherObj?.name || '미지정'}T
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                      {/* 빠른 담당 선생님 변경 드롭다운 */}
+                      <select
+                        value={st.teacher_id || ''}
+                        onChange={(e) => handleQuickChangeTeacher(st.id, e.target.value)}
+                        className="p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700"
+                        title="직속 담당 선생님 변경"
+                      >
+                        <option value="" disabled>-- 담당 강사 선택 --</option>
+                        {allTeachers.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.role === 'HEAD_TEACHER' ? '👑' : '👨‍🏫'} {t.name} 선생님
+                          </option>
+                        ))}
+                      </select>
+
+                      <button
+                        type="button"
+                        onClick={() => setEditingStudent(st)}
+                        className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold px-3 py-2 rounded-xl text-xs transition whitespace-nowrap shadow-2xs"
+                      >
+                        ✏️ 수정
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteStudent(st.id, st.name)}
+                        className="text-rose-500 hover:text-rose-700 font-bold px-2 py-1 text-xs transition"
+                      >
+                        삭제
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </section>
+
       </main>
 
-      {/* 🎯 모달: 원생 지정 일괄 배정 */}
+      {/* 🎯 모달 1: 원생 지정 일괄 배정 */}
       {assignTargetClass && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white rounded-3xl p-6 w-full max-w-lg space-y-5 shadow-2xl animate-in fade-in zoom-in-95 my-8">
@@ -498,6 +715,85 @@ export default function AdminDashboard() {
                 배정 완료 저장
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✏️ 모달 2: 원생 정보 및 담당 선생님 수정 */}
+      {editingStudent && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-md space-y-4 shadow-2xl animate-in fade-in zoom-in-95 my-8">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h4 className="text-base font-extrabold text-slate-800">✏️ 원생 정보 및 담당 선생님 수정</h4>
+              <button onClick={() => setEditingStudent(null)} className="text-slate-400 hover:text-slate-600 font-bold text-xs">✕</button>
+            </div>
+
+            <form onSubmit={handleUpdateStudent} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">학생 이름</label>
+                <input
+                  type="text"
+                  value={editingStudent.name || ''}
+                  onChange={(e) => setEditingStudent({ ...editingStudent, name: e.target.value })}
+                  className="w-full p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">아이디 / 이메일</label>
+                <input
+                  type="text"
+                  value={editingStudent.email || ''}
+                  onChange={(e) => setEditingStudent({ ...editingStudent, email: e.target.value })}
+                  className="w-full p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">📱 학부모 연락처 (알림톡 수신용)</label>
+                <input
+                  type="tel"
+                  placeholder="010-1234-5678"
+                  value={editingStudent.parent_phone || ''}
+                  onChange={(e) => setEditingStudent({ ...editingStudent, parent_phone: e.target.value })}
+                  className="w-full p-3 bg-amber-50/50 border border-amber-200 rounded-2xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">👨‍🏫 직속 담당 선생님 (Q&A 및 관리)</label>
+                <select
+                  value={editingStudent.teacher_id || ''}
+                  onChange={(e) => setEditingStudent({ ...editingStudent, teacher_id: e.target.value })}
+                  className="w-full p-3 bg-indigo-50/60 border border-indigo-200 rounded-2xl text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500"
+                >
+                  {allTeachers.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.role === 'HEAD_TEACHER' ? '👑' : '👨‍🏫'} {t.name} 선생님
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10.5px] text-slate-400 mt-1.5 leading-relaxed">
+                  💡 담당 선생님을 변경하면 해당 선생님 교무실 및 1:1 Q&A 질문 수신자로 연동됩니다. (과거 작성된 평가/피드백/벌레 도감 데이터는 100% 보존됩니다)
+                </p>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingStudent(null)}
+                  className="w-1/2 bg-slate-100 text-slate-600 py-3 rounded-2xl text-xs font-bold"
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  className="w-1/2 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-2xl text-xs font-bold shadow-md transition"
+                >
+                  저장하기
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

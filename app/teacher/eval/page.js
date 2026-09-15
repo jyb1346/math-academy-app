@@ -349,6 +349,10 @@ export default function TeacherEvalPage() {
       const targetEval = studentEvals.find((e) => e.id === evalId);
       if (!targetEval) return;
 
+      if (user?.role !== 'HEAD_TEACHER' && targetEval.teacher_id && targetEval.teacher_id !== user?.id) {
+        return alert('본인이 작성한 수업 기록만 상태를 변경할 수 있습니다.');
+      }
+
       const updatedComment = updateBookStatusInComment(
         targetEval.teacher_comment,
         bookName,
@@ -381,6 +385,10 @@ export default function TeacherEvalPage() {
       const targetEval = studentEvals.find((e) => e.id === evalId);
       if (!targetEval) return;
 
+      if (user?.role !== 'HEAD_TEACHER' && targetEval.teacher_id && targetEval.teacher_id !== user?.id) {
+        return alert('본인이 작성한 수업 기록만 수정할 수 있습니다.');
+      }
+
       const updatedComment = updateEvaluationProgressAndBooksInComment(
         targetEval.teacher_comment,
         updatedProgress,
@@ -411,6 +419,11 @@ export default function TeacherEvalPage() {
   // 1:1 과제표에서 특정 회차 삭제
   const handleDeleteEvaluation = async (evalId, formattedDate) => {
     try {
+      const targetEval = studentEvals.find((e) => e.id === evalId);
+      if (user?.role !== 'HEAD_TEACHER' && targetEval?.teacher_id && targetEval?.teacher_id !== user?.id) {
+        return alert('본인이 작성한 수업 기록만 삭제할 수 있습니다.');
+      }
+
       const { error } = await supabase
         .from('daily_evaluations')
         .delete()
@@ -2212,6 +2225,8 @@ export default function TeacherEvalPage() {
                 studentName={currentStudentName}
                 evaluations={studentEvals}
                 isEditable={true}
+                currentUserId={user?.id}
+                userRole={user?.role}
                 onStatusChange={handleInlineHomeworkStatusChange}
                 onUpdateEvaluation={handleUpdateEvaluation}
                 onDeleteEvaluation={handleDeleteEvaluation}

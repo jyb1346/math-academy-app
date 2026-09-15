@@ -16,6 +16,8 @@ export default function StudentHomeworkTable({
   studentName = '학생',
   evaluations = [],
   isEditable = false,
+  currentUserId = null,
+  userRole = null,
   onStatusChange,
   onUpdateEvaluation,
   onDeleteEvaluation,
@@ -66,6 +68,7 @@ export default function StudentHomeworkTable({
         id: ev.id,
         rawDate: ev.eval_date,
         formattedDate,
+        teacherId: ev.teacher_id,
         teacherName,
         lessonProgress: parsed.lessonProgress || '-',
         testType: parsed.testType,
@@ -259,133 +262,150 @@ export default function StudentHomeworkTable({
             </tr>
           </thead>
           <tbody>
-            {displayedRows.map((row, idx) => (
-              <tr
-                key={row.id || idx}
-                className={`border-b border-slate-200 hover:bg-slate-50/80 transition ${
-                  idx % 2 === 1 ? 'bg-slate-50/40' : 'bg-white'
-                }`}
-              >
-                {/* 1. 날짜 & 담당 선생님 뱃지 */}
-                <td className="py-2.5 px-1 border-r border-slate-200 font-black text-slate-700 text-xs sm:text-sm whitespace-nowrap text-center">
-                  <div className="flex flex-col items-center justify-center">
-                    <span>{row.formattedDate}</span>
-                    {row.teacherName && (
-                      <span className="inline-block mt-0.5 text-[9.5px] font-black bg-indigo-50 text-indigo-700 border border-indigo-200/90 px-1.5 py-0.2 rounded-md leading-tight whitespace-nowrap shadow-2xs">
-                        {row.teacherName}T
-                      </span>
-                    )}
-                  </div>
-                </td>
+            {displayedRows.map((row, idx) => {
+              const canEditThisRow = isEditable && (
+                userRole === 'HEAD_TEACHER' ||
+                !row.teacherId ||
+                row.teacherId === currentUserId
+              );
 
-                {/* 2. 진도 */}
-                <td className="py-3 px-3 border-r border-slate-200 text-left font-bold text-slate-800 text-xs sm:text-sm">
-                  {row.lessonProgress && row.lessonProgress !== '-' ? (
-                    <span className="text-slate-900">{row.lessonProgress}</span>
-                  ) : (
-                    <span className="text-slate-300">-</span>
-                  )}
-                </td>
-
-                {/* 3. 📝 테스트 점수 (누적 점수 컬럼) */}
-                <td className="py-3 px-2 border-r border-slate-200 whitespace-nowrap text-center">
-                  {row.testScore && String(row.testScore).trim() && String(row.testScore).trim() !== '-' ? (
-                    <div className="flex flex-col items-center justify-center gap-0.5">
-                      <span className="inline-block bg-amber-100 text-amber-950 border border-amber-300/90 font-black px-2 py-0.5 rounded-lg text-xs shadow-2xs">
-                        {String(row.testScore).includes('점') ? row.testScore : `${row.testScore}점`}
-                      </span>
-                      {row.testType && (
-                        <span className="text-[10px] font-bold text-amber-800/80 leading-tight">
-                          {row.testType}
+              return (
+                <tr
+                  key={row.id || idx}
+                  className={`border-b border-slate-200 hover:bg-slate-50/80 transition ${
+                    idx % 2 === 1 ? 'bg-slate-50/40' : 'bg-white'
+                  }`}
+                >
+                  {/* 1. 날짜 & 담당 선생님 뱃지 */}
+                  <td className="py-2.5 px-1 border-r border-slate-200 font-black text-slate-700 text-xs sm:text-sm whitespace-nowrap text-center">
+                    <div className="flex flex-col items-center justify-center">
+                      <span>{row.formattedDate}</span>
+                      {row.teacherName && (
+                        <span className="inline-block mt-0.5 text-[9.5px] font-black bg-indigo-50 text-indigo-700 border border-indigo-200/90 px-1.5 py-0.2 rounded-md leading-tight whitespace-nowrap shadow-2xs">
+                          {row.teacherName}T
                         </span>
                       )}
                     </div>
-                  ) : (
-                    <span className="text-slate-300 text-xs">-</span>
-                  )}
-                </td>
-
-                {/* 4. 교재별 과제 범위 & 체크 드롭다운/뱃지 */}
-                {allBookNames.map((bName) => {
-                  const bookData = row.rowBooks[bName];
-                  const hasData = Boolean(bookData && bookData.range && bookData.range !== '-');
-
-                  return (
-                    <React.Fragment key={bName}>
-                      {/* 과제 범위 */}
-                      <td className="py-3 px-2 border-r border-slate-200 font-medium text-slate-700 text-xs">
-                        {hasData ? bookData.range : <span className="text-slate-300">-</span>}
-                      </td>
-
-                      {/* 체크 상태 (선생님 모드: 드롭다운 / 학부모 모드: 뱃지) */}
-                      <td className="py-3 px-1 border-r border-slate-200 min-w-[70px]">
-                        {hasData ? (
-                          isEditable ? (
-                            <select
-                              value={bookData.status || '미체크'}
-                              onChange={(e) => onStatusChange?.(row.id, bName, e.target.value)}
-                              className={`text-[10px] font-black py-0.5 px-1 rounded border cursor-pointer transition shadow-2xs ${
-                                bookData.status === '완료'
-                                  ? 'bg-emerald-600 text-white border-emerald-700'
-                                  : bookData.status === '일부완료'
-                                  ? 'bg-sky-500 text-white border-sky-600'
-                                  : bookData.status === '미완료'
-                                  ? 'bg-rose-600 text-white border-rose-700'
-                                  : bookData.status === '질문남음'
-                                  ? 'bg-amber-500 text-white border-amber-600'
-                                  : 'bg-slate-100 text-slate-600 border-slate-300'
-                              }`}
-                              title="클릭하여 과제 상태를 즉시 변경할 수 있습니다"
-                            >
-                              {HOMEWORK_STATUS_OPTIONS.map((opt) => (
-                                <option
-                                  key={opt.value}
-                                  value={opt.value}
-                                  className="bg-white text-slate-900 font-bold"
-                                >
-                                  {opt.label}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            renderStatusBadge(bookData.status)
-                          )
-                        ) : (
-                          <span className="text-slate-200">-</span>
-                        )}
-                      </td>
-                    </React.Fragment>
-                  );
-                })}
-
-                {/* 4. 수정 및 삭제 액션 버튼 (선생님 모드 - 가로 정렬) */}
-                {isEditable && (
-                  <td className="py-3 px-2 text-center whitespace-nowrap">
-                    <div className="flex items-center justify-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenEditModal(row)}
-                        className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[11px] font-bold px-2 py-1 rounded-lg transition shadow-2xs flex items-center gap-1 shrink-0"
-                        title="이 날짜의 진도 및 교재별 과제 범위를 수정합니다"
-                      >
-                        <span>✏️</span>
-                        <span>수정</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteRow(row)}
-                        className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-[11px] font-bold px-2 py-1 rounded-lg transition shadow-2xs flex items-center gap-1 shrink-0"
-                        title="이 날짜의 피드백 및 진도/과제 기록을 삭제합니다"
-                      >
-                        <span>🗑️</span>
-                        <span>삭제</span>
-                      </button>
-                    </div>
                   </td>
-                )}
-              </tr>
-            ))}
+
+                  {/* 2. 진도 */}
+                  <td className="py-3 px-3 border-r border-slate-200 text-left font-bold text-slate-800 text-xs sm:text-sm">
+                    {row.lessonProgress && row.lessonProgress !== '-' ? (
+                      <span className="text-slate-900">{row.lessonProgress}</span>
+                    ) : (
+                      <span className="text-slate-300">-</span>
+                    )}
+                  </td>
+
+                  {/* 3. 📝 테스트 점수 (누적 점수 컬럼) */}
+                  <td className="py-3 px-2 border-r border-slate-200 whitespace-nowrap text-center">
+                    {row.testScore && String(row.testScore).trim() && String(row.testScore).trim() !== '-' ? (
+                      <div className="flex flex-col items-center justify-center gap-0.5">
+                        <span className="inline-block bg-amber-100 text-amber-950 border border-amber-300/90 font-black px-2 py-0.5 rounded-lg text-xs shadow-2xs">
+                          {String(row.testScore).includes('점') ? row.testScore : `${row.testScore}점`}
+                        </span>
+                        {row.testType && (
+                          <span className="text-[10px] font-bold text-amber-800/80 leading-tight">
+                            {row.testType}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-slate-300 text-xs">-</span>
+                    )}
+                  </td>
+
+                  {/* 4. 교재별 과제 범위 & 체크 드롭다운/뱃지 */}
+                  {allBookNames.map((bName) => {
+                    const bookData = row.rowBooks[bName];
+                    const hasData = Boolean(bookData && bookData.range && bookData.range !== '-');
+
+                    return (
+                      <React.Fragment key={bName}>
+                        {/* 과제 범위 */}
+                        <td className="py-3 px-2 border-r border-slate-200 font-medium text-slate-700 text-xs">
+                          {hasData ? bookData.range : <span className="text-slate-300">-</span>}
+                        </td>
+
+                        {/* 체크 상태 (본인 수업인 경우: 드롭다운 / 타 강사 수업 또는 학생/학부모 모드: 뱃지) */}
+                        <td className="py-3 px-1 border-r border-slate-200 min-w-[70px]">
+                          {hasData ? (
+                            canEditThisRow ? (
+                              <select
+                                value={bookData.status || '미체크'}
+                                onChange={(e) => onStatusChange?.(row.id, bName, e.target.value)}
+                                className={`text-[10px] font-black py-0.5 px-1 rounded border cursor-pointer transition shadow-2xs ${
+                                  bookData.status === '완료'
+                                    ? 'bg-emerald-600 text-white border-emerald-700'
+                                    : bookData.status === '일부완료'
+                                    ? 'bg-sky-500 text-white border-sky-600'
+                                    : bookData.status === '미완료'
+                                    ? 'bg-rose-600 text-white border-rose-700'
+                                    : bookData.status === '질문남음'
+                                    ? 'bg-amber-500 text-white border-amber-600'
+                                    : 'bg-slate-100 text-slate-600 border-slate-300'
+                                }`}
+                                title="클릭하여 과제 상태를 즉시 변경할 수 있습니다"
+                              >
+                                {HOMEWORK_STATUS_OPTIONS.map((opt) => (
+                                  <option
+                                    key={opt.value}
+                                    value={opt.value}
+                                    className="bg-white text-slate-900 font-bold"
+                                  >
+                                    {opt.label}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              renderStatusBadge(bookData.status)
+                            )
+                          ) : (
+                            <span className="text-slate-200">-</span>
+                          )}
+                        </td>
+                      </React.Fragment>
+                    );
+                  })}
+
+                  {/* 5. 수정 및 삭제 액션 버튼 (선생님 모드 - 본인 수업만 수정/삭제 가능) */}
+                  {isEditable && (
+                    <td className="py-3 px-2 text-center whitespace-nowrap">
+                      {canEditThisRow ? (
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditModal(row)}
+                            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[11px] font-bold px-2 py-1 rounded-lg transition shadow-2xs flex items-center gap-1 shrink-0"
+                            title="이 날짜의 진도 및 교재별 과제 범위를 수정합니다"
+                          >
+                            <span>✏️</span>
+                            <span>수정</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteRow(row)}
+                            className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-[11px] font-bold px-2 py-1 rounded-lg transition shadow-2xs flex items-center gap-1 shrink-0"
+                            title="이 날짜의 피드백 및 진도/과제 기록을 삭제합니다"
+                          >
+                            <span>🗑️</span>
+                            <span>삭제</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <span
+                          className="inline-flex items-center gap-1 text-[10px] font-extrabold text-slate-400 bg-slate-100 border border-slate-200/80 px-2 py-1 rounded-lg select-none"
+                          title="다른 선생님이 작성하신 수업 기록입니다. (조회 전용)"
+                        >
+                          🔒 타 강사 수업
+                        </span>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

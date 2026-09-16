@@ -5,7 +5,14 @@ import webpush from '@/lib/webpush';
 export async function POST(req) {
   try {
     const body = await req.json();
-    const { userIds, title, message, url, tag, renotify } = body;
+    const { userIds, title, message, url, tag, renotify, broadcastAll } = body;
+
+    // 🛡️ 보안 및 오발송 방지: broadcastAll이 아니면 userIds가 유효한 비어있지 않은 배열이어야 함
+    if (!broadcastAll) {
+      if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+        return NextResponse.json({ ok: true, count: 0, message: 'No target userIds specified' });
+      }
+    }
 
     let query = supabase.from('push_subscriptions').select('*');
     if (userIds && Array.isArray(userIds) && userIds.length > 0) {

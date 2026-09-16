@@ -93,7 +93,12 @@ export default function LuckyBugOverlay() {
         .channel('poom-lucky-events')
         .on('broadcast', { event: 'BUG_SPAWNED' }, (payload) => {
           const ev = payload.payload || {};
-          if (!ev.classId || classIds.includes(String(ev.classId))) {
+          const isTarget = ev.classId
+            ? classIds.includes(String(ev.classId))
+            : (ev.targetClassIds && ev.targetClassIds.some((id) => classIds.includes(String(id)))) ||
+              (ev.teacherId && (studentUser.teacher_id === ev.teacherId || isEligible));
+
+          if (isTarget) {
             const bugInfo = getBugById(ev.bugId || 'gold_beetle');
             const newEv = {
               id: ev.eventId,

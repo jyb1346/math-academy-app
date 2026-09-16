@@ -169,6 +169,7 @@ export default function AdminDashboard() {
   const handleDeleteClass = async (classId, className) => {
     if (!confirm(`[${className}] 반을 삭제하시겠습니까?`)) return;
     try {
+      await supabase.from('class_students').delete().eq('class_id', classId);
       const { error } = await supabase.from('classes').delete().eq('id', classId);
       if (error) throw error;
       fetchAdminData(user.id);
@@ -579,8 +580,13 @@ export default function AdminDashboard() {
               </div>
             ) : (
               filteredStudents.map((st) => {
-                const assignedClassInfo = classStudents.find((cs) => cs.student_id === st.id);
-                const assignedClass = allClasses.find((c) => String(c.id) === String(assignedClassInfo?.class_id));
+                const studentEnrolledClassIds = classStudents
+                  .filter((cs) => cs.student_id === st.id)
+                  .map((cs) => String(cs.class_id));
+
+                const assignedClasses = allClasses.filter((c) =>
+                  studentEnrolledClassIds.includes(String(c.id))
+                );
                 const teacherObj = allTeachers.find((t) => t.id === st.teacher_id);
 
                 return (
@@ -604,12 +610,14 @@ export default function AdminDashboard() {
                       </div>
 
                       <div className="flex items-center gap-3 text-xs flex-wrap">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="text-slate-400 font-bold">소속 반:</span>
-                          {assignedClass ? (
-                            <span className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded-lg font-bold text-[11px]">
-                              📘 {assignedClass.name}
-                            </span>
+                          {assignedClasses.length > 0 ? (
+                            assignedClasses.map((cls) => (
+                              <span key={cls.id} className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded-lg font-bold text-[11px]">
+                                📘 {cls.name}
+                              </span>
+                            ))
                           ) : (
                             <span className="bg-rose-50 text-rose-600 border border-rose-100 px-2 py-0.5 rounded-lg font-bold text-[11px]">
                               미배정

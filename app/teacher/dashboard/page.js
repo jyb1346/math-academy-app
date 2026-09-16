@@ -222,6 +222,7 @@ export default function TeacherDashboard() {
   const handleDeleteClass = async (classId, className) => {
     if (!confirm(`[${className}] 반을 삭제하시겠습니까?`)) return;
     try {
+      await supabase.from('class_students').delete().eq('class_id', classId);
       const { error } = await supabase.from('classes').delete().eq('id', classId);
       if (error) throw error;
       fetchTeacherData(user.id);
@@ -822,8 +823,15 @@ export default function TeacherDashboard() {
               <p className="text-center py-12 text-slate-400 text-xs font-bold">등록된 학생이 없습니다.</p>
             ) : (
               students.map((st) => {
-                const assignedClassInfo = classStudents.find((cs) => cs.student_id === st.id);
-                const assignedClass = classes.find((c) => String(c.id) === String(assignedClassInfo?.class_id));
+                const myClassIds = (classes || []).map((c) => String(c.id));
+                const studentEnrolledClassIds = (classStudents || [])
+                  .filter((cs) => cs.student_id === st.id)
+                  .map((cs) => String(cs.class_id));
+
+                const myAssignedClasses = (classes || []).filter((c) =>
+                  studentEnrolledClassIds.includes(String(c.id))
+                );
+                const otherClassCount = studentEnrolledClassIds.filter((cid) => !myClassIds.includes(cid)).length;
 
                 return (
                   <div
@@ -852,15 +860,22 @@ export default function TeacherDashboard() {
                         )}
                       </div>
 
-                      <div className="flex items-center gap-2 text-xs">
+                      <div className="flex items-center gap-1.5 text-xs flex-wrap">
                         <span className="text-slate-500 font-bold">소속 반:</span>
-                        {assignedClass ? (
-                          <span className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-0.5 rounded-full font-bold">
-                            📘 {assignedClass.name}
-                          </span>
+                        {myAssignedClasses.length > 0 ? (
+                          myAssignedClasses.map((cls) => (
+                            <span key={cls.id} className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-0.5 rounded-full font-bold text-[11px]">
+                              📘 {cls.name}
+                            </span>
+                          ))
                         ) : (
-                          <span className="bg-rose-50 text-rose-600 border border-rose-100 px-2.5 py-0.5 rounded-full font-bold">
-                            미배정
+                          <span className="bg-rose-50 text-rose-600 border border-rose-100 px-2.5 py-0.5 rounded-full font-bold text-[11px]">
+                            내 수업 미배정
+                          </span>
+                        )}
+                        {otherClassCount > 0 && (
+                          <span className="bg-slate-100 text-slate-500 border border-slate-200 px-2 py-0.5 rounded-full font-medium text-[10px]" title="다른 선생님의 수업에도 배정되어 있습니다">
+                            +타 강사 {otherClassCount}개 반
                           </span>
                         )}
                       </div>
@@ -868,7 +883,7 @@ export default function TeacherDashboard() {
 
                     <div className="flex items-center gap-2">
                       <select
-                        value={selectedClassMap[st.id] || (assignedClass ? String(assignedClass.id) : '')}
+                        value={selectedClassMap[st.id] || (myAssignedClasses.length > 0 ? String(myAssignedClasses[0].id) : '')}
                         onChange={(e) => setSelectedClassMap({ ...selectedClassMap, [st.id]: e.target.value })}
                         className="p-2 border rounded-xl text-xs font-bold text-slate-700 bg-white"
                       >

@@ -264,7 +264,6 @@ export default function StudentHomeworkTable({
           <tbody>
             {displayedRows.map((row, idx) => {
               const canEditThisRow = isEditable && (
-                userRole === 'HEAD_TEACHER' ||
                 !row.teacherId ||
                 row.teacherId === currentUserId
               );

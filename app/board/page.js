@@ -788,7 +788,7 @@ function BoardMain() {
                       <h3 className="text-lg sm:text-2xl font-black text-slate-900 pt-1 leading-snug tracking-tight break-words">{post.title}</h3>
                     </div>
 
-                    {user?.role !== 'STUDENT' && (
+                    {user?.role !== 'STUDENT' && (post.author_id === user.id || user.role === 'HEAD_TEACHER') && (
                       <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap">
                         {post.category === 'HOMEWORK' && (
                           <button

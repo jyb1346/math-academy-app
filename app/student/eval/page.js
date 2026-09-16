@@ -29,6 +29,15 @@ export default function StudentEvalPage() {
 
   const fetchStudentEvaluations = async (studentId) => {
     try {
+      const { data: tData } = await supabase
+        .from('users')
+        .select('id, name')
+        .in('role', ['TEACHER', 'HEAD_TEACHER', 'ADMIN']);
+      const teacherMap = (tData || []).reduce((acc, t) => {
+        acc[t.id] = t.name;
+        return acc;
+      }, {});
+
       const { data, error } = await supabase
         .from('daily_evaluations')
         .select('*')
@@ -36,7 +45,11 @@ export default function StudentEvalPage() {
         .order('eval_date', { ascending: false });
 
       if (error) throw error;
-      setEvaluations(data || []);
+      const enriched = (data || []).map((ev) => ({
+        ...ev,
+        teacher_name: teacherMap[ev.teacher_id] || '',
+      }));
+      setEvaluations(enriched);
     } catch (err) {
       console.error(err);
     } finally {
@@ -114,6 +127,11 @@ export default function StudentEvalPage() {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-black text-slate-800 text-base">📅 {ev.eval_date} 학습 리포트</span>
+                    {ev.teacher_name && (
+                      <span className="bg-blue-50 text-blue-700 border border-blue-200 text-xs font-black px-2.5 py-0.5 rounded-full shadow-2xs">
+                        👨‍🏫 {ev.teacher_name} 선생님
+                      </span>
+                    )}
                     {parsed.testScore && (
                       <span className="bg-indigo-50 text-indigo-800 border border-indigo-200 text-xs font-black px-2.5 py-0.5 rounded-full shadow-2xs">
                         📝 {parsed.testType}: {parsed.testScore.endsWith('점') || parsed.testScore.includes('/') || parsed.testScore.includes('등급') ? parsed.testScore : `${parsed.testScore}점`}

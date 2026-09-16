@@ -379,8 +379,8 @@ export default function TeacherEvalPage() {
     }
   };
 
-  // 1:1 과제표 모달에서 진도 및 전체 교재 수정 저장
-  const handleUpdateEvaluation = async (evalId, updatedProgress, updatedBooks) => {
+  // 1:1 과제표 모달에서 진도 및 전체 교재, 시험점수 수정 저장
+  const handleUpdateEvaluation = async (evalId, updatedProgress, updatedBooks, updatedTestType, updatedTestScore) => {
     try {
       const targetEval = studentEvals.find((e) => e.id === evalId);
       if (!targetEval) return;
@@ -392,7 +392,9 @@ export default function TeacherEvalPage() {
       const updatedComment = updateEvaluationProgressAndBooksInComment(
         targetEval.teacher_comment,
         updatedProgress,
-        updatedBooks
+        updatedBooks,
+        updatedTestType,
+        updatedTestScore
       );
 
       const { error } = await supabase
@@ -409,7 +411,7 @@ export default function TeacherEvalPage() {
       );
 
       fetchStudentEvaluationHistory(selectedStudentId, evalDate);
-      showToast(`✅ ${targetEval.eval_date} 수업의 진도 및 과제 정보가 성공적으로 수정되었습니다.`);
+      showToast(`✅ ${targetEval.eval_date} 수업의 진도 및 과제/시험 정보가 성공적으로 수정되었습니다.`);
     } catch (err) {
       console.error('handleUpdateEvaluation error:', err);
       alert('수정 내용 저장 중 오류가 발생했습니다.');

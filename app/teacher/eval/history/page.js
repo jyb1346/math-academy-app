@@ -149,11 +149,19 @@ export default function EvalHistoryPage() {
 
   const fetchData = async (currentUser) => {
     try {
+      const { data: stData } = await supabase
+        .from('users')
+        .select('id, name, email')
+        .eq('role', 'STUDENT')
+        .eq('teacher_id', currentUser.id);
+      setStudents(stData || []);
+
       // 1. 내가 담당하는 반 조회
       const { data: cData } = await supabase
         .from('classes')
         .select('*')
         .eq('teacher_id', currentUser.id);
+      setClasses(cData || []);
       const myClasses = cData || [];
       setClasses(myClasses);
 

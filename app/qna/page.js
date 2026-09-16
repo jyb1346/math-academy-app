@@ -295,13 +295,16 @@ export default function QnaPage() {
     }
   };
 
+  // 학생: 질문 삭제 (답변 등록 전에만)
   // 질문 삭제 (학생: 답변 등록 전, 선생님: 본인 담당 질문 또는 원장님)
   const handleDeleteQuestion = async (id, qTitle) => {
+    if (!confirm(`[${qTitle}] 질문을 삭제하시겠습니까?`)) return;
     if (!confirm(`[${qTitle || '해당 질문'}]을(를) 삭제하시겠습니까?\n\n※ 삭제 시 질문 내용, 첨부 사진 및 모든 답변 스레드가 완전히 삭제됩니다.`)) return;
     try {
       const { error } = await supabase.from('qna').delete().eq('id', id);
       if (error) throw error;
       fetchQuestions(user);
+      alert('삭제되었습니다.');
       alert('질문이 삭제되었습니다.');
     } catch (err) {
       console.error('Delete question error:', err);
@@ -898,6 +901,12 @@ export default function QnaPage() {
                   onChange={(e) => setTeacherFilter(e.target.value)}
                   className="text-xs font-bold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
                 >
+                  <option value="ALL">전체 강사 질문</option>
+                  {teachersList.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} 선생님
+                    </option>
+                  ))}
                   <option value={user?.id}>⭐ 내 담당 질문 (기본)</option>
                   <option value="ALL">🌐 전체 강사 질문</option>
                   {teachersList

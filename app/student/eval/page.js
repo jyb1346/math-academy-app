@@ -45,6 +45,7 @@ export default function StudentEvalPage() {
         .order('eval_date', { ascending: false });
 
       if (error) throw error;
+      setEvaluations(data || []);
       const enriched = (data || []).map((ev) => ({
         ...ev,
         teacher_name: teacherMap[ev.teacher_id] || '',

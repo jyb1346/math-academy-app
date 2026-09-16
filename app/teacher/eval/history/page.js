@@ -149,21 +149,51 @@ export default function EvalHistoryPage() {
 
   const fetchData = async (currentUser) => {
     try {
-      const { data: stData } = await supabase
-        .from('users')
-        .select('id, name, email')
-        .eq('role', 'STUDENT')
-        .eq('teacher_id', currentUser.id);
-      setStudents(stData || []);
-
+      // 1. 내가 담당하는 반 조회
       const { data: cData } = await supabase
         .from('classes')
         .select('*')
         .eq('teacher_id', currentUser.id);
-      setClasses(cData || []);
+      const myClasses = cData || [];
+      setClasses(myClasses);
 
+      // 2. 전체 배정 정보 조회
       const { data: csData } = await supabase.from('class_students').select('*');
       setClassStudents(csData || []);
+
+      // 3. 1) 직속 학생 조회
+      const { data: directStData } = await supabase
+        .from('users')
+        .select('id, name, email')
+        .eq('role', 'STUDENT')
+        .eq('teacher_id', currentUser.id);
+
+      // 3. 2) 내 개설 반에 배정된 학생 ID 목록 추출
+      const myClassIds = myClasses.map((c) => c.id);
+      let enrolledStudentIds = [];
+      if (myClassIds.length > 0) {
+        enrolledStudentIds = (csData || [])
+          .filter((cs) => myClassIds.includes(cs.class_id))
+          .map((cs) => cs.student_id);
+      }
+
+      // 3. 3) 내 반에 속한 학생들 추가 조회 (직속 담당이 아니더라도 함께 포함)
+      let allTeacherStudents = directStData || [];
+      const missingIds = enrolledStudentIds.filter(
+        (id) => !allTeacherStudents.some((s) => s.id === id)
+      );
+
+      if (missingIds.length > 0) {
+        const { data: extraStData } = await supabase
+          .from('users')
+          .select('id, name, email')
+          .in('id', missingIds);
+        if (extraStData) {
+          allTeacherStudents = [...allTeacherStudents, ...extraStData];
+        }
+      }
+
+      setStudents(allTeacherStudents);
 
       const { data: evalData, error } = await supabase
         .from('daily_evaluations')

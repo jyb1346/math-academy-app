@@ -258,7 +258,7 @@ export default function TeacherDashboard() {
       const payloads = nameList.map((name, index) => {
         const rawPhone = phoneList[index] || '';
         const cleanPhone = rawPhone.replace(/[^0-9]/g, '');
-        const randomNum = Math.floor(1000 + Math.random() * 9000);
+        const randomNum = Math.floor(100000 + Math.random() * 900000);
 
         return {
           name,

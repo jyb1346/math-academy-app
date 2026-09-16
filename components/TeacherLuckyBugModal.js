@@ -889,27 +889,179 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
                         </div>
                       </div>
 
-                      {/* 보스 레이드일 때 MVP 및 격파 정보 */}
-                      {isBoss ? (
-                        <div className="bg-white p-3 rounded-xl border border-rose-200 text-xs space-y-1">
-                          <div className="flex justify-between font-bold text-rose-950">
-                            <span>보스 설정:</span>
-                            <span className="text-rose-600 font-black">
-                              HP {ev.maxHp || 30} (1타당 {ev.hitDamage || 5} DMG / 1인 최대 {ev.perUserHitLimit || 5}타)
-                            </span>
-                          </div>
-                          {ev.mvp && (
-                            <div className="flex justify-between text-amber-900 font-bold">
-                              <span>👑 딜량 1등 (MVP):</span>
-                              <span>{ev.mvp.damage} 데미지</span>
+                      {/* 보스 레이드일 때 학생별 딜량 기여도 및 격파 상세 정보 */}
+                      {isBoss ? (() => {
+                        const contributorIds = Array.from(
+                          new Set([
+                            ...Object.keys(ev.damageByUser || {}),
+                            ...Object.keys(ev.hitsByUser || {}),
+                            ...(ev.winners || []).map((w) => w.studentId),
+                          ])
+                        );
+
+                        const contributorList = contributorIds
+                          .map((sId) => {
+                            const dmg = ev.damageByUser?.[sId] || 0;
+                            const hits = ev.hitsByUser?.[sId] || 0;
+                            const name =
+                              ev.studentNames?.[sId] ||
+                              ev.winners?.find((w) => w.studentId === sId)?.studentName ||
+                              (ev.finisher?.studentId === sId ? ev.finisher.studentName : null) ||
+                              '학생';
+                            const isMvp = ev.mvp?.studentId === sId || (ev.mvp && ev.mvp.damage === dmg && dmg > 0);
+                            const isFinisher = ev.finisher?.studentId === sId;
+                            return { studentId: sId, name, dmg, hits, isMvp, isFinisher };
+                          })
+                          .sort((a, b) => b.dmg - a.dmg);
+
+                        const maxHpVal = Number(ev.maxHp) || 30;
+                        const currentHpVal = ev.currentHp !== undefined ? Number(ev.currentHp) : 0;
+                        const totalDealtDmg = contributorList.reduce((acc, c) => acc + c.dmg, 0);
+
+                        return (
+                          <div className="bg-white p-3.5 rounded-2xl border border-rose-200 text-xs space-y-3 shadow-xs">
+                            {/* 보스 HP 상태 바 & 기본 스펙 */}
+                            <div className="space-y-1.5 pb-2 border-b border-rose-100">
+                              <div className="flex justify-between items-center text-xs font-black">
+                                <span className="text-rose-950 flex items-center gap-1">
+                                  <span>❤️ 보스 HP:</span>
+                                  <span className="text-rose-600 font-extrabold">
+                                    {currentHpVal} / {maxHpVal} HP
+                                  </span>
+                                </span>
+                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                                  currentHpVal <= 0
+                                    ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                                    : 'bg-amber-100 text-amber-800 border border-amber-300 animate-pulse'
+                                }`}>
+                                  {currentHpVal <= 0 ? '🏆 격파 성공' : '⚔️ 전투 진행 중'}
+                                </span>
+                              </div>
+
+                              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200">
+                                <div
+                                  className={`h-full transition-all duration-500 ${
+                                    currentHpVal <= 0 ? 'bg-slate-300' : 'bg-gradient-to-r from-rose-500 to-amber-500'
+                                  }`}
+                                  style={{
+                                    width: `${Math.max(0, Math.min(100, Math.round((currentHpVal / maxHpVal) * 100)))}%`,
+                                  }}
+                                />
+                              </div>
+
+                              <div className="flex justify-between text-[11px] text-slate-500 font-semibold pt-0.5">
+                                <span>1타당 기본 {ev.hitDamage || 5} DMG (최대 {ev.perUserHitLimit || 5}타)</span>
+                                <span>총 누적 데미지: <strong className="text-rose-700">{totalDealtDmg} DMG</strong></span>
+                              </div>
                             </div>
-                          )}
-                          <div className="flex justify-between text-slate-600">
-                            <span>참여 학생 수:</span>
-                            <span className="font-bold text-indigo-600">{ev.winners?.length || 0}명</span>
+
+                            {/* 👑 MVP & ⚡ 막타 피니셔 요약 배너 */}
+                            {(ev.mvp || ev.finisher) && (
+                              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                                {ev.mvp && (
+                                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-2 text-amber-950">
+                                    <span className="text-[10px] font-bold text-amber-700 block">👑 딜량 1등 (MVP)</span>
+                                    <span className="font-black text-amber-900 truncate block">
+                                      {contributorList.find((c) => c.isMvp)?.name || '학생'} ({ev.mvp.damage} DMG)
+                                    </span>
+                                  </div>
+                                )}
+                                {ev.finisher && (
+                                  <div className="bg-rose-50 border border-rose-200 rounded-xl p-2 text-rose-950">
+                                    <span className="text-[10px] font-bold text-rose-700 block">⚡ 럭키 피니셔 (막타)</span>
+                                    <span className="font-black text-rose-900 truncate block">
+                                      {ev.finisher.studentName || '학생'}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* ⚔️ 학생별 딜량 및 기여도 상세 순위 리스트 */}
+                            <div className="space-y-1.5">
+                              <div className="flex justify-between items-center text-[11.5px] font-black text-slate-700">
+                                <span className="flex items-center gap-1">
+                                  <span>📊</span>
+                                  <span>학생별 딜량 기여도 순위</span>
+                                </span>
+                                <span className="text-[10.5px] text-indigo-600 font-bold">
+                                  총 {contributorList.length}명 참여
+                                </span>
+                              </div>
+
+                              {contributorList.length === 0 ? (
+                                <p className="text-[11px] text-slate-400 font-semibold py-1">
+                                  아직 보스를 타격한 학생이 없습니다.
+                                </p>
+                              ) : (
+                                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                                  {contributorList.map((c, idx) => {
+                                    const percent = maxHpVal > 0 ? Math.min(100, Math.round((c.dmg / maxHpVal) * 100)) : 0;
+                                    return (
+                                      <div
+                                        key={c.studentId || idx}
+                                        className={`p-2 rounded-xl border flex items-center justify-between text-xs transition ${
+                                          idx === 0
+                                            ? 'bg-amber-50/70 border-amber-300'
+                                            : 'bg-slate-50 border-slate-200'
+                                        }`}
+                                      >
+                                        <div className="flex items-center gap-2 min-w-0">
+                                          <span className={`w-5 h-5 rounded-full flex items-center justify-center font-black text-[10px] shrink-0 ${
+                                            idx === 0
+                                              ? 'bg-amber-400 text-amber-950 shadow-xs'
+                                              : idx === 1
+                                              ? 'bg-slate-300 text-slate-800'
+                                              : idx === 2
+                                              ? 'bg-amber-700/30 text-amber-900'
+                                              : 'bg-slate-200 text-slate-600'
+                                          }`}>
+                                            {idx + 1}
+                                          </span>
+                                          <div className="truncate">
+                                            <div className="flex items-center gap-1">
+                                              <span className="font-black text-slate-800 truncate">
+                                                {c.name}
+                                              </span>
+                                              {c.isMvp && (
+                                                <span className="bg-amber-500 text-white text-[9px] font-black px-1 rounded">
+                                                  MVP
+                                                </span>
+                                              )}
+                                              {c.isFinisher && (
+                                                <span className="bg-rose-500 text-white text-[9px] font-black px-1 rounded">
+                                                  막타
+                                                </span>
+                                              )}
+                                            </div>
+                                            <span className="text-[10px] text-slate-500 font-semibold">
+                                              {c.hits}회 타격 (기여도 {percent}%)
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        <div className="text-right shrink-0">
+                                          <span className="text-xs font-black text-rose-600 block">
+                                            {c.dmg} DMG
+                                          </span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* 단체 선물 문구 */}
+                            {ev.rewardText && (
+                              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-[11px]">
+                                <span className="font-bold text-slate-600">🎁 단체 보상: </span>
+                                <span className="font-black text-slate-800">{ev.rewardText}</span>
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      ) : (
+                        );
+                      })() : (
                         /* 일반 벌레 당첨자 명단 */
                         <div className="bg-white p-3 rounded-xl border border-slate-200 text-xs space-y-1.5">
                           <span className="text-[11px] font-bold text-slate-600 block">

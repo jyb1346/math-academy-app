@@ -551,7 +551,7 @@ export default function LuckyBugOverlay() {
         </div>
       ))}
 
-      {/* ⚡ 고1 [도형의 방정식] 스피드 수학 퀴즈 모달 (3배 크리티컬 찬스) */}
+      {/* ⚡ 고1 [도형의 방정식] 스피드 수학 퀴즈 모달 (2배 / 3배 크리티컬 찬스) */}
       {mathQuiz && activeEvent && (
         <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 select-none">
           <div className="bg-gradient-to-b from-slate-900 via-indigo-950 to-slate-950 rounded-3xl p-6 max-w-md w-full shadow-2xl border-2 border-amber-400 text-white space-y-4 animate-scale-up">
@@ -559,17 +559,30 @@ export default function LuckyBugOverlay() {
               <div className="flex items-center gap-2">
                 <span className="text-2xl animate-bounce">⚡</span>
                 <div>
-                  <span className="text-[10px] font-black text-amber-300 bg-amber-400/20 px-2 py-0.5 rounded-full border border-amber-400/30">
-                    {ACTIVE_MATH_CHAPTER.title} • {mathQuiz.category}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-black text-amber-300 bg-amber-400/20 px-2 py-0.5 rounded-full border border-amber-400/30">
+                      {ACTIVE_MATH_CHAPTER.title} • {mathQuiz.category}
+                    </span>
+                    <span className={`text-[9.5px] font-black px-2 py-0.5 rounded-full border ${
+                      mathQuiz.multiplier === 3
+                        ? 'bg-rose-500/30 text-rose-300 border-rose-400/50'
+                        : 'bg-amber-500/30 text-amber-300 border-amber-400/50'
+                    }`}>
+                      {mathQuiz.difficulty || (mathQuiz.multiplier === 3 ? '응용' : '기초')}
+                    </span>
+                  </div>
                   <h3 className="text-base font-black text-white pt-0.5">
                     스피드 수학 퀴즈 찬스!
                   </h3>
                 </div>
               </div>
               <div className="text-right">
-                <span className="text-xs font-black text-yellow-400 bg-yellow-900/60 px-2 py-1 rounded-xl border border-yellow-500/50 block">
-                  정답 시 3배 ({Number(activeEvent.hitDamage || 5) * 3} DMG)
+                <span className={`text-xs font-black px-2.5 py-1 rounded-xl border block ${
+                  mathQuiz.multiplier === 3
+                    ? 'text-rose-300 bg-rose-950/80 border-rose-500/60 animate-pulse'
+                    : 'text-yellow-400 bg-yellow-900/60 border-yellow-500/50'
+                }`}>
+                  정답 시 {mathQuiz.multiplier || 2}배 ({Number(activeEvent.hitDamage || 5) * (mathQuiz.multiplier || 2)} DMG)
                 </span>
               </div>
             </div>
@@ -592,14 +605,15 @@ export default function LuckyBugOverlay() {
                   type="button"
                   onClick={() => {
                     const dmgVal = Number(activeEvent?.hitDamage) || 5;
+                    const multiplier = mathQuiz.multiplier || 2;
                     const isCorrect = idx === mathQuiz.answerIndex;
                     setMathQuiz(null);
                     if (isCorrect) {
-                      const critDamage = dmgVal * 3;
+                      const critDamage = dmgVal * multiplier;
                       executeBossAttack(
                         critDamage,
                         true,
-                        `⚡ ${user.name} 학생의 [도형의 방정식] 퀴즈 정답! 3배 크리티컬 일격! (-${critDamage} HP)`
+                        `⚡ ${user.name} 학생의 [${mathQuiz.category}] ${mathQuiz.difficulty || ''} 정답! ${multiplier}배 크리티컬 일격! (-${critDamage} HP)`
                       );
                     } else {
                       executeBossAttack(

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { createLuckyEvent } from '@/lib/luckyBugService';
+import { createLuckyEvent, getJangStudentUserIds } from '@/lib/luckyBugService';
 
 /**
  * ⏰ 돌발 황금 벌레 자동 스케줄러 (타이머)
@@ -8,19 +8,21 @@ import { createLuckyEvent } from '@/lib/luckyBugService';
  */
 export async function GET(req) {
   try {
-    // 1. 강사 계정 하나 조회 (시스템 작성자용)
+    // 1. 장영배 원장님 계정 조회
     const { data: teacher } = await supabase
       .from('users')
       .select('id')
-      .in('role', ['TEACHER', 'HEAD_TEACHER'])
-      .limit(1)
-      .single();
+      .eq('role', 'HEAD_TEACHER')
+      .eq('name', '장영배')
+      .maybeSingle();
 
     if (!teacher) {
-      return NextResponse.json({ ok: false, message: '등록된 강사 계정이 없습니다.' });
+      return NextResponse.json({ ok: false, message: '등록된 원장님 계정이 없습니다.' });
     }
 
-    // 2. 전체 학생 대상 2마리 황금 벌레 자동 소환
+    const targetUserIds = await getJangStudentUserIds(teacher.id);
+
+    // 2. 담당 학생 대상 2마리 황금 벌레 자동 소환
     const result = await createLuckyEvent({
       teacherId: teacher.id,
       classId: null, // 전체 대상
@@ -32,20 +34,23 @@ export async function GET(req) {
       return NextResponse.json({ ok: false, error: result.error });
     }
 
-    // 3. 전체 학생 푸시 알림 발송
-    try {
-      fetch(`${req.nextUrl.origin}/api/push/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: '🚨 [돌발 이벤트] 학원에 황금 벌레 출현! 🐛',
-          message: '선착순 2명! 지금 앱에 접속해서 황금 벌레를 먼저 잡으세요!',
-          url: '/student/dashboard',
-          tag: `lucky-bug-${result.event.id}`,
-          renotify: true,
-        }),
-      }).catch((e) => console.warn('Push error:', e));
-    } catch (e) {}
+    // 3. 담당 학생 푸시 알림 발송 (타 선생님 및 타 학생 제외)
+    if (targetUserIds && targetUserIds.length > 0) {
+      try {
+        fetch(`${req.nextUrl.origin}/api/push/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userIds: targetUserIds,
+            title: '🚨 [돌발 이벤트] 학원에 황금 벌레 출현! 🐛',
+            message: '선착순 2명! 지금 앱에 접속해서 황금 벌레를 먼저 잡으세요!',
+            url: '/student/dashboard',
+            tag: `lucky-bug-${result.event.id}`,
+            renotify: true,
+          }),
+        }).catch((e) => console.warn('Push error:', e));
+      } catch (e) {}
+    }
 
     return NextResponse.json({
       ok: true,

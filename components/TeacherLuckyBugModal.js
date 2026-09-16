@@ -88,6 +88,9 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
       if (!result.success) throw new Error(result.error);
 
       const event = result.event;
+      const targetClassIds = selectedClassId
+        ? [String(selectedClassId)]
+        : classes.map((c) => String(c.id));
 
       // 1. 실시간 브로드캐스트
       if (channelRef.current) {
@@ -96,7 +99,9 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
           event: 'BUG_SPAWNED',
           payload: {
             eventId: event.id,
+            teacherId: user.id,
             classId: selectedClassId || null,
+            targetClassIds,
             bugId: finalBug.id,
             isBossRaid: false,
             targetCount: Number(targetCount),
@@ -114,16 +119,18 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
         if (selectedClassId) {
           const { data: csData } = await supabase
             .from('class_students')
-            .select('student_id')
+            .select('student_id, users!class_students_student_id_fkey(role)')
             .eq('class_id', selectedClassId);
-          targetUserIds = (csData || []).map((cs) => cs.student_id);
+          targetUserIds = (csData || [])
+            .filter((cs) => cs.users?.role === 'STUDENT' || !cs.users)
+            .map((cs) => cs.student_id);
         } else {
           targetUserIds = await getJangStudentUserIds(user.id);
         }
 
         const classNameLabel = selectedClassId
           ? classes.find((c) => String(c.id) === String(selectedClassId))?.name || '우리 반'
-          : '학원 전체';
+          : '내 담당 모든 반';
 
         if (targetUserIds && targetUserIds.length > 0) {
           fetch('/api/push/send', {
@@ -181,6 +188,9 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
       if (!result.success) throw new Error(result.error);
 
       const event = result.event;
+      const targetClassIds = selectedClassId
+        ? [String(selectedClassId)]
+        : classes.map((c) => String(c.id));
 
       // 1. 실시간 브로드캐스트
       if (channelRef.current) {
@@ -189,7 +199,9 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
           event: 'BUG_SPAWNED',
           payload: {
             eventId: event.id,
+            teacherId: user.id,
             classId: selectedClassId || null,
+            targetClassIds,
             bugId: bossInfo.id,
             isBossRaid: true,
             maxHp: parsedHp,
@@ -209,16 +221,18 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
         if (selectedClassId) {
           const { data: csData } = await supabase
             .from('class_students')
-            .select('student_id')
+            .select('student_id, users!class_students_student_id_fkey(role)')
             .eq('class_id', selectedClassId);
-          targetUserIds = (csData || []).map((cs) => cs.student_id);
+          targetUserIds = (csData || [])
+            .filter((cs) => cs.users?.role === 'STUDENT' || !cs.users)
+            .map((cs) => cs.student_id);
         } else {
           targetUserIds = await getJangStudentUserIds(user.id);
         }
 
         const classNameLabel = selectedClassId
           ? classes.find((c) => String(c.id) === String(selectedClassId))?.name || '우리 반'
-          : '학원 전체';
+          : '내 담당 모든 반';
 
         if (targetUserIds && targetUserIds.length > 0) {
           fetch('/api/push/send', {
@@ -413,7 +427,7 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
                   onChange={(e) => setSelectedClassId(e.target.value)}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800"
                 >
-                  <option value="">🌐 학원 전체 학생 (전체 소환)</option>
+                  <option value="">🌐 내 담당 모든 반 (전체 소환)</option>
                   {classes.map((cls) => (
                     <option key={cls.id} value={cls.id}>
                       📘 [{cls.name}] 전용 소환
@@ -602,7 +616,7 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
                   onChange={(e) => setSelectedClassId(e.target.value)}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800"
                 >
-                  <option value="">🌐 학원 전체 학생 (전교생 총력전)</option>
+                  <option value="">🌐 내 담당 모든 반 (총력전)</option>
                   {classes.map((cls) => (
                     <option key={cls.id} value={cls.id}>
                       📘 [{cls.name}] 전용 레이드

@@ -994,11 +994,11 @@ export default function TeacherEvalPage() {
 
       const combinedComment = formatTeacherCommentWithTestScoreAndItems({
         comment: teacherComment,
-        testScore: isAbsent ? '' : testScore,
+        testScore: testScore,
         testType: effectiveTestType,
         customItems: isAbsent ? [] : customItems,
-        lessonProgress: isAbsent ? '(결석)' : todayLessonProgress,
-        homeworkBooks: isAbsent ? [] : todayHomeworkBooks.filter((b) => b.name && b.range),
+        lessonProgress: todayLessonProgress.trim() || (isAbsent ? '(결석)' : ''),
+        homeworkBooks: todayHomeworkBooks.filter((b) => b.name && b.range),
       });
 
       const payload = {
@@ -1123,11 +1123,11 @@ export default function TeacherEvalPage() {
 
         const combinedComment = formatTeacherCommentWithTestScoreAndItems({
           comment: st.comment,
-          testScore: isAbsent ? '' : st.testScore,
+          testScore: st.testScore,
           testType: effectiveTestType,
           customItems: isAbsent ? [] : (st.customItems || []),
-          lessonProgress: isAbsent ? '(결석)' : commonLessonProgress,
-          homeworkBooks: isAbsent ? [] : validBooks,
+          lessonProgress: commonLessonProgress.trim() || (isAbsent ? '(결석)' : ''),
+          homeworkBooks: validBooks,
         });
 
         const activeKeys = st.activeKeys || ['concept', 'calc', 'app', 'attitude', 'homework', 'perseverance'];

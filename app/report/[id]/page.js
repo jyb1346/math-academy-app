@@ -207,9 +207,21 @@ export default function StudentReportPage() {
           </div>
         )}
 
-        {/* 🎯 2. 학습 성취도 분석 영역 (가로 막대 게이지 바 차트) */}
+        {/* 🎯 2. 학습 성취도 분석 영역 (결석 시 안내 배너) */}
         <div className="px-4 sm:px-5 py-1">
-          <EvaluationBarChart items={parsed.items} />
+          {evalData.attendance_status === 'ABSENT' ? (
+            <div className="w-full p-4 sm:p-5 text-center bg-rose-50/60 rounded-2xl border border-rose-200/80 space-y-1">
+              <span className="text-xs font-black text-rose-950 flex items-center justify-center gap-1.5">
+                <span>🔴</span>
+                <span>결석 안내</span>
+              </span>
+              <p className="text-[11px] text-rose-800 font-medium">
+                결석으로 인해 당일 세부 역량 평가는 진행되지 않았습니다. 상단의 학습 진도 및 과제 범위를 확인해 주세요.
+              </p>
+            </div>
+          ) : (
+            <EvaluationBarChart items={parsed.items} />
+          )}
         </div>
 
         {/* 📝 3. 시험 성적 결과 카드 (입력된 경우에만 렌더링, 미입력 시 숨김) */}

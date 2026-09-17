@@ -199,15 +199,21 @@ export default function TeacherEvalPage() {
       try {
         localStorage.setItem('poom_class_types', JSON.stringify(updated));
       } catch (e) {}
+
+      if (newMode === 'LECTURE') {
+        fetchClassStudents(selectedClassId);
+      } else if (newMode === 'INDIVIDUAL' && selectedStudentId) {
+        fetchStudentEvaluationHistory(selectedStudentId, evalDate);
+      }
     }
   };
 
-  // 날짜 변경 시 판서수업 학생 상태 갱신
+  // 날짜 또는 모드 변경 시 판서수업 학생 상태 갱신
   useEffect(() => {
     if (selectedClassId && evalMode === 'LECTURE') {
       fetchClassStudents(selectedClassId);
     }
-  }, [evalDate]);
+  }, [selectedClassId, evalDate, evalMode]);
 
   // 선택된 학생이나 날짜가 변경될 때 해당 학생의 전체 기록 및 직전 기록 조회 (1:1 개별 모드)
   useEffect(() => {
@@ -871,10 +877,14 @@ export default function TeacherEvalPage() {
 
       // 2) 학생별 일괄 상태 객체 생성
       const initialBatchList = stList.map((st) => {
-        const studentRecentEvals = allEvals.filter((e) => e.student_id === st.id);
-        const myTeacherEvals = studentRecentEvals.filter((e) => !e.teacher_id || e.teacher_id === (user?.id || ''));
-        const todayEval = myTeacherEvals.find((e) => e.eval_date === evalDate);
-        const prev = myTeacherEvals.find((e) => e.eval_date < evalDate) || (myTeacherEvals.length > 0 ? myTeacherEvals[0] : (studentRecentEvals.length > 0 ? studentRecentEvals[0] : null));
+        const studentRecentEvals = allEvals.filter((e) => String(e.student_id) === String(st.id));
+        const myTeacherEvals = studentRecentEvals.filter((e) => !e.teacher_id || String(e.teacher_id) === String(user?.id || ''));
+        const candidateEvals = myTeacherEvals.length > 0 ? myTeacherEvals : studentRecentEvals;
+
+        const normalizedEvalDate = String(evalDate).split('T')[0];
+        const todayEval = candidateEvals.find((e) => String(e.eval_date).split('T')[0] === normalizedEvalDate);
+        const pastEvals = candidateEvals.filter((e) => String(e.eval_date).split('T')[0] < normalizedEvalDate);
+        const prev = pastEvals.length > 0 ? pastEvals[0] : null;
         const parsedToday = todayEval ? parseEvaluationRecord(todayEval) : null;
 
         const scores = {
@@ -912,26 +922,37 @@ export default function TeacherEvalPage() {
           }
         }
 
+        const standardTestTypes = ['단원평가', '일일테스트', '주간테스트', '모의고사'];
+        let initialTestType = '단원평가';
+        let initialCustomTestType = '';
+
+        if (parsedToday?.testType) {
+          if (standardTestTypes.includes(parsedToday.testType)) {
+            initialTestType = parsedToday.testType;
+          } else {
+            initialTestType = '기타';
+            initialCustomTestType = parsedToday.testType;
+          }
+        }
+
         return {
           student_id: st.id,
           name: st.name,
           email: st.email,
           parent_phone: st.parent_phone,
           included: true,
-          attendanceStatus: 'ATTEND',
-          latenessMinutes: 5,
           attendanceStatus: todayEval?.attendance_status || 'ATTEND',
           latenessMinutes: todayEval?.lateness_minutes || 5,
           scores: { ...scores },
           initialScores: { ...scores },
           activeKeys,
           customItems: customItemsList,
-          testType: '단원평가',
-          customTestType: '',
-          testScore: '',
-          comment: '',
+          testType: initialTestType,
+          customTestType: initialCustomTestType,
+          testScore: parsedToday?.testScore || '',
+          comment: parsedToday?.comment || '',
           showScoreEditor: false,
-          prevEvalSummary: prev ? `${prev.eval_date} 피드백` : '첫 피드백',
+          prevEvalSummary: prev ? `${prev.eval_date} 피드백` : (todayEval ? '오늘 작성됨' : '첫 피드백'),
           isSaved: !!todayEval,
           todayEvalId: todayEval?.id || null,
           alimtalkSentAt: parsedToday?.alimtalkSentAt || null,
@@ -1052,6 +1073,9 @@ export default function TeacherEvalPage() {
 
       saveRecentBooksToCache(todayHomeworkBooks);
       fetchStudentEvaluationHistory(selectedStudentId, evalDate);
+      if (selectedClassId) {
+        fetchClassStudents(selectedClassId);
+      }
       alert(`🎉 [${studentName}] 학생의 ${evalDate} 일일 피드백 및 과제표 저장이 완료되었습니다!${alimtalkNotice}`);
     } catch (err) {
       console.error(err);

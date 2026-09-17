@@ -1690,8 +1690,9 @@ export default function TeacherEvalPage() {
                           </div>
 
                           {/* 2행: 시험 성적 및 개별 코멘트 입력칸 */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-slate-100 text-xs">
-                            <div className="flex items-center gap-1.5 sm:col-span-1">
+                          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1.5 border-t border-slate-100 text-xs">
+                            {/* 시험 정보 입력 그룹 */}
+                            <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
                               <select
                                 value={st.testType}
                                 onChange={(e) => handleBatchTestTypeChange(st.student_id, e.target.value)}
@@ -1718,7 +1719,7 @@ export default function TeacherEvalPage() {
                                     )
                                   }
                                   placeholder="시험명 직접입력"
-                                  className="w-24 sm:w-28 p-1.5 bg-amber-50 border border-amber-300 rounded-lg text-xs font-bold text-amber-950 placeholder:text-amber-400 shrink-0"
+                                  className="w-28 sm:w-36 p-1.5 bg-amber-50 border border-amber-300 rounded-lg text-xs font-bold text-amber-950 placeholder:text-amber-400 shrink-0"
                                 />
                               )}
 
@@ -1727,17 +1728,18 @@ export default function TeacherEvalPage() {
                                 value={st.testScore}
                                 onChange={(e) => handleBatchTestScoreChange(st.student_id, e.target.value)}
                                 placeholder="시험점수(선택)"
-                                className="w-full p-1.5 bg-white border rounded-lg text-xs font-bold placeholder:text-slate-400"
+                                className="w-24 sm:w-28 p-1.5 bg-white border border-indigo-200 rounded-lg text-xs font-bold text-indigo-950 placeholder:text-slate-400 shrink-0"
                               />
                             </div>
 
-                            <div className="sm:col-span-2">
+                            {/* 개별 코멘트 입력칸 (남은 너비 100% 확장) */}
+                            <div className="flex-1 min-w-0">
                               <input
                                 type="text"
                                 value={st.comment}
                                 onChange={(e) => handleBatchCommentChange(st.student_id, e.target.value)}
                                 placeholder={isAbsent ? "결석 사유나 보강 일정을 메모해 주세요" : "학생별 특이사항이나 칭찬 메모 (비워두면 학부모 화면에 코멘트 영역이 숨겨집니다)"}
-                                className="w-full p-1.5 bg-white border rounded-lg text-xs font-medium placeholder:text-slate-400"
+                                className="w-full p-1.5 bg-white border rounded-lg text-xs font-medium placeholder:text-slate-400 focus:outline-none focus:border-indigo-400"
                               />
                             </div>
                           </div>

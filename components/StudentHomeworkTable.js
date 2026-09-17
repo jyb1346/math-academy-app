@@ -328,32 +328,32 @@ export default function StudentHomeworkTable({
       </div>
 
       {/* ========================================================= */}
-      {/* 1. 📊 엑셀 스타일 테이블 뷰 (좌측 열 Sticky 고정 + 최신 교재 우선) */}
+      {/* 1. 📊 엑셀 스타일 테이블 뷰 (상단 헤더 Sticky + 좌측 [날짜]만 Sticky 고정) */}
       {/* ========================================================= */}
       {viewMode === 'TABLE' && (
-        <div className="relative overflow-x-auto rounded-xl border border-slate-300 shadow-xs bg-white">
+        <div className="relative overflow-auto max-h-[72vh] rounded-xl border border-slate-300 shadow-xs bg-white">
           <table className="w-full border-collapse text-center text-xs">
-            <thead>
+            <thead className="sticky top-0 z-30 shadow-xs">
               <tr className="bg-slate-100 text-slate-800 border-b border-slate-300 font-extrabold text-[11px] sm:text-xs">
-                {/* 📌 1. 날짜 (Sticky Left 0) */}
-                <th className="py-2.5 px-2 border-r border-slate-300 w-14 sm:w-16 min-w-[56px] sm:min-w-[64px] whitespace-nowrap sticky left-0 z-30 bg-slate-100">
+                {/* 📌 1. 날짜 (상단 + 좌측 교차 Sticky Top-0 & Left-0) */}
+                <th className="py-2.5 px-2 border-r border-slate-300 w-14 sm:w-16 min-w-[56px] sm:min-w-[64px] whitespace-nowrap sticky left-0 top-0 z-40 bg-slate-100 shadow-[2px_0_4px_rgba(0,0,0,0.06)]">
                   날짜
                 </th>
-                {/* 📌 2. 진도 (Sticky Left 56px / 64px) */}
-                <th className="py-2.5 px-3 border-r border-slate-300 w-[130px] sm:w-[150px] min-w-[130px] sm:min-w-[150px] text-left sticky left-[56px] sm:left-[64px] z-30 bg-slate-100">
+                {/* 📌 2. 진도 (상단 Sticky Top-0) */}
+                <th className="py-2.5 px-3 border-r border-slate-300 w-[130px] sm:w-[150px] min-w-[130px] sm:min-w-[150px] text-left sticky top-0 z-30 bg-slate-100">
                   진도
                 </th>
-                {/* 📌 3. 테스트 점수 (Sticky Left 186px / 214px) */}
-                <th className="py-2.5 px-2 border-r-2 border-slate-400 w-[85px] sm:w-[95px] min-w-[85px] sm:min-w-[95px] whitespace-nowrap sticky left-[186px] sm:left-[214px] z-30 bg-amber-100 text-amber-950 font-black shadow-[4px_0_8px_-2px_rgba(0,0,0,0.12)]">
+                {/* 📌 3. 테스트 점수 (상단 Sticky Top-0) */}
+                <th className="py-2.5 px-2 border-r-2 border-slate-300 w-[85px] sm:w-[95px] min-w-[85px] sm:min-w-[95px] whitespace-nowrap sticky top-0 z-30 bg-amber-100 text-amber-950 font-black">
                   📝 테스트
                 </th>
 
-                {/* 📚 교재별 컬럼 (최신 사용 교재 순 정렬) */}
+                {/* 📚 교재별 컬럼 (상단 Sticky Top-0) */}
                 {displayedBookNames.map((bName) => (
                   <th
                     key={bName}
                     colSpan={2}
-                    className="py-2.5 px-2 border-r border-slate-300 min-w-[125px] sm:min-w-[140px] whitespace-nowrap bg-slate-50 text-slate-800"
+                    className="py-2.5 px-2 border-r border-slate-300 min-w-[125px] sm:min-w-[140px] whitespace-nowrap sticky top-0 z-30 bg-slate-100 text-slate-800"
                   >
                     <div className="truncate max-w-[180px] mx-auto" title={bName}>
                       {bName}
@@ -361,9 +361,9 @@ export default function StudentHomeworkTable({
                   </th>
                 ))}
 
-                {/* ⚙️ 관리 버튼 컬럼 */}
+                {/* ⚙️ 관리 버튼 컬럼 (상단 Sticky Top-0) */}
                 {isEditable && (
-                  <th className="py-2.5 px-3 min-w-[120px] whitespace-nowrap bg-slate-200/80 text-slate-700">
+                  <th className="py-2.5 px-3 min-w-[120px] whitespace-nowrap sticky top-0 z-30 bg-slate-200/90 text-slate-700">
                     관리
                   </th>
                 )}
@@ -381,9 +381,9 @@ export default function StudentHomeworkTable({
                     key={row.id || idx}
                     className={`border-b border-slate-200 hover:bg-indigo-50/40 transition group ${rowBg}`}
                   >
-                    {/* 📌 1. 날짜 & 담당 선생님 뱃지 (Sticky Left 0) */}
+                    {/* 📌 1. 날짜 & 담당 선생님 뱃지 (좌측만 Sticky Left-0) */}
                     <td
-                      className={`py-2.5 px-1 border-r border-slate-200 font-black text-slate-700 text-xs sm:text-sm whitespace-nowrap text-center sticky left-0 z-20 ${rowBg} group-hover:bg-indigo-50/90`}
+                      className={`py-2.5 px-1 border-r border-slate-200 font-black text-slate-700 text-xs sm:text-sm whitespace-nowrap text-center sticky left-0 z-20 ${rowBg} group-hover:bg-indigo-50/90 shadow-[2px_0_4px_rgba(0,0,0,0.06)]`}
                     >
                       <div className="flex flex-col items-center justify-center">
                         <span>{row.formattedDate}</span>
@@ -395,9 +395,9 @@ export default function StudentHomeworkTable({
                       </div>
                     </td>
 
-                    {/* 📌 2. 진도 (Sticky Left 56px / 64px) */}
+                    {/* 📌 2. 진도 (일반 스크롤) */}
                     <td
-                      className={`py-3 px-3 border-r border-slate-200 text-left font-bold text-slate-800 text-xs sm:text-sm sticky left-[56px] sm:left-[64px] z-20 ${rowBg} group-hover:bg-indigo-50/90`}
+                      className="py-3 px-3 border-r border-slate-200 text-left font-bold text-slate-800 text-xs sm:text-sm"
                     >
                       {row.lessonProgress && row.lessonProgress !== '-' ? (
                         <span className="text-slate-900 line-clamp-2">{row.lessonProgress}</span>
@@ -406,9 +406,9 @@ export default function StudentHomeworkTable({
                       )}
                     </td>
 
-                    {/* 📌 3. 📝 테스트 점수 (Sticky Left 186px / 214px + 구분자 그림자) */}
+                    {/* 📌 3. 📝 테스트 점수 (일반 스크롤) */}
                     <td
-                      className={`py-3 px-1 border-r-2 border-slate-400 whitespace-nowrap text-center sticky left-[186px] sm:left-[214px] z-20 bg-amber-50/95 group-hover:bg-amber-100/90 shadow-[4px_0_8px_-2px_rgba(0,0,0,0.12)]`}
+                      className="py-3 px-1 border-r-2 border-slate-300 whitespace-nowrap text-center bg-amber-50/70 group-hover:bg-amber-100/90"
                     >
                       {row.testScore &&
                       String(row.testScore).trim() &&

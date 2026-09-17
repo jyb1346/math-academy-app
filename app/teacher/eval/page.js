@@ -933,6 +933,7 @@ export default function TeacherEvalPage() {
           showScoreEditor: false,
           prevEvalSummary: prev ? `${prev.eval_date} 피드백` : '첫 피드백',
           isSaved: !!todayEval,
+          todayEvalId: todayEval?.id || null,
           alimtalkSentAt: parsedToday?.alimtalkSentAt || null,
         };
       });
@@ -1087,6 +1088,7 @@ export default function TeacherEvalPage() {
       let successCount = 0;
       let errorCount = 0;
       let alimtalkSentCount = 0;
+      const savedEvalMap = {};
 
       for (let i = 0; i < targets.length; i++) {
         const st = targets[i];
@@ -1111,12 +1113,12 @@ export default function TeacherEvalPage() {
           eval_date: evalDate,
           attendance_status: st.attendanceStatus,
           lateness_minutes: st.attendanceStatus === 'LATE' ? parseInt(st.latenessMinutes || 5) : 0,
-          concept_score: !isAbsent && activeKeys.includes('concept') ? parseInt(st.scores.concept) : null,
-          calc_score: !isAbsent && activeKeys.includes('calc') ? parseInt(st.scores.calc) : null,
-          app_score: !isAbsent && activeKeys.includes('app') ? parseInt(st.scores.app) : null,
-          attitude_score: !isAbsent && activeKeys.includes('attitude') ? parseInt(st.scores.attitude) : null,
-          homework_score: !isAbsent && activeKeys.includes('homework') ? parseInt(st.scores.homework) : null,
-          perseverance_score: !isAbsent && activeKeys.includes('perseverance') ? parseInt(st.scores.perseverance) : null,
+          concept_score: !isAbsent && activeKeys.includes('concept') ? parseInt(st.scores.concept || 8) : null,
+          calc_score: !isAbsent && activeKeys.includes('calc') ? parseInt(st.scores.calc || 8) : null,
+          app_score: !isAbsent && activeKeys.includes('app') ? parseInt(st.scores.app || 8) : null,
+          attitude_score: !isAbsent && activeKeys.includes('attitude') ? parseInt(st.scores.attitude || 8) : null,
+          homework_score: !isAbsent && activeKeys.includes('homework') ? parseInt(st.scores.homework || 8) : null,
+          perseverance_score: !isAbsent && activeKeys.includes('perseverance') ? parseInt(st.scores.perseverance || 8) : null,
           teacher_comment: combinedComment,
         };
 
@@ -1156,6 +1158,10 @@ export default function TeacherEvalPage() {
           }
         }
 
+        if (savedEvalId) {
+          savedEvalMap[st.student_id] = savedEvalId;
+        }
+
         // 📲 알림톡 발송 체크 시 전송
         if (sendAlimtalk && savedEvalId && st.parent_phone) {
           try {
@@ -1189,6 +1195,7 @@ export default function TeacherEvalPage() {
           return {
             ...s,
             isSaved: true,
+            todayEvalId: savedEvalMap[s.student_id] || s.todayEvalId,
             alimtalkSentAt: sendAlimtalk && s.parent_phone ? sentTime : s.alimtalkSentAt,
           };
         })
@@ -1573,6 +1580,20 @@ export default function TeacherEvalPage() {
                                 <span>📑</span>
                                 <span>과제표</span>
                               </button>
+
+                              {/* 👁️ 학부모 리포트 새 탭 미리보기 버튼 (저장된 경우) */}
+                              {st.isSaved && st.todayEvalId && (
+                                <a
+                                  href={`/report/${st.todayEvalId}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[11px] font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 px-2 py-0.5 rounded-lg transition flex items-center gap-1 shadow-2xs"
+                                  title="학부모님께 발송되는 상세 리포트 새 탭으로 보기"
+                                >
+                                  <span>👁️</span>
+                                  <span>리포트</span>
+                                </a>
+                              )}
 
                               {st.isSaved && st.alimtalkSentAt && (
                                 <span className="text-[10px] font-black text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full flex items-center gap-1">
@@ -1980,40 +2001,55 @@ export default function TeacherEvalPage() {
                     )}
                   </div>
 
-                  {todayEvalRecord && !todayParsedRecord?.alimtalkSentAt && currentStudent?.parent_phone && (
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          const res = await fetch('/api/solapi/send-eval', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              evalId: todayEvalRecord.id,
-                              studentId: selectedStudentId,
-                              studentName: currentStudentName,
-                              evalDate,
-                              parentPhone: currentStudent.parent_phone,
-                              teacherName: user?.name,
-                            }),
-                          });
-                          const alimData = await res.json();
-                          if (alimData.success) {
-                            alert(`✅ [${currentStudentName}] 학부모님께 카카오 알림톡이 성공적으로 발송되었습니다!`);
-                            fetchStudentEvaluationHistory(selectedStudentId, evalDate);
-                          } else {
-                            alert(`발송 실패: ${alimData.error || alimData.message}`);
+                  <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+                    {todayEvalRecord && (
+                      <a
+                        href={`/report/${todayEvalRecord.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 px-3 py-1.5 rounded-xl shadow-2xs transition flex items-center justify-center gap-1.5 shrink-0"
+                        title="학부모님께 발송되는 상세 리포트 화면을 새 창에서 미리봅니다"
+                      >
+                        <span>👁️</span>
+                        <span>학부모 리포트 미리보기</span>
+                      </a>
+                    )}
+
+                    {todayEvalRecord && !todayParsedRecord?.alimtalkSentAt && currentStudent?.parent_phone && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch('/api/solapi/send-eval', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                evalId: todayEvalRecord.id,
+                                studentId: selectedStudentId,
+                                studentName: currentStudentName,
+                                evalDate,
+                                parentPhone: currentStudent.parent_phone,
+                                teacherName: user?.name,
+                              }),
+                            });
+                            const alimData = await res.json();
+                            if (alimData.success) {
+                              alert(`✅ [${currentStudentName}] 학부모님께 카카오 알림톡이 성공적으로 발송되었습니다!`);
+                              fetchStudentEvaluationHistory(selectedStudentId, evalDate);
+                            } else {
+                              alert(`발송 실패: ${alimData.error || alimData.message}`);
+                            }
+                          } catch (e) {
+                            alert(`발송 오류: ${e.message}`);
                           }
-                        } catch (e) {
-                          alert(`발송 오류: ${e.message}`);
-                        }
-                      }}
-                      className="text-xs font-black bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-xl shadow-xs transition flex items-center justify-center gap-1 shrink-0 self-start sm:self-auto active:scale-95"
-                    >
-                      <span>📲</span>
-                      <span>알림톡 즉시 발송하기</span>
-                    </button>
-                  )}
+                        }}
+                        className="text-xs font-black bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-xl shadow-xs transition flex items-center justify-center gap-1 shrink-0 active:scale-95"
+                      >
+                        <span>📲</span>
+                        <span>알림톡 즉시 발송하기</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 

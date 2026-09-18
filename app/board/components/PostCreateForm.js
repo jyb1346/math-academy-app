@@ -19,6 +19,8 @@ export default function PostCreateForm({
   handleAddBook,
   handleRemoveBook,
   handleBookChange,
+  handleToggleStudent,
+  availableStudents = [],
   setAttachedFile,
   handleCreatePost,
   uploading,
@@ -79,41 +81,127 @@ export default function PostCreateForm({
         {newCategory === 'HOMEWORK' && (
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
             <div className="flex justify-between items-center">
-              <span className="text-xs font-bold text-slate-700">📚 교재별 숙제 목록</span>
+              <div>
+                <span className="text-xs font-bold text-slate-700">📚 교재별 숙제 목록</span>
+                <p className="text-[10px] text-slate-400">교재별로 반 전체 또는 특정 학생을 지정하여 숙제를 부여할 수 있습니다.</p>
+              </div>
               <button
                 type="button"
                 onClick={handleAddBook}
-                className="text-xs bg-blue-600 text-white font-bold px-3 py-1.5 rounded-lg hover:bg-blue-700 transition"
+                className="text-xs bg-blue-600 text-white font-bold px-3 py-1.5 rounded-lg hover:bg-blue-700 transition shrink-0"
               >
                 + 교재 추가
               </button>
             </div>
 
             {homeworkList.map((item, index) => (
-              <div key={index} className="flex gap-2 items-center">
-                <input
-                  type="text"
-                  placeholder="교재명 (예: 개념쎈)"
-                  value={item.bookTitle}
-                  onChange={(e) => handleBookChange(index, 'bookTitle', e.target.value)}
-                  className="w-1/3 p-2 border rounded-lg text-sm bg-white font-medium"
-                />
-                <input
-                  type="text"
-                  placeholder="범위 (예: p.45 ~ p.50)"
-                  value={item.range}
-                  onChange={(e) => handleBookChange(index, 'range', e.target.value)}
-                  className="flex-1 p-2 border rounded-lg text-sm bg-white font-medium"
-                />
-                {homeworkList.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveBook(index)}
-                    className="text-xs bg-rose-100 text-rose-600 font-bold px-2.5 py-2 rounded-lg"
-                  >
-                    ✕
-                  </button>
-                )}
+              <div key={index} className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="text"
+                    placeholder="교재명 (예: 개념쎈)"
+                    value={item.bookTitle}
+                    onChange={(e) => handleBookChange(index, 'bookTitle', e.target.value)}
+                    className="w-1/3 p-2 border rounded-lg text-sm bg-white font-medium"
+                  />
+                  <input
+                    type="text"
+                    placeholder="범위 (예: p.45 ~ p.50)"
+                    value={item.range}
+                    onChange={(e) => handleBookChange(index, 'range', e.target.value)}
+                    className="flex-1 p-2 border rounded-lg text-sm bg-white font-medium"
+                  />
+                  {homeworkList.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveBook(index)}
+                      className="text-xs bg-rose-100 text-rose-600 font-bold px-2.5 py-2 rounded-lg hover:bg-rose-200 transition"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* 대상 학생 선택 (반 전체 vs 개별 학생) */}
+                <div className="pt-2 border-t border-slate-100 flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-500">숙제 대상:</span>
+                    <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-xs">
+                      <button
+                        type="button"
+                        onClick={() => handleBookChange(index, 'targetType', 'ALL')}
+                        className={`px-2.5 py-1 rounded-md font-bold transition text-[11px] ${
+                          item.targetType !== 'SELECTED'
+                            ? 'bg-blue-600 text-white shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        👥 반 전체 (기본)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleBookChange(index, 'targetType', 'SELECTED')}
+                        className={`px-2.5 py-1 rounded-md font-bold transition text-[11px] ${
+                          item.targetType === 'SELECTED'
+                            ? 'bg-indigo-600 text-white shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        👤 특정 학생만 선택
+                      </button>
+                    </div>
+                  </div>
+
+                  {item.targetType === 'SELECTED' && (
+                    <div className="bg-indigo-50/60 p-2.5 rounded-xl border border-indigo-100 space-y-2 animate-in fade-in">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-indigo-900">
+                          선택된 학생 ({item.targetStudentNames?.length || 0}명):
+                        </span>
+                        {availableStudents?.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const allNames = availableStudents.map((s) => s.name);
+                              const isAllSelected = allNames.every((n) => (item.targetStudentNames || []).includes(n));
+                              handleBookChange(index, 'targetStudentNames', isAllSelected ? [] : allNames);
+                            }}
+                            className="text-[10px] text-indigo-700 underline font-bold"
+                          >
+                            {(item.targetStudentNames || []).length === availableStudents.length ? '전체 해제' : '모두 선택'}
+                          </button>
+                        )}
+                      </div>
+
+                      {availableStudents && availableStudents.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {availableStudents.map((st) => {
+                            const isSelected = (item.targetStudentNames || []).includes(st.name);
+                            return (
+                              <button
+                                key={st.id}
+                                type="button"
+                                onClick={() => handleToggleStudent(index, st.name)}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                                  isSelected
+                                    ? 'bg-indigo-600 text-white shadow-2xs'
+                                    : 'bg-white text-slate-700 border border-slate-200 hover:border-indigo-300'
+                                }`}
+                              >
+                                <span>{isSelected ? '✓' : '+'}</span>
+                                <span>{st.name}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-[11px] text-slate-400 py-1">
+                          선택 가능한 학생 명단이 없습니다.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
 

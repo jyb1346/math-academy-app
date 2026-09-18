@@ -256,17 +256,133 @@ export default function TeacherEvalPage() {
       setStudentEvals(evals);
 
       // 현재 선택된 날짜의 본인(선생님) 평가가 이미 작성되었는지 확인
-      const todayEval = evals.find((e) => e.eval_date === currentDate && (!e.teacher_id || e.teacher_id === user?.id));
+      const normalizedEvalDate = String(currentDate).split('T')[0];
+      const todayEval = evals.find((e) => String(e.eval_date).split('T')[0] === normalizedEvalDate && (!e.teacher_id || e.teacher_id === user?.id));
       setTodayEvalRecord(todayEval || null);
-      setTodayParsedRecord(todayEval ? parseEvaluationRecord(todayEval) : null);
+      const parsedToday = todayEval ? parseEvaluationRecord(todayEval) : null;
+      setTodayParsedRecord(parsedToday);
 
       // 현재 선택된 날짜 이전의 본인(선생님) 최근 평가 1건 찾기 (없으면 전체 최근)
       const myTeacherEvals = evals.filter((e) => !e.teacher_id || e.teacher_id === user?.id);
-      const prev = myTeacherEvals.find((e) => e.eval_date < currentDate) || (myTeacherEvals.length > 0 ? myTeacherEvals[0] : (evals.length > 0 ? evals[0] : null));
+      const prev = myTeacherEvals.find((e) => String(e.eval_date).split('T')[0] < normalizedEvalDate) || (myTeacherEvals.length > 0 ? myTeacherEvals[0] : (evals.length > 0 ? evals[0] : null));
       setPrevEval(prev);
 
-      // 🎯 역량 평가 항목 및 점수 게이지 자동 반영
-      if (prev) {
+      // 🎯 오늘 이미 등록된 평가가 있다면 당일 등록 데이터를 100% 온전히 복원!
+      if (todayEval && parsedToday) {
+        // 1. 출결 & 지각 복원
+        setAttendanceStatus(todayEval.attendance_status || 'ATTEND');
+        setLatenessMinutes(todayEval.lateness_minutes || 5);
+
+        // 2. 오늘 진도 복원 (결석 표기가 아니면 진도 텍스트 복원)
+        if (parsedToday.lessonProgress && parsedToday.lessonProgress !== '(결석)') {
+          setTodayLessonProgress(parsedToday.lessonProgress);
+        } else {
+          setTodayLessonProgress('');
+        }
+
+        // 3. 오늘 등록된 교재 및 숙제 범위 복원
+        if (parsedToday.homeworkBooks && parsedToday.homeworkBooks.length > 0) {
+          const restoredBooks = parsedToday.homeworkBooks.map((b, idx) => ({
+            id: `book_today_${idx}`,
+            name: b.name,
+            range: b.range || '',
+            status: b.status || '미체크',
+          }));
+          setTodayHomeworkBooks(restoredBooks);
+          saveRecentBooksToCache(parsedToday.homeworkBooks);
+        } else {
+          let recentBookNames = extractRecentBookNamesFromEvaluations(evals);
+          if (recentBookNames.length === 0) {
+            try {
+              const cached = localStorage.getItem('poom_recent_homework_books');
+              if (cached) {
+                const parsedCached = JSON.parse(cached);
+                if (Array.isArray(parsedCached) && parsedCached.length > 0) {
+                  recentBookNames = parsedCached.filter(Boolean);
+                }
+              }
+            } catch (e) {}
+          }
+          if (recentBookNames.length === 0) {
+            recentBookNames = ['개념서', '유형서'];
+          }
+          setTodayHomeworkBooks(
+            recentBookNames.map((name, idx) => ({
+              id: `book_${Date.now()}_${idx}`,
+              name,
+              range: '',
+              status: '미체크',
+            }))
+          );
+        }
+
+        // 4. 시험 종류 및 시험 점수 복원
+        const standardTestTypes = ['단원평가', '일일테스트', '주간테스트', '모의고사'];
+        if (parsedToday.testType) {
+          if (standardTestTypes.includes(parsedToday.testType)) {
+            setTestType(parsedToday.testType);
+            setCustomTestType('');
+          } else {
+            setTestType('기타');
+            setCustomTestType(parsedToday.testType);
+          }
+        } else {
+          setTestType('단원평가');
+          setCustomTestType('');
+        }
+        setTestScore(parsedToday.testScore !== null && parsedToday.testScore !== undefined ? String(parsedToday.testScore) : '');
+
+        // 5. 선생님 총평 코멘트 복원
+        setTeacherComment(parsedToday.comment || '');
+
+        // 6. 오늘 평가된 역량 점수 및 커스텀 항목 복원
+        const todayActiveKeys = [];
+        const todayScores = {
+          concept: 8,
+          calc: 8,
+          app: 8,
+          attitude: 8,
+          homework: 8,
+          perseverance: 8,
+        };
+
+        DEFAULT_EVAL_KEYS.forEach((def) => {
+          const val = todayEval[def.dbCol];
+          if (val !== null && val !== undefined) {
+            todayActiveKeys.push(def.key);
+            todayScores[def.key] = Number(val);
+          }
+        });
+
+        if (todayActiveKeys.length > 0) {
+          setActiveDefaultKeys(todayActiveKeys);
+          setDefaultScores(todayScores);
+        } else {
+          setActiveDefaultKeys(['concept', 'calc', 'app', 'attitude', 'homework', 'perseverance']);
+          setDefaultScores(todayScores);
+        }
+
+        if (parsedToday.customItems && parsedToday.customItems.length > 0) {
+          setCustomItems(
+            parsedToday.customItems.map((c, idx) => ({
+              id: `custom_today_${idx}`,
+              name: c.name,
+              score: Number(c.score) || 8,
+            }))
+          );
+        } else {
+          setCustomItems([]);
+        }
+      } else if (prev) {
+        // 오늘 작성된 평가가 없으면: 기본값 세팅 및 이전 평가 역량 점수/교재명 프리로드
+        setAttendanceStatus('ATTEND');
+        setLatenessMinutes(5);
+        setTodayLessonProgress('');
+        setTestType('단원평가');
+        setCustomTestType('');
+        setTestScore('');
+        setTeacherComment('');
+
         const parsedPrev = parseEvaluationRecord(prev);
 
         const prevActiveKeys = [];
@@ -303,7 +419,43 @@ export default function TeacherEvalPage() {
         } else {
           setCustomItems([]);
         }
+
+        // 교재명 추출 및 빈 범위로 자동 세팅
+        let recentBookNames = extractRecentBookNamesFromEvaluations(evals);
+        if (recentBookNames.length === 0) {
+          try {
+            const cached = localStorage.getItem('poom_recent_homework_books');
+            if (cached) {
+              const parsedCached = JSON.parse(cached);
+              if (Array.isArray(parsedCached) && parsedCached.length > 0) {
+                recentBookNames = parsedCached.filter(Boolean);
+              }
+            }
+          } catch (e) {}
+        }
+
+        if (recentBookNames.length === 0) {
+          recentBookNames = ['개념서', '유형서'];
+        }
+
+        const newBooks = recentBookNames.map((name, idx) => ({
+          id: `book_${Date.now()}_${idx}`,
+          name,
+          range: '',
+          status: '미체크',
+        }));
+
+        setTodayHomeworkBooks(newBooks);
+        saveRecentBooksToCache(recentBookNames);
       } else {
+        // 이전 평가도 없는 신규 학생
+        setAttendanceStatus('ATTEND');
+        setLatenessMinutes(5);
+        setTodayLessonProgress('');
+        setTestType('단원평가');
+        setCustomTestType('');
+        setTestScore('');
+        setTeacherComment('');
         setActiveDefaultKeys([
           'concept',
           'calc',
@@ -321,11 +473,8 @@ export default function TeacherEvalPage() {
           perseverance: 8,
         });
         setCustomItems([]);
-      }
 
-      // 교재명 추출 및 자동 세팅
-      let recentBookNames = extractRecentBookNamesFromEvaluations(evals);
-      if (recentBookNames.length === 0) {
+        let recentBookNames = ['개념서', '유형서'];
         try {
           const cached = localStorage.getItem('poom_recent_homework_books');
           if (cached) {
@@ -335,21 +484,16 @@ export default function TeacherEvalPage() {
             }
           }
         } catch (e) {}
+
+        setTodayHomeworkBooks(
+          recentBookNames.map((name, idx) => ({
+            id: `book_${Date.now()}_${idx}`,
+            name,
+            range: '',
+            status: '미체크',
+          }))
+        );
       }
-
-      if (recentBookNames.length === 0) {
-        recentBookNames = ['개념서', '유형서'];
-      }
-
-      const newBooks = recentBookNames.map((name, idx) => ({
-        id: `book_${Date.now()}_${idx}`,
-        name,
-        range: '',
-        status: '미체크',
-      }));
-
-      setTodayHomeworkBooks(newBooks);
-      saveRecentBooksToCache(recentBookNames);
     } catch (err) {
       console.error('fetchStudentEvaluationHistory error:', err);
     } finally {

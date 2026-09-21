@@ -207,7 +207,7 @@ export default function StudentReportPage() {
           </div>
         )}
 
-        {/* 🎯 2. 학습 성취도 분석 영역 (결석 시 안내 배너) */}
+        {/* 🎯 2. 학습 성취도 분석 영역 (결석 시 안내 배너 또는 가로 막대 게이지 바 차트) */}
         <div className="px-4 sm:px-5 py-1">
           {evalData.attendance_status === 'ABSENT' ? (
             <div className="w-full p-4 sm:p-5 text-center bg-rose-50/60 rounded-2xl border border-rose-200/80 space-y-1">

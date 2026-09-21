@@ -14,6 +14,7 @@ import {
   updateBookStatusInComment,
   updateEvaluationProgressAndBooksInComment,
 } from '@/lib/evalUtils';
+import { getKSTDateString } from '@/lib/dateUtils';
 
 export default function TeacherEvalPage() {
   const [user, setUser] = useState(null);
@@ -34,8 +35,8 @@ export default function TeacherEvalPage() {
   const [loadingPrevEval, setLoadingPrevEval] = useState(false);
   const [actionToast, setActionToast] = useState('');
   
-  // 공통 평가 일자
-  const [evalDate, setEvalDate] = useState(new Date().toISOString().split('T')[0]);
+  // 공통 평가 일자 (한국 표준시 KST 기준)
+  const [evalDate, setEvalDate] = useState(getKSTDateString());
   
   // 개별 모드: 출결
   const [attendanceStatus, setAttendanceStatus] = useState('ATTEND');

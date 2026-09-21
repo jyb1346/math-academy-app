@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import webpush from '@/lib/webpush';
+import { getKSTDateString, getKSTNow } from '@/lib/dateUtils';
 
 export async function GET(req) {
   try {
     // 1. 한국 시간(KST, UTC+9) 기준 오늘 날짜 계산
-    const now = new Date();
-    const kstNow = new Date(now.getTime() + (9 * 60 * 60 * 1000));
-    const todayStr = kstNow.toISOString().split('T')[0];
+    const kstNow = getKSTNow();
+    const todayStr = getKSTDateString();
 
     // 2. 마감일이 존재하는 모든 숙제 게시글 조회
     const { data: posts, error: postErr } = await supabase

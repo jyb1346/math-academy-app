@@ -4,6 +4,7 @@ import { compressImage } from '@/lib/imageCompressor';
 import { useState, useEffect, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { getKSTDateString } from '@/lib/dateUtils';
 import CategoryTabs from './components/CategoryTabs';
 import PostCreateForm from './components/PostCreateForm';
 import PostEditModal from './components/PostEditModal';
@@ -241,7 +242,7 @@ function BoardMain() {
   }, [searchParams]);
 
   useEffect(() => {
-    setDueDate(new Date().toISOString().split('T')[0]);
+    setDueDate(getKSTDateString());
 
     const userData = localStorage.getItem('user');
     if (!userData) {
@@ -608,7 +609,7 @@ function BoardMain() {
     setEditTitle(post.title || '');
     setEditCategory(post.category || 'HOMEWORK');
     setEditTargetClassId(post.class_id ? String(post.class_id) : 'ALL_STUDENTS');
-    setEditDueDate(post.due_date || new Date().toISOString().split('T')[0]);
+    setEditDueDate(post.due_date || getKSTDateString());
 
     const postContent = post.content || '';
 

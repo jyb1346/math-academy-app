@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { sendSolapiMessage, cleanPhoneNumber } from '@/lib/solapi';
 import { supabase } from '@/lib/supabase';
 import { markAlimtalkSentInComment } from '@/lib/evalUtils';
+import { getKSTDateString } from '@/lib/dateUtils';
 
 export async function POST(req) {
   try {
@@ -47,7 +48,7 @@ export async function POST(req) {
     const reportUrl = `${origin}/report/${evalId}`;
 
     const name = studentName || '학생';
-    const date = evalDate || new Date().toISOString().split('T')[0];
+    const date = evalDate || getKSTDateString();
     const teacher = teacherName ? ` (${teacherName} 선생님)` : '';
 
     const subject = `[품수학] ${name} 학생 일일 학습 피드백`;
@@ -64,9 +65,9 @@ ${name} 학생의 ${date}
 ▶ 피드백 리포트 바로가기:
 ${reportUrl}`;
 
-    // Solapi 카카오 알림톡 옵션 (기본 카카오 채널 및 승인된 템플릿 연동)
-    const pfId = process.env.SOLAPI_KAKAO_PFID || 'KA01PF260831093804945uPxRUYsn8qj';
-    const templateId = process.env.SOLAPI_KAKAO_TEMPLATE_ID || 'KA01TP260910091446841piwDckq6MW7';
+    // Solapi 카카오 알림톡 옵션
+    const pfId = process.env.SOLAPI_KAKAO_PFID;
+    const templateId = process.env.SOLAPI_KAKAO_TEMPLATE_ID;
 
     const kakaoOptions = {
       pfId,

@@ -110,10 +110,10 @@ export default function TeacherDashboard() {
       const myClasses = cData || [];
       setClasses(myClasses);
 
-      // 1) 내가 직속 담당인 학생 조회
+      // 1) 내가 직속 담당인 학생 조회 (비밀번호 제외한 안전한 컬럼만 조회)
       const { data: directStData } = await supabase
         .from('users')
-        .select('*')
+        .select('id, name, email, role, phone, parent_phone, teacher_id, created_at')
         .eq('role', 'STUDENT')
         .eq('teacher_id', teacherId);
 
@@ -137,7 +137,7 @@ export default function TeacherDashboard() {
       if (missingIds.length > 0) {
         const { data: extraStData } = await supabase
           .from('users')
-          .select('*')
+          .select('id, name, email, role, phone, parent_phone, teacher_id, created_at')
           .in('id', missingIds);
         if (extraStData) {
           allTeacherStudents = [...allTeacherStudents, ...extraStData];

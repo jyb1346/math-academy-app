@@ -4,7 +4,6 @@ import { compressImage } from '@/lib/imageCompressor';
 import { useState, useEffect, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { getKSTDateString } from '@/lib/dateUtils';
 import CategoryTabs from './components/CategoryTabs';
 import PostCreateForm from './components/PostCreateForm';
 import PostEditModal from './components/PostEditModal';
@@ -70,118 +69,6 @@ function cleanContentForDisplay(text) {
   return cleaned;
 }
 
-// 📚 게시판 본문 렌더러 (숙제 교재별 대상 학생 및 하이라이트 배지 지원)
-function PostBodyContent({ rawContent, user }) {
-  const cleaned = cleanContentForDisplay(rawContent);
-  if (!cleaned) return null;
-
-  const lines = cleaned.split('\n');
-  const homeworkLines = [];
-  const otherLines = [];
-  let isCollectingMemo = false;
-
-  lines.forEach((line) => {
-    const trimmed = line.trim();
-    if (!isCollectingMemo && trimmed.startsWith('📘 [')) {
-      const match = trimmed.match(/^📘 \[(.*?)\] (.*?)(?: \(대상: (.*?)\))?$/);
-      if (match) {
-        const bookTitle = match[1];
-        const range = match[2];
-        const targetStr = match[3]?.trim();
-        const targetNames = targetStr ? targetStr.split(',').map((s) => s.trim()).filter(Boolean) : [];
-        homeworkLines.push({ bookTitle, range, targetNames });
-        return;
-      }
-    }
-
-    if (trimmed === '📝 메모:' || trimmed.startsWith('📝 메모:')) {
-      isCollectingMemo = true;
-      const after = trimmed.replace(/^📝 메모:\s*/, '');
-      if (after) otherLines.push(after);
-      return;
-    }
-
-    if (trimmed || otherLines.length > 0) {
-      otherLines.push(line);
-    }
-  });
-
-  const isStudent = user?.role === 'STUDENT';
-  const currentStudentName = user?.name?.trim();
-
-  return (
-    <div className="space-y-3">
-      {homeworkLines.length > 0 && (
-        <div className="space-y-2 bg-slate-50/90 p-4 sm:p-5 rounded-2xl border border-slate-200">
-          <div className="text-xs font-black text-slate-700 flex items-center gap-1.5 mb-2.5">
-            <span>📚</span>
-            <span>숙제 교재 및 범위</span>
-          </div>
-          <div className="grid grid-cols-1 gap-2">
-            {homeworkLines.map((hw, idx) => {
-              const isTargeted = hw.targetNames.length > 0;
-              const isMyHomework = isStudent && isTargeted && hw.targetNames.includes(currentStudentName);
-              const isOtherTargeted = isStudent && isTargeted && !hw.targetNames.includes(currentStudentName);
-
-              return (
-                <div
-                  key={idx}
-                  className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 transition ${
-                    isMyHomework
-                      ? 'bg-amber-50 border-amber-300 shadow-xs'
-                      : isOtherTargeted
-                      ? 'bg-slate-100/70 border-slate-200 opacity-75'
-                      : 'bg-white border-slate-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <span className="text-base shrink-0">📘</span>
-                    <span className="font-extrabold text-slate-900 text-sm sm:text-base truncate">
-                      [{hw.bookTitle}]
-                    </span>
-                    <span className="font-bold text-indigo-700 text-sm sm:text-base break-all">
-                      {hw.range}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 shrink-0 self-start sm:self-auto">
-                    {isTargeted ? (
-                      isMyHomework ? (
-                        <span className="text-xs font-black bg-amber-500 text-white px-2.5 py-1 rounded-lg shadow-2xs flex items-center gap-1">
-                          <span>⭐</span>
-                          <span>내 개별 숙제</span>
-                        </span>
-                      ) : isOtherTargeted ? (
-                        <span className="text-xs font-bold bg-slate-200 text-slate-600 px-2.5 py-1 rounded-lg">
-                          👤 대상: {hw.targetNames.join(', ')}
-                        </span>
-                      ) : (
-                        <span className="text-xs font-bold bg-indigo-100 text-indigo-800 border border-indigo-200 px-2.5 py-1 rounded-lg">
-                          👤 대상: {hw.targetNames.join(', ')}
-                        </span>
-                      )
-                    ) : (
-                      <span className="text-xs font-bold bg-sky-50 text-sky-700 border border-sky-200 px-2.5 py-1 rounded-lg">
-                        👥 반 전체
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {otherLines.length > 0 && (
-        <div className="text-base sm:text-lg text-slate-800 leading-relaxed sm:leading-loose whitespace-pre-wrap bg-slate-50/90 p-5 sm:p-6 rounded-2xl border border-slate-200 font-semibold">
-          {otherLines.join('\n').trim()}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function BoardMain() {
   const [classes, setClasses] = useState([]);
   const [myClasses, setMyClasses] = useState([]);
@@ -198,7 +85,7 @@ function BoardMain() {
   const [content, setContent] = useState('');
   const [posts, setPosts] = useState([]);
   const [googleFormUrl, setGoogleFormUrl] = useState('');
-  const [homeworkList, setHomeworkList] = useState([{ bookTitle: '', range: '', targetType: 'ALL', targetStudentNames: [] }]);
+  const [homeworkList, setHomeworkList] = useState([{ bookTitle: '', range: '' }]);
   const [attachedFile, setAttachedFile] = useState(null);
   const [uploading, setUploading] = useState(false);
 
@@ -242,7 +129,7 @@ function BoardMain() {
   }, [searchParams]);
 
   useEffect(() => {
-    setDueDate(getKSTDateString());
+    setDueDate(new Date().toISOString().split('T')[0]);
 
     const userData = localStorage.getItem('user');
     if (!userData) {
@@ -410,52 +297,19 @@ function BoardMain() {
     }
   };
 
-  // 🎯 특정 반(또는 전체)에 해당하는 학생 목록 추출 헬퍼
-  const getStudentsForClass = (classId) => {
-    if (!classId || classId === 'ALL_STUDENTS') {
-      return allStudents || [];
-    }
-    const enrolledStudentIds = (classStudents || [])
-      .filter((cs) => String(cs.class_id) === String(classId))
-      .map((cs) => cs.student_id);
-    return (allStudents || []).filter((st) => enrolledStudentIds.includes(st.id));
-  };
-
-  const handleAddBook = () =>
-    setHomeworkList([...homeworkList, { bookTitle: '', range: '', targetType: 'ALL', targetStudentNames: [] }]);
+  const handleAddBook = () => setHomeworkList([...homeworkList, { bookTitle: '', range: '' }]);
   const handleRemoveBook = (index) => setHomeworkList(homeworkList.filter((_, i) => i !== index));
   const handleBookChange = (index, field, value) => {
     const updated = [...homeworkList];
     updated[index][field] = value;
     setHomeworkList(updated);
   };
-  const handleToggleStudent = (index, studentName) => {
-    const updated = [...homeworkList];
-    const currentNames = updated[index].targetStudentNames || [];
-    if (currentNames.includes(studentName)) {
-      updated[index].targetStudentNames = currentNames.filter((n) => n !== studentName);
-    } else {
-      updated[index].targetStudentNames = [...currentNames, studentName];
-    }
-    setHomeworkList(updated);
-  };
 
-  const handleEditAddBook = () =>
-    setEditHomeworkList([...editHomeworkList, { bookTitle: '', range: '', targetType: 'ALL', targetStudentNames: [] }]);
+  const handleEditAddBook = () => setEditHomeworkList([...editHomeworkList, { bookTitle: '', range: '' }]);
   const handleEditRemoveBook = (index) => setEditHomeworkList(editHomeworkList.filter((_, i) => i !== index));
   const handleEditBookChange = (index, field, value) => {
     const updated = [...editHomeworkList];
     updated[index][field] = value;
-    setEditHomeworkList(updated);
-  };
-  const handleEditToggleStudent = (index, studentName) => {
-    const updated = [...editHomeworkList];
-    const currentNames = updated[index].targetStudentNames || [];
-    if (currentNames.includes(studentName)) {
-      updated[index].targetStudentNames = currentNames.filter((n) => n !== studentName);
-    } else {
-      updated[index].targetStudentNames = [...currentNames, studentName];
-    }
     setEditHomeworkList(updated);
   };
 
@@ -529,11 +383,7 @@ function BoardMain() {
       if (newCategory === 'HOMEWORK') {
         const bookDetails = homeworkList
           .filter((item) => item.bookTitle.trim() !== '')
-          .map((item) => {
-            const hasTargets = item.targetType === 'SELECTED' && item.targetStudentNames && item.targetStudentNames.length > 0;
-            const targetSuffix = hasTargets ? ` (대상: ${item.targetStudentNames.join(', ')})` : '';
-            return `📘 [${item.bookTitle.trim()}] ${item.range.trim()}${targetSuffix}`;
-          })
+          .map((item) => `📘 [${item.bookTitle}] ${item.range}`)
           .join('\n');
 
         const formLinkText = googleFormUrl.trim() ? `\n\n📋 구글 폼 링크: ${googleFormUrl.trim()}` : '';
@@ -593,7 +443,7 @@ function BoardMain() {
       setContent('');
       setGoogleFormUrl('');
       setAttachedFile(null);
-      setHomeworkList([{ bookTitle: '', range: '', targetType: 'ALL', targetStudentNames: [] }]);
+      setHomeworkList([{ bookTitle: '', range: '' }]);
       fetchPosts();
       alert(`${matchedClass ? `[${matchedClass.name}] 반` : '학원 전체'} 게시글이 성공적으로 등록되었습니다!`);
     } catch (err) {
@@ -609,7 +459,7 @@ function BoardMain() {
     setEditTitle(post.title || '');
     setEditCategory(post.category || 'HOMEWORK');
     setEditTargetClassId(post.class_id ? String(post.class_id) : 'ALL_STUDENTS');
-    setEditDueDate(post.due_date || getKSTDateString());
+    setEditDueDate(post.due_date || new Date().toISOString().split('T')[0]);
 
     const postContent = post.content || '';
 
@@ -622,6 +472,7 @@ function BoardMain() {
     setEditYoutubeUrl(ytMatch ? ytMatch[1] : '');
 
     // 3. 첨부파일 추출
+    // 첨부파일 추출
     const att = extractAttachment(postContent);
     setEditExistingAttachment(att);
     setEditNewFile(null);
@@ -630,28 +481,18 @@ function BoardMain() {
     const lines = postContent.split('\n');
     const parsedBooks = [];
     lines.forEach((line) => {
-      const trimmed = line.trim();
-      if (trimmed.startsWith('📘 [')) {
-        const match = trimmed.match(/^📘 \[(.*?)\] (.*?)(?: \(대상: (.*?)\))?$/);
+      if (line.startsWith('📘 [')) {
+        const match = line.match(/📘 \[(.*?)\] (.*)/);
         if (match) {
-          const targetStr = match[3]?.trim();
-          const targetNames = targetStr ? targetStr.split(',').map((s) => s.trim()).filter(Boolean) : [];
-          parsedBooks.push({
-            bookTitle: match[1],
-            range: match[2],
-            targetType: targetNames.length > 0 ? 'SELECTED' : 'ALL',
-            targetStudentNames: targetNames,
-          });
+          parsedBooks.push({ bookTitle: match[1], range: match[2] });
         }
       }
     });
-    setEditHomeworkList(
-      parsedBooks.length > 0
-        ? parsedBooks
-        : [{ bookTitle: '', range: '', targetType: 'ALL', targetStudentNames: [] }]
-    );
+
+    setEditHomeworkList(parsedBooks.length > 0 ? parsedBooks : [{ bookTitle: '', range: '' }]);
 
     // 5. 순수 본문 내용/메모 추출
+    // 첨부파일이나 링크를 제외한 순수 메모만 입력창에 채우기
     let pureContent = cleanContentForDisplay(postContent);
     
     // 유튜브 URL 제거
@@ -702,16 +543,11 @@ function BoardMain() {
         originalFileName = editExistingAttachment.name;
       }
 
-      let finalContent = '';
-
+      let finalContent = editContent;
       if (editCategory === 'HOMEWORK') {
         const bookDetails = editHomeworkList
           .filter((item) => item.bookTitle.trim() !== '')
-          .map((item) => {
-            const hasTargets = item.targetType === 'SELECTED' && item.targetStudentNames && item.targetStudentNames.length > 0;
-            const targetSuffix = hasTargets ? ` (대상: ${item.targetStudentNames.join(', ')})` : '';
-            return `📘 [${item.bookTitle.trim()}] ${item.range.trim()}${targetSuffix}`;
-          })
+          .map((item) => `📘 [${item.bookTitle}] ${item.range}`)
           .join('\n');
 
         const formLinkText = editGoogleFormUrl.trim() ? `\n\n📋 구글 폼 링크: ${editGoogleFormUrl.trim()}` : '';
@@ -907,8 +743,6 @@ function BoardMain() {
             handleAddBook={handleAddBook}
             handleRemoveBook={handleRemoveBook}
             handleBookChange={handleBookChange}
-            handleToggleStudent={handleToggleStudent}
-            availableStudents={getStudentsForClass(targetClassId)}
             setAttachedFile={setAttachedFile}
             handleCreatePost={handleCreatePost}
             uploading={uploading}
@@ -941,7 +775,7 @@ function BoardMain() {
                     <div className="space-y-1 flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className={isPublic ? 'text-xs sm:text-sm font-black px-3.5 py-1 rounded-full border bg-slate-100 text-slate-700 border-slate-200 whitespace-nowrap' : 'text-xs sm:text-sm font-black px-3.5 py-1 rounded-full border bg-indigo-50 text-indigo-700 border-indigo-100 whitespace-nowrap'}>
-                          {isPublic ? '🌐 학원 전체 공지' : ('🎯 [' + matchedClassName + ']')}
+                          {isPublic ? '🌐 학원 전체 공지' : (`🎯 [${matchedClassName}]`)}
                         </span>
                         <span className="bg-slate-100 text-slate-600 text-xs sm:text-sm font-black px-3.5 py-1 rounded-full whitespace-nowrap">
                           {post.category === 'NOTICE' && '📢 일반 공지'}
@@ -956,7 +790,7 @@ function BoardMain() {
                       <h3 className="text-lg sm:text-2xl font-black text-slate-900 pt-1 leading-snug tracking-tight break-words">{post.title}</h3>
                     </div>
 
-                    {user?.role !== 'STUDENT' && (post.author_id === user.id || user.role === 'HEAD_TEACHER') && (
+                    {user?.role !== 'STUDENT' && (
                       <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap">
                         {post.category === 'HOMEWORK' && (
                           <button
@@ -1000,8 +834,12 @@ function BoardMain() {
                     </div>
                   )}
 
-                  {/* 🎯 본문 및 숙제 교재/대상 학생별 카드 렌더링 */}
-                  <PostBodyContent rawContent={rawContent} user={user} />
+                  {/* 🎯 빈 메모 및 링크가 깔끔하게 정리된 본문 */}
+                  {cleanContentForDisplay(rawContent) && (
+                    <div className="text-base sm:text-lg text-slate-800 leading-relaxed sm:leading-loose whitespace-pre-wrap bg-slate-50/90 p-5 sm:p-6 rounded-2xl border border-slate-200 font-semibold">
+                      {cleanContentForDisplay(rawContent)}
+                    </div>
+                  )}
 
                   {/* 🎬 유튜브 영상 자동 임베드 */}
                   {ytId && (
@@ -1193,8 +1031,6 @@ function BoardMain() {
           handleEditAddBook={handleEditAddBook}
           handleEditRemoveBook={handleEditRemoveBook}
           handleEditBookChange={handleEditBookChange}
-          handleEditToggleStudent={handleEditToggleStudent}
-          availableStudents={getStudentsForClass(editTargetClassId)}
           editExistingAttachment={editExistingAttachment}
           setEditExistingAttachment={setEditExistingAttachment}
           editNewFile={editNewFile}
@@ -1203,6 +1039,28 @@ function BoardMain() {
           handleUpdatePost={handleUpdatePost}
         />
       )}
+      <PostEditModal
+        editingPost={editingPost}
+        setEditingPost={setEditingPost}
+        myClasses={myClasses}
+        editTargetClassId={editTargetClassId}
+        setEditTargetClassId={setEditTargetClassId}
+        editCategory={editCategory}
+        setEditCategory={setEditCategory}
+        editDueDate={editDueDate}
+        setEditDueDate={setEditDueDate}
+        editTitle={editTitle}
+        setEditTitle={setEditTitle}
+        editContent={editContent}
+        setEditContent={setEditContent}
+        editGoogleFormUrl={editGoogleFormUrl}
+        setEditGoogleFormUrl={setEditGoogleFormUrl}
+        editHomeworkList={editHomeworkList}
+        handleEditAddBook={handleEditAddBook}
+        handleEditRemoveBook={handleEditRemoveBook}
+        handleEditBookChange={handleEditBookChange}
+        handleUpdatePost={handleUpdatePost}
+      />
     </div>
   );
 }

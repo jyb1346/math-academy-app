@@ -8,6 +8,14 @@ import { createLuckyEvent, getJangStudentUserIds } from '@/lib/luckyBugService';
  */
 export async function GET(req) {
   try {
+    // 🛡️ Cron 엔드포인트 보안 검증
+    const authHeader = req.headers.get('authorization');
+    const isVercelCron = req.headers.get('x-vercel-cron');
+    const cronSecret = process.env.CRON_SECRET;
+    if (cronSecret && !isVercelCron && authHeader !== `Bearer ${cronSecret}`) {
+      return NextResponse.json({ error: 'Unauthorized: 유효하지 않은 Cron 접근입니다.' }, { status: 401 });
+    }
+
     // 1. 장영배 원장님 계정 조회
     const { data: teacher } = await supabase
       .from('users')

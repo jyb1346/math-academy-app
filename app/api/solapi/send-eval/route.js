@@ -3,6 +3,7 @@ import { sendSolapiMessage, cleanPhoneNumber } from '@/lib/solapi';
 import { supabase } from '@/lib/supabase';
 import { markAlimtalkSentInComment } from '@/lib/evalUtils';
 import { getKSTDateString } from '@/lib/dateUtils';
+import { generateReportToken } from '@/lib/securityUtils';
 
 export async function POST(req) {
   try {
@@ -43,9 +44,10 @@ export async function POST(req) {
       });
     }
 
-    // 도메인 URL 결정 (요청 헤더 origin 또는 기본 프로덕션 도메인)
+    // 도메인 URL 결정 및 보안 HMAC 토큰 생성 (학부모 1클릭 열람 유지 + URL 위변조 차단)
     const origin = req.headers.get('origin') || req.headers.get('referer')?.split('/').slice(0, 3).join('/') || 'https://math-academy-app-kappa.vercel.app';
-    const reportUrl = `${origin}/report/${evalId}`;
+    const reportToken = generateReportToken(evalId);
+    const reportUrl = `${origin}/report/${evalId}${reportToken ? `?t=${reportToken}` : ''}`;
 
     const name = studentName || '학생';
     const date = evalDate || getKSTDateString();

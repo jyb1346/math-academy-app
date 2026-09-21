@@ -19,27 +19,33 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('email', email.trim())
-        .eq('password', password.trim())
-        .single();
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: email.trim(),
+          password: password.trim(),
+        }),
+      });
 
-      if (error || !data) {
-        alert('아이디 또는 비밀번호가 올바르지 않습니다.');
+      const resData = await res.json();
+
+      if (!res.ok || !resData.ok || !resData.user) {
+        alert(resData.error || '아이디 또는 비밀번호가 올바르지 않습니다.');
         setLoading(false);
         return;
       }
 
-      // 로그인 상태 저장
-      localStorage.setItem('user', JSON.stringify(data));
+      const userData = resData.user;
+
+      // 로그인 상태 저장 (비밀번호는 미포함)
+      localStorage.setItem('user', JSON.stringify(userData));
 
       // 🎯 역할별 시작 페이지 리다이렉트 설정
-      if (data.role === 'HEAD_TEACHER' || data.role === 'TEACHER') {
+      if (userData.role === 'HEAD_TEACHER' || userData.role === 'TEACHER') {
         // 원장님(HEAD_TEACHER)과 일반 강사 모두 [내 수업 대시보드]로 우선 이동
         router.push('/teacher/dashboard');
-      } else if (data.role === 'STUDENT') {
+      } else if (userData.role === 'STUDENT') {
         router.push('/student/dashboard');
       } else {
         router.push('/');

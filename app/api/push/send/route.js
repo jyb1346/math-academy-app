@@ -7,16 +7,25 @@ export async function POST(req) {
     const body = await req.json();
     const { userIds, title, message, url, tag, renotify, broadcastAll } = body;
 
-    // 🛡️ 보안 및 오발송 방지: broadcastAll이 아니면 userIds가 유효한 비어있지 않은 배열이어야 함
+    // 🛡️ 보안 및 유효성 검증
     if (!broadcastAll) {
       if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
         return NextResponse.json({ ok: true, count: 0, message: 'No target userIds specified' });
       }
     }
 
+    // 유효한 문자열 ID만 필터링
+    const sanitizedUserIds = Array.isArray(userIds)
+      ? userIds.filter((id) => typeof id === 'string' && id.trim().length > 0)
+      : [];
+
+    if (!broadcastAll && sanitizedUserIds.length === 0) {
+      return NextResponse.json({ ok: true, count: 0, message: 'No valid userIds provided' });
+    }
+
     let query = supabase.from('push_subscriptions').select('*');
-    if (userIds && Array.isArray(userIds) && userIds.length > 0) {
-      query = query.in('user_id', userIds);
+    if (!broadcastAll && sanitizedUserIds.length > 0) {
+      query = query.in('user_id', sanitizedUserIds);
     }
 
     const { data: subscriptions, error } = await query;

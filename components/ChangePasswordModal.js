@@ -27,30 +27,25 @@ export default function ChangePasswordModal({ user, onClose, onPasswordUpdated }
     setLoading(true);
 
     try {
-      // 1. 현재 비밀번호 검증
-      const { data: dbUser, error: checkError } = await supabase
-        .from('users')
-        .select('password')
-        .eq('id', user.id)
-        .single();
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          currentPassword: currentPassword.trim(),
+          newPassword: newPassword.trim(),
+        }),
+      });
 
-      if (checkError || !dbUser) throw new Error('사용자 정보를 찾을 수 없습니다.');
+      const resData = await res.json();
 
-      if (dbUser.password !== currentPassword) {
+      if (!res.ok || !resData.ok) {
         setLoading(false);
-        return alert('현재 비밀번호가 일치하지 않습니다.');
+        return alert(resData.error || '비밀번호 변경에 실패했습니다.');
       }
 
-      // 2. 새 비밀번호로 업데이트
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({ password: newPassword })
-        .eq('id', user.id);
-
-      if (updateError) throw updateError;
-
-      // 3. localStorage 정보 갱신
-      const updatedUser = { ...user, password: newPassword };
+      // localStorage 정보 갱신
+      const updatedUser = resData.user || { ...user };
       localStorage.setItem('user', JSON.stringify(updatedUser));
 
       alert('비밀번호가 성공적으로 변경되었습니다!');

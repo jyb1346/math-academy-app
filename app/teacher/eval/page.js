@@ -2146,6 +2146,8 @@ export default function TeacherEvalPage() {
                 studentName={currentStudentName}
                 evaluations={studentEvals}
                 isEditable={true}
+                currentUserId={user?.id}
+                userRole={user?.role}
                 onStatusChange={handleInlineHomeworkStatusChange}
                 onUpdateEvaluation={handleUpdateEvaluation}
                 onDeleteEvaluation={handleDeleteEvaluation}

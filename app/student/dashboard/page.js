@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
 import PushNotificationManager from '@/components/PushNotificationManager';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import StudentHomeworkTable from '@/components/StudentHomeworkTable';
@@ -40,33 +39,15 @@ export default function StudentDashboard() {
 
   const fetchStudentData = async (studentId) => {
     try {
-      const { data: tData } = await supabase
-        .from('users')
-        .select('id, name')
-        .in('role', ['TEACHER', 'HEAD_TEACHER', 'ADMIN']);
-      const teacherMap = (tData || []).reduce((acc, t) => {
-        acc[t.id] = t.name;
-        return acc;
-      }, {});
-
-      const { data: evData } = await supabase
-        .from('daily_evaluations')
-        .select('*')
-        .eq('student_id', studentId)
-        .order('eval_date', { ascending: false });
-
-      if (evData) {
-        const enrichedEvals = evData.map((ev) => ({
-          ...ev,
-          teacher_name: teacherMap[ev.teacher_id] || '',
-        }));
-        setEvaluations(enrichedEvals);
+      const evRes = await fetch(`/api/eval?studentId=${encodeURIComponent(studentId)}`);
+      const evJson = await evRes.json();
+      if (evRes.ok) {
+        setEvaluations(evJson.evaluations || []);
       }
 
-      const { data: qData } = await supabase
-        .from('qna')
-        .select('id, status, replies')
-        .eq('student_id', studentId);
+      const qRes = await fetch('/api/qna');
+      const qJson = await qRes.json();
+      const qData = qJson.questions || [];
 
       const parsedQna = (qData || []).map((q) => {
         let replies = [];

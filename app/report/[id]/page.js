@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import EvaluationBarChart from '@/components/EvaluationBarChart';
 import StudentHomeworkTable from '@/components/StudentHomeworkTable';
 import { parseEvaluationRecord } from '@/lib/evalUtils';
@@ -17,8 +17,6 @@ export default function StudentReportPage() {
   // 학부모 답장 상태
   const [replyText, setReplyText] = useState('');
   const [submittingReply, setSubmittingReply] = useState(false);
-
-  const router = useRouter();
 
   useEffect(() => {
     if (id) fetchEvaluation();
@@ -315,16 +313,6 @@ export default function StudentReportPage() {
               {submittingReply ? '전송 중...' : '✉️ 답장 전송하기'}
             </button>
           </form>
-        </div>
-
-        {/* 하단 이동 버튼 */}
-        <div className="p-4 bg-slate-50 border-t border-slate-100 text-center">
-          <button
-            onClick={() => router.push('/')}
-            className="text-xs font-bold text-slate-500 hover:text-indigo-600 underline"
-          >
-            품수학 홈으로 이동
-          </button>
         </div>
 
       </div>

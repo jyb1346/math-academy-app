@@ -101,6 +101,10 @@ export default function TeacherEvalPage() {
   const [batchShowAddCustomMap, setBatchShowAddCustomMap] = useState({});
   const [batchNewCustomNameMap, setBatchNewCustomNameMap] = useState({});
 
+  // 👥 판서수업(반 일괄)용 누적 과제표 검사 모달 상태 및 반 전체 평가 기록
+  const [homeworkModalStudent, setHomeworkModalStudent] = useState(null);
+  const [classAllEvals, setClassAllEvals] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -186,8 +190,30 @@ export default function TeacherEvalPage() {
     fetchClassStudents(cId);
   };
 
-  // 수업 모드 수동 전환 (판서수업 <-> 개별수업)
+  // 수업 모드 수동 전환 (판서수업 <-> 개별수업) & 진도/과제 데이터 양방향 자동 동기화
   const handleToggleEvalMode = (newMode) => {
+    if (newMode === 'LECTURE') {
+      // 1:1 개별 모드 -> 판서수업(반 일괄) 전환
+      if (todayLessonProgress && !commonLessonProgress) {
+        setCommonLessonProgress(todayLessonProgress);
+      }
+      const validTodayBooks = todayHomeworkBooks.filter((b) => b.name && b.range);
+      if (validTodayBooks.length > 0) {
+        setCommonHomeworkBooks(todayHomeworkBooks);
+      }
+      showToast('🔄 개별 모드의 진도/과제가 일괄 모드로 자동 동기화되었습니다.');
+    } else if (newMode === 'INDIVIDUAL') {
+      // 판서수업(반 일괄) -> 1:1 개별 모드 전환
+      if (commonLessonProgress && !todayLessonProgress) {
+        setTodayLessonProgress(commonLessonProgress);
+      }
+      const validCommonBooks = commonHomeworkBooks.filter((b) => b.name && b.range);
+      if (validCommonBooks.length > 0) {
+        setTodayHomeworkBooks(commonHomeworkBooks);
+      }
+      showToast('🔄 일괄 모드의 공통 진도/과제가 개별 모드로 자동 동기화되었습니다.');
+    }
+
     setEvalMode(newMode);
     if (selectedClassId) {
       const updated = { ...classTypes, [selectedClassId]: newMode };
@@ -592,10 +618,101 @@ export default function TeacherEvalPage() {
     );
   };
 
+  const handleBatchCustomTestTypeChange = (studentId, value) => {
+    setBatchStudents((prev) =>
+      prev.map((s) => (s.student_id === studentId ? { ...s, customTestType: value } : s))
+    );
+  };
+
   const handleBatchCommentChange = (studentId, comment) => {
     setBatchStudents((prev) =>
       prev.map((s) => (s.student_id === studentId ? { ...s, comment } : s))
     );
+  };
+
+  // 👥 판서수업(반 일괄)용 모달 내 과제표 상태 실시간 변경 핸들러
+  const handleModalHomeworkStatusChange = async (evalId, bookName, newStatus) => {
+    try {
+      const targetEval = classAllEvals.find((e) => e.id === evalId);
+      if (!targetEval) return;
+
+      const updatedComment = updateBookStatusInComment(
+        targetEval.teacher_comment,
+        bookName,
+        newStatus
+      );
+
+      const res = await fetch(`/api/eval/${evalId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teacherComment: updatedComment }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || '수정 실패');
+      }
+
+      setClassAllEvals((prev) =>
+        prev.map((item) =>
+          item.id === evalId ? { ...item, teacher_comment: updatedComment } : item
+        )
+      );
+
+      showToast(`✅ [${homeworkModalStudent?.name || '학생'}]의 [${bookName}] 과제 상태가 '${newStatus}'(으)로 변경되었습니다.`);
+    } catch (err) {
+      console.error('handleModalHomeworkStatusChange error:', err);
+      alert('과제 상태 수정 중 오류가 발생했습니다.');
+    }
+  };
+
+  const handleModalUpdateEvaluation = async (evalId, updatedProgress, updatedBooks) => {
+    try {
+      const targetEval = classAllEvals.find((e) => e.id === evalId);
+      if (!targetEval) return;
+
+      const updatedComment = updateEvaluationProgressAndBooksInComment(
+        targetEval.teacher_comment,
+        updatedProgress,
+        updatedBooks
+      );
+
+      const res = await fetch(`/api/eval/${evalId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teacherComment: updatedComment }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || '수정 실패');
+      }
+
+      setClassAllEvals((prev) =>
+        prev.map((item) =>
+          item.id === evalId ? { ...item, teacher_comment: updatedComment } : item
+        )
+      );
+
+      showToast(`✅ ${targetEval.eval_date} 수업의 진도 및 과제 정보가 성공적으로 수정되었습니다.`);
+    } catch (err) {
+      console.error('handleModalUpdateEvaluation error:', err);
+      alert('수정 내용 저장 중 오류가 발생했습니다.');
+    }
+  };
+
+  const handleModalDeleteEvaluation = async (evalId, formattedDate) => {
+    try {
+      const res = await fetch(`/api/eval/${evalId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || '삭제 실패');
+      }
+
+      setClassAllEvals((prev) => prev.filter((item) => item.id !== evalId));
+      showToast(`🗑️ ${formattedDate} 피드백 및 과제 기록이 성공적으로 삭제되었습니다.`);
+    } catch (err) {
+      console.error('handleModalDeleteEvaluation error:', err);
+      alert('기록 삭제 중 오류가 발생했습니다.');
+    }
   };
 
   // 판서수업: 학생별 커스텀 평가 항목 추가/삭제/점수 조작
@@ -784,17 +901,19 @@ export default function TeacherEvalPage() {
       }
 
       const allEvals = resData.evaluations || [];
+      setClassAllEvals(allEvals);
 
       // 1) 반 전체 학생들이 사용했던 고유 교재명 추출 (칩 생성용)
       const uniqueBooks = extractAllUniqueBookNamesFromEvaluations(allEvals);
       setCommonClassUsedBooks(uniqueBooks);
 
-      // 2) 학생별 일괄 상태 객체 생성
+      // 2) 학생별 일괄 상태 객체 생성 (기존 작성 데이터가 있다면 100% 자동 복원)
       const initialBatchList = stList.map((st) => {
         const studentRecentEvals = allEvals.filter((e) => e.student_id === st.id);
         const todayEval = studentRecentEvals.find((e) => e.eval_date === evalDate);
         const prev = studentRecentEvals.find((e) => e.eval_date < evalDate) || (studentRecentEvals.length > 0 ? studentRecentEvals[0] : null);
         const parsedToday = todayEval ? parseEvaluationRecord(todayEval) : null;
+        const parsedPrev = prev ? parseEvaluationRecord(prev) : null;
 
         const scores = {
           concept: 8,
@@ -805,24 +924,33 @@ export default function TeacherEvalPage() {
           perseverance: 8,
         };
 
-        let customItemsList = [];
-        let activeKeys = ['concept', 'calc', 'app', 'attitude', 'homework', 'perseverance'];
-
-        if (prev) {
-          const parsed = parseEvaluationRecord(prev);
+        const targetEvalSource = todayEval || prev;
+        if (targetEvalSource) {
           DEFAULT_EVAL_KEYS.forEach((def) => {
-            const val = prev[def.dbCol];
+            const val = targetEvalSource[def.dbCol];
             if (val !== null && val !== undefined) {
               scores[def.key] = Number(val);
             }
           });
-          if (parsed.customItems && parsed.customItems.length > 0) {
-            customItemsList = parsed.customItems.map((c, idx) => ({
-              id: `custom_${st.id}_${idx}`,
-              name: c.name,
-              score: Number(c.score) || 8,
-            }));
-          }
+        }
+
+        let customItemsList = [];
+        const parsedSource = parsedToday || parsedPrev;
+        if (parsedSource?.customItems && parsedSource.customItems.length > 0) {
+          customItemsList = parsedSource.customItems.map((c, idx) => ({
+            id: `custom_${st.id}_${idx}`,
+            name: c.name,
+            score: Number(c.score) || 8,
+          }));
+        }
+
+        // 시험 종류 및 커스텀 시험명 판별
+        let effectiveTestType = parsedToday?.testType || '단원평가';
+        let customTestTypeValue = '';
+        const standardTypes = ['단원평가', '일일테스트', '주간테스트', '모의고사'];
+        if (parsedToday?.testType && !standardTypes.includes(parsedToday.testType)) {
+          effectiveTestType = '기타';
+          customTestTypeValue = parsedToday.testType;
         }
 
         return {
@@ -831,22 +959,18 @@ export default function TeacherEvalPage() {
           email: st.email,
           parent_phone: st.parent_phone,
           included: true,
-          attendanceStatus: 'ATTEND',
-          latenessMinutes: 5,
           attendanceStatus: todayEval?.attendance_status || 'ATTEND',
           latenessMinutes: todayEval?.lateness_minutes || 5,
           scores: { ...scores },
           initialScores: { ...scores },
-          activeKeys,
           customItems: customItemsList,
-          testType: '단원평가',
-          customTestType: '',
-          testScore: '',
-          examName: '',
-          comment: '',
+          testType: effectiveTestType,
+          customTestType: customTestTypeValue,
+          testScore: parsedToday?.testScore || '',
+          examName: parsedToday?.examName || '',
+          comment: parsedToday?.comment || '',
           showScoreEditor: false,
           prevEvalSummary: prev ? `${prev.eval_date} 피드백` : '첫 피드백',
-          isSaved: false,
           isSaved: !!todayEval,
           alimtalkSentAt: parsedToday?.alimtalkSentAt || null,
         };
@@ -1552,6 +1676,17 @@ export default function TeacherEvalPage() {
                                 })()}
                                 <span className="text-[10px]">{st.showScoreEditor ? '▲ 접기' : '⚙️ 점수조절'}</span>
                               </button>
+
+                              {/* 📑 지난 숙제 검사 팝업 모달 버튼 */}
+                              <button
+                                type="button"
+                                onClick={() => setHomeworkModalStudent(st)}
+                                className="text-xs px-2.5 py-1 rounded-xl font-extrabold bg-white hover:bg-slate-100 text-indigo-700 border border-indigo-200 transition flex items-center gap-1 shadow-2xs active:scale-95 shrink-0"
+                                title="지난 수업 과제 달성 여부 확인 및 검사"
+                              >
+                                <span>📑</span>
+                                <span>과제표 검사</span>
+                              </button>
                             </div>
                           </div>
 
@@ -1567,7 +1702,17 @@ export default function TeacherEvalPage() {
                                 <option value="일일테스트">⚡ 일일테스트</option>
                                 <option value="주간테스트">📝 주간테스트</option>
                                 <option value="모의고사">🎯 모의고사</option>
+                                <option value="기타">✍️ 기타 (직접입력)</option>
                               </select>
+                              {st.testType === '기타' && (
+                                <input
+                                  type="text"
+                                  value={st.customTestType || ''}
+                                  onChange={(e) => handleBatchCustomTestTypeChange(st.student_id, e.target.value)}
+                                  placeholder="시험명 입력"
+                                  className="w-24 p-1.5 bg-white border border-indigo-300 rounded-lg text-xs font-bold placeholder:text-slate-400 shrink-0"
+                                />
+                              )}
                               <input
                                 type="text"
                                 value={st.testScore}
@@ -2288,6 +2433,57 @@ export default function TeacherEvalPage() {
             <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white text-xs font-black px-4 py-3 rounded-2xl shadow-2xl border border-slate-700 flex items-center gap-2 animate-slide-up">
               <span>⚡</span>
               <span>{actionToast}</span>
+            </div>
+          )}
+
+          {/* 📑 판서수업(반 일괄 모드)용 학생 누적 과제표 검사 팝업 모달 */}
+          {homeworkModalStudent && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 animate-fade-in">
+              <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-4 sm:p-6 shadow-2xl border border-slate-200 space-y-4">
+                <div className="flex justify-between items-center border-b border-slate-200 pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">📑</span>
+                    <div>
+                      <h3 className="text-sm sm:text-base font-black text-slate-800">
+                        [{homeworkModalStudent.name}] 학생 누적 과제표 및 숙제 검사
+                      </h3>
+                      <p className="text-[11px] text-slate-400 font-bold">
+                        지난 수업의 과제 달성 상태(완료/미완료)를 클릭하여 즉시 변경할 수 있습니다.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setHomeworkModalStudent(null)}
+                    className="text-slate-400 hover:text-slate-700 font-bold text-lg p-1.5 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="bg-slate-50 p-3 sm:p-4 rounded-2xl border border-slate-200">
+                  <StudentHomeworkTable
+                    studentName={homeworkModalStudent.name}
+                    evaluations={classAllEvals.filter((e) => e.student_id === homeworkModalStudent.student_id)}
+                    isEditable={true}
+                    currentUserId={user?.id}
+                    userRole={user?.role}
+                    onStatusChange={handleModalHomeworkStatusChange}
+                    onUpdateEvaluation={handleModalUpdateEvaluation}
+                    onDeleteEvaluation={handleModalDeleteEvaluation}
+                  />
+                </div>
+
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setHomeworkModalStudent(null)}
+                    className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-black py-3 rounded-2xl text-xs transition cursor-pointer"
+                  >
+                    닫기
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 

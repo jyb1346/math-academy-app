@@ -112,7 +112,7 @@ function StudentReportContent() {
         <div className="bg-gradient-to-tr from-blue-600 to-indigo-700 text-white p-6 text-center space-y-2 shadow-md shadow-blue-500/10">
           <div className="flex items-center justify-center gap-2 flex-wrap">
             <span className="bg-white/20 text-white text-xs px-3.5 py-1 rounded-full font-bold">
-              품수학 일일 학습 보고서
+              {evalData.attendance_status === 'ABSENT' ? '품수학 결석 진도 및 과제 안내' : '품수학 일일 학습 보고서'}
             </span>
             {authorTeacherName && (
               <span className="bg-amber-400 text-slate-950 text-xs px-3 py-1 rounded-full font-black shadow-xs flex items-center gap-1">
@@ -122,13 +122,13 @@ function StudentReportContent() {
             )}
           </div>
           <h2 className="text-2xl font-black pt-1">
-            {studentName + ' 피드백'}
+            {evalData.attendance_status === 'ABSENT' ? `${studentName} 결석 과제 안내` : `${studentName} 피드백`}
           </h2>
           <div className="flex items-center justify-center gap-2 pt-1 flex-wrap">
             <span className="text-xs text-blue-100 font-semibold">
               {'📅 수업 일자: ' + evalData.eval_date}
             </span>
-            <span className="bg-white/20 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full">
+            <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${evalData.attendance_status === 'ABSENT' ? 'bg-rose-500 text-white font-black' : 'bg-white/20 text-white'}`}>
               {renderAttendanceText()}
             </span>
           </div>
@@ -136,10 +136,19 @@ function StudentReportContent() {
 
         {/* 📖 1. 오늘의 수업 진도 & 숙제 요약 카드 */}
         {(parsed.lessonProgress || (parsed.homeworkBooks && parsed.homeworkBooks.length > 0)) && (
-          <div className="mx-4 sm:mx-5 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-white p-4 sm:p-5 rounded-2xl shadow-md border border-slate-700/80 space-y-3">
-            <div className="flex items-center gap-2 border-b border-slate-700 pb-2">
-              <span className="text-base">📖</span>
-              <h4 className="text-xs sm:text-sm font-black text-slate-100">오늘의 진도 및 과제 안내</h4>
+          <div className={`mx-4 sm:mx-5 ${evalData.attendance_status === 'ABSENT' ? 'bg-gradient-to-br from-indigo-900 via-indigo-950 to-slate-950 ring-2 ring-amber-400/50' : 'bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950'} text-white p-4 sm:p-5 rounded-2xl shadow-md border border-slate-700/80 space-y-3`}>
+            <div className="flex items-center justify-between border-b border-slate-700 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-base">📖</span>
+                <h4 className="text-xs sm:text-sm font-black text-slate-100">
+                  {evalData.attendance_status === 'ABSENT' ? '📌 결석 학생 학습 진도 및 과제 안내' : '오늘의 진도 및 과제 안내'}
+                </h4>
+              </div>
+              {evalData.attendance_status === 'ABSENT' && (
+                <span className="bg-amber-400 text-slate-950 text-[10.5px] font-black px-2 py-0.5 rounded-md">
+                  다음 등원 전 완료 필수
+                </span>
+              )}
             </div>
 
             {parsed.lessonProgress && (
@@ -168,13 +177,14 @@ function StudentReportContent() {
         {/* 🎯 2. 학습 성취도 분석 영역 (결석 시 안내 배너 또는 가로 막대 게이지 바 차트) */}
         <div className="px-4 sm:px-5 py-1">
           {evalData.attendance_status === 'ABSENT' ? (
-            <div className="w-full p-4 sm:p-5 text-center bg-rose-50/60 rounded-2xl border border-rose-200/80 space-y-1">
-              <span className="text-xs font-black text-rose-950 flex items-center justify-center gap-1.5">
+            <div className="w-full p-4 sm:p-5 text-center bg-amber-50/90 rounded-2xl border border-amber-300/90 space-y-1.5">
+              <span className="text-xs font-black text-amber-950 flex items-center justify-center gap-1.5">
                 <span>🔴</span>
                 <span>결석 안내</span>
               </span>
-              <p className="text-[11px] text-rose-800 font-medium">
-                결석으로 인해 당일 세부 역량 평가는 진행되지 않았습니다. 상단의 학습 진도 및 과제 범위를 확인해 주세요.
+              <p className="text-[11.5px] text-amber-900 font-bold leading-relaxed">
+                금일 결석으로 인해 세부 역량 평가는 진행되지 않았습니다.<br />
+                <span className="text-indigo-700 font-extrabold underline">상단의 오늘 학습 진도 및 과제 범위</span>를 확인하시고 다음 등원 전까지 완료할 수 있도록 지도해 주세요.
               </p>
             </div>
           ) : (

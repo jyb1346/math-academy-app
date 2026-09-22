@@ -371,8 +371,10 @@ export default function StudentHomeworkTable({
             </thead>
             <tbody>
               {displayedRows.map((row, idx) => {
+                const isHeadTeacherOrAdmin = userRole === 'HEAD_TEACHER' || userRole === 'ADMIN';
                 const canEditThisRow =
-                  isEditable && (!row.teacherId || row.teacherId === currentUserId);
+                  isEditable &&
+                  (isHeadTeacherOrAdmin || !row.teacherId || !currentUserId || String(row.teacherId) === String(currentUserId));
                 const isEven = idx % 2 === 1;
                 const rowBg = isEven ? 'bg-slate-50/70' : 'bg-white';
 
@@ -537,8 +539,10 @@ export default function StudentHomeworkTable({
       {viewMode === 'CARDS' && (
         <div className="space-y-3">
           {displayedRows.map((row, idx) => {
+            const isHeadTeacherOrAdmin = userRole === 'HEAD_TEACHER' || userRole === 'ADMIN';
             const canEditThisRow =
-              isEditable && (!row.teacherId || row.teacherId === currentUserId);
+              isEditable &&
+              (isHeadTeacherOrAdmin || !row.teacherId || !currentUserId || String(row.teacherId) === String(currentUserId));
             const activeBooksInThisRow = (row.rawHomeworkBooks || []).filter(
               (b) => b.name && b.name.trim() && b.range && b.range !== '-'
             );

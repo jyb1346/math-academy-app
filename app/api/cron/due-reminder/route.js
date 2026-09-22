@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import webpush from '@/lib/webpush';
 import { getKSTDateString, getKSTNow } from '@/lib/dateUtils';
 
 export async function GET(req) {
   try {
+    const supabase = getSupabaseAdmin(req);
     // 🛡️ Cron 엔드포인트 보안 검증
     const authHeader = req.headers.get('authorization');
     const isVercelCron = req.headers.get('x-vercel-cron');

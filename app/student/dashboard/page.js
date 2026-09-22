@@ -2,12 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
 import PushNotificationManager from '@/components/PushNotificationManager';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import StudentHomeworkTable from '@/components/StudentHomeworkTable';
 import StudentBugDexModal from '@/components/StudentBugDexModal';
-import { checkIfUserIsJangTeacherOrStudent } from '@/lib/luckyBugService';
+import { logout } from '@/lib/useSession';
 
 export default function StudentDashboard() {
   const [user, setUser] = useState(null);
@@ -29,7 +28,10 @@ export default function StudentDashboard() {
       const parsedUser = JSON.parse(userData);
       setUser(parsedUser);
       fetchStudentData(parsedUser.id);
-      checkIfUserIsJangTeacherOrStudent(parsedUser).then((res) => setIsJangStudent(res));
+      fetch('/api/lucky-bug/check')
+        .then((res) => res.json())
+        .then((data) => setIsJangStudent(Boolean(data.isEligible)))
+        .catch(() => setIsJangStudent(false));
     } catch (e) {
       router.push('/login');
     }
@@ -37,33 +39,15 @@ export default function StudentDashboard() {
 
   const fetchStudentData = async (studentId) => {
     try {
-      const { data: tData } = await supabase
-        .from('users')
-        .select('id, name')
-        .in('role', ['TEACHER', 'HEAD_TEACHER', 'ADMIN']);
-      const teacherMap = (tData || []).reduce((acc, t) => {
-        acc[t.id] = t.name;
-        return acc;
-      }, {});
-
-      const { data: evData } = await supabase
-        .from('daily_evaluations')
-        .select('*')
-        .eq('student_id', studentId)
-        .order('eval_date', { ascending: false });
-
-      if (evData) {
-        const enrichedEvals = evData.map((ev) => ({
-          ...ev,
-          teacher_name: teacherMap[ev.teacher_id] || '',
-        }));
-        setEvaluations(enrichedEvals);
+      const evRes = await fetch(`/api/eval?studentId=${encodeURIComponent(studentId)}`);
+      const evJson = await evRes.json();
+      if (evRes.ok) {
+        setEvaluations(evJson.evaluations || []);
       }
 
-      const { data: qData } = await supabase
-        .from('qna')
-        .select('id, status, replies')
-        .eq('student_id', studentId);
+      const qRes = await fetch('/api/qna');
+      const qJson = await qRes.json();
+      const qData = qJson.questions || [];
 
       const parsedQna = (qData || []).map((q) => {
         let replies = [];
@@ -124,7 +108,7 @@ export default function StudentDashboard() {
 
             {/* 모바일 전용 상단 우측 로그아웃 */}
             <button
-              onClick={() => { localStorage.removeItem('user'); router.push('/login'); }}
+              onClick={async () => { await logout(); router.push('/login'); }}
               className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3 py-1.5 rounded-xl transition sm:hidden"
             >
               로그아웃
@@ -152,7 +136,7 @@ export default function StudentDashboard() {
 
             {/* 데스크톱 전용 로그아웃 */}
             <button
-              onClick={() => { localStorage.removeItem('user'); router.push('/login'); }}
+              onClick={async () => { await logout(); router.push('/login'); }}
               className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3.5 py-2 rounded-xl transition whitespace-nowrap hidden sm:inline-block"
             >
               로그아웃

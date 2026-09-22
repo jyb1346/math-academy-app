@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { getActiveLuckyEvent, getRecentFinishedLuckyEvent, catchLuckyBug, hitBossRaid, checkIfUserIsJangTeacherOrStudent } from '@/lib/luckyBugService';
 import { getBugById } from '@/lib/bugCatalog';
 import { getRandomMathQuiz, ACTIVE_MATH_CHAPTER } from '@/lib/mathQuizCatalog';
 import StudentBugDexModal from './StudentBugDexModal';
@@ -76,15 +75,12 @@ export default function LuckyBugOverlay() {
   const initStudent = async (studentUser) => {
     try {
       // 🛡️ 장영배 선생님의 담당 학생인지 확인 (타 선생님 담당 학생은 완전 미노출)
-      const isEligible = await checkIfUserIsJangTeacherOrStudent(studentUser);
+      const checkRes = await fetch('/api/lucky-bug/check');
+      const checkData = await checkRes.json();
+      const isEligible = Boolean(checkData.isEligible);
       if (!isEligible) return;
 
-      const { data: csData } = await supabase
-        .from('class_students')
-        .select('class_id')
-        .eq('student_id', studentUser.id);
-
-      const classIds = (csData || []).map((cs) => String(cs.class_id));
+      const classIds = checkData.classIds || [];
 
       await checkActiveEvent(classIds, studentUser.id);
 
@@ -175,7 +171,9 @@ export default function LuckyBugOverlay() {
   };
 
   const checkActiveEvent = async (classIds, studentId) => {
-    const event = await getActiveLuckyEvent(classIds, studentId);
+    const activeRes = await fetch(`/api/lucky-bug/active?classIds=${encodeURIComponent(classIds.join(','))}`);
+    const activeData = await activeRes.json();
+    const event = activeData.active;
     if (event) {
       setActiveEvent(event);
       setBossHp(event.currentHp);
@@ -188,7 +186,7 @@ export default function LuckyBugOverlay() {
       setGimmickBubble(null);
       startBugMovement(event.speedMode, event.isBossRaid, event.customSpeedSec);
     } else if (studentId) {
-      const finishedEvent = await getRecentFinishedLuckyEvent(classIds, studentId);
+      const finishedEvent = activeData.recentFinished;
       if (finishedEvent) {
         const sessionKey = `seen_finished_bug_${finishedEvent.id}`;
         if (typeof window !== 'undefined' && !sessionStorage.getItem(sessionKey)) {
@@ -276,7 +274,12 @@ export default function LuckyBugOverlay() {
       }
 
       try {
-        const res = await catchLuckyBug(activeEvent.id, user.id, user.name);
+        const catchRes = await fetch('/api/lucky-bug/catch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ eventId: activeEvent.id }),
+        });
+        const res = await catchRes.json();
         if (res.success) {
           setWinModal({
             rank: res.rank,
@@ -353,7 +356,12 @@ export default function LuckyBugOverlay() {
     }, 900);
 
     try {
-      const res = await hitBossRaid(activeEvent.id, user.id, user.name, damageToApply);
+      const hitRes = await fetch('/api/lucky-bug/boss-hit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId: activeEvent.id, damage: damageToApply }),
+      });
+      const res = await hitRes.json();
       if (res.success) {
         setBossHp(res.currentHp);
         setMyHits(res.myHits);

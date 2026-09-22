@@ -2,10 +2,10 @@
 import TeacherLuckyBugModal from "@/components/TeacherLuckyBugModal";
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import PushNotificationManager from '@/components/PushNotificationManager';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
+import { logout } from '@/lib/useSession';
 
 export default function TeacherDashboard() {
   const [user, setUser] = useState(null);
@@ -103,66 +103,16 @@ export default function TeacherDashboard() {
 
   const fetchTeacherData = async (teacherId) => {
     try {
-      const { data: cData } = await supabase
-        .from('classes')
-        .select('*')
-        .eq('teacher_id', teacherId);
-      const myClasses = cData || [];
-      setClasses(myClasses);
+      const res = await fetch('/api/teacher/data');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '조회 실패');
 
-      // 1) 내가 직속 담당인 학생 조회
-      const { data: directStData } = await supabase
-        .from('users')
-        .select('id, name, email, role, parent_phone, teacher_id, created_at')
-        .eq('role', 'STUDENT')
-        .eq('teacher_id', teacherId);
-      setStudents(directStData || []);
+      setClasses(data.classes || []);
+      setStudents(data.students || []);
+      setTeachers(data.teachers || []);
+      setClassStudents(data.classStudents || []);
 
-      // 2) 내 개설 반에 배정된 학생 ID들 조회
-      const myClassIds = myClasses.map((c) => c.id);
-      let enrolledStudentIds = [];
-      if (myClassIds.length > 0) {
-        const { data: enrolledCS } = await supabase
-          .from('class_students')
-          .select('student_id')
-          .in('class_id', myClassIds);
-        enrolledStudentIds = (enrolledCS || []).map((item) => item.student_id);
-      }
-
-      // 3) 내 반에 속한 학생들 추가 조회 (직속 담당이 아니더라도 함께 표시)
-      let allTeacherStudents = directStData || [];
-      const missingIds = enrolledStudentIds.filter(
-        (id) => !allTeacherStudents.some((s) => s.id === id)
-      );
-
-      if (missingIds.length > 0) {
-        const { data: extraStData } = await supabase
-          .from('users')
-          .select('id, name, email, role, parent_phone, teacher_id, created_at')
-          .in('id', missingIds);
-        if (extraStData) {
-          allTeacherStudents = [...allTeacherStudents, ...extraStData];
-        }
-      }
-
-      setStudents(allTeacherStudents);
-
-      const { data: tData } = await supabase
-        .from('users')
-        .select('id, name, email, role')
-        .in('role', ['TEACHER', 'HEAD_TEACHER', 'ADMIN'])
-        .order('name');
-      setTeachers(tData || []);
-
-      const { data: csData } = await supabase.from('class_students').select('*');
-      setClassStudents(csData || []);
-
-      const { data: qnaData } = await supabase
-        .from('qna')
-        .select('id, status, replies')
-        .eq('teacher_id', teacherId);
-
-      const parsedQna = (qnaData || []).map((q) => {
+      const parsedQna = (data.qna || []).map((q) => {
         let replies = [];
         if (Array.isArray(q.replies)) replies = q.replies;
         else if (typeof q.replies === 'string') {
@@ -199,10 +149,13 @@ export default function TeacherDashboard() {
     if (!newClassName.trim()) return alert('반 이름을 입력해주세요.');
 
     try {
-      const { data, error } = await supabase.from('classes').insert([
-        { name: newClassName.trim(), teacher_id: user.id }
-      ]).select('id').single();
-      if (error) throw error;
+      const res = await fetch('/api/teacher/classes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newClassName.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '개설 실패');
 
       if (data?.id) {
         const updated = { ...classTypes, [data.id]: newClassType };
@@ -223,8 +176,9 @@ export default function TeacherDashboard() {
   const handleDeleteClass = async (classId, className) => {
     if (!confirm(`[${className}] 반을 삭제하시겠습니까?`)) return;
     try {
-      const { error } = await supabase.from('classes').delete().eq('id', classId);
-      if (error) throw error;
+      const res = await fetch(`/api/teacher/classes/${classId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '삭제 실패');
       fetchTeacherData(user.id);
     } catch (err) {
       alert(`삭제 실패: ${err.message}`);
@@ -256,25 +210,20 @@ export default function TeacherDashboard() {
     if (nameList.length === 0) return alert('유효한 학생 이름이 없습니다.');
 
     try {
-      const payloads = nameList.map((name, index) => {
-        const rawPhone = phoneList[index] || '';
-        const cleanPhone = rawPhone.replace(/[^0-9]/g, '');
-        const randomNum = Math.floor(1000 + Math.random() * 9000);
+      const studentsPayload = nameList.map((name, index) => ({
+        name,
+        phone: phoneList[index] || '',
+      }));
 
-        return {
-          name,
-          email: `${name.toLowerCase()}${randomNum}@poom.com`,
-          password: '1234',
-          role: 'STUDENT',
-          teacher_id: user.id,
-          parent_phone: cleanPhone,
-        };
+      const res = await fetch('/api/teacher/students/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ students: studentsPayload }),
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '등록 실패');
 
-      const { error } = await supabase.from('users').insert(payloads);
-      if (error) throw error;
-
-      alert(`${payloads.length}명의 학생 계정이 신규 등록되었습니다.`);
+      alert(`${studentsPayload.length}명의 학생 계정이 신규 등록되었습니다.`);
       setBatchNamesText('');
       setBatchPhonesText('');
       fetchTeacherData(user.id);
@@ -291,17 +240,18 @@ export default function TeacherDashboard() {
       const targetTeacherId = editingStudent.teacher_id || user.id;
       const isTeacherChanged = targetTeacherId !== user.id;
 
-      const { error } = await supabase
-        .from('users')
-        .update({
+      const res = await fetch(`/api/teacher/students/${editingStudent.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           name: editingStudent.name,
           email: editingStudent.email,
-          parent_phone: editingStudent.parent_phone ? editingStudent.parent_phone.replace(/[^0-9]/g, '') : '',
-          teacher_id: targetTeacherId,
-        })
-        .eq('id', editingStudent.id);
-
-      if (error) throw error;
+          parentPhone: editingStudent.parent_phone,
+          teacherId: targetTeacherId,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '수정 실패');
 
       if (isTeacherChanged) {
         const targetTeacher = teachers.find((t) => t.id === targetTeacherId);
@@ -323,23 +273,9 @@ export default function TeacherDashboard() {
         return;
       }
       try {
-        const myClassIds = (classes || []).map((c) => c.id);
-        if (myClassIds.length > 0) {
-          await supabase
-            .from('class_students')
-            .delete()
-            .eq('student_id', studentId)
-            .in('class_id', myClassIds);
-        }
-
-        // 직속 teacher_id가 본인으로 되어 있다면 연결 해제
-        const targetStudent = students.find((s) => s.id === studentId);
-        if (targetStudent?.teacher_id === user.id) {
-          await supabase
-            .from('users')
-            .update({ teacher_id: null })
-            .eq('id', studentId);
-        }
+        const res = await fetch(`/api/teacher/students/${studentId}/unassign`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '제외 실패');
 
         alert(`[${studentName}] 학생이 내 담당 수업에서 제외되었습니다.`);
         fetchTeacherData(user.id);
@@ -357,11 +293,9 @@ export default function TeacherDashboard() {
 
     if (!confirm(`[${studentName}] 학생을 삭제하시겠습니까?`)) return;
     try {
-      await supabase.from('class_students').delete().eq('student_id', studentId);
-      await supabase.from('push_subscriptions').delete().eq('user_id', studentId);
-
-      const { error } = await supabase.from('users').delete().eq('id', studentId);
-      if (error) throw error;
+      const res = await fetch(`/api/admin/students/${studentId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '삭제 실패');
 
       alert(`[${studentName}] 원생이 영구 삭제되었습니다.`);
       fetchTeacherData(user.id);
@@ -375,22 +309,13 @@ export default function TeacherDashboard() {
     if (!classId) return alert('배정할 반을 선택해 주세요.');
 
     try {
-      // 내 반들 중에서만 기존 배정 해제 후 신규 배정 (다른 선생님의 반 배정은 안전하게 보존)
-      const myClassIds = (classes || []).map((c) => c.id);
-      if (myClassIds.length > 0) {
-        await supabase
-          .from('class_students')
-          .delete()
-          .eq('student_id', studentId)
-          .in('class_id', myClassIds);
-      }
-      await supabase.from('class_students').delete().eq('student_id', studentId);
-
-      const { error } = await supabase.from('class_students').insert([
-        { student_id: studentId, class_id: classId }
-      ]);
-
-      if (error) throw error;
+      const res = await fetch(`/api/teacher/students/${studentId}/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ classId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '배정 실패');
       alert('반 배정이 완료되었습니다.');
       fetchTeacherData(user.id);
     } catch (err) {
@@ -419,20 +344,13 @@ export default function TeacherDashboard() {
     if (!assignTargetClass) return;
 
     try {
-      await supabase
-        .from('class_students')
-        .delete()
-        .eq('class_id', assignTargetClass.id);
-
-      if (selectedStudentIds.length > 0) {
-        const insertPayloads = selectedStudentIds.map((stId) => ({
-          student_id: stId,
-          class_id: assignTargetClass.id,
-        }));
-
-        const { error } = await supabase.from('class_students').insert(insertPayloads);
-        if (error) throw error;
-      }
+      const res = await fetch('/api/teacher/class-assignments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ classId: assignTargetClass.id, studentIds: selectedStudentIds }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '배정 실패');
 
       alert(`[${assignTargetClass.name}] 반에 ${selectedStudentIds.length}명의 학생 배정이 완료되었습니다.`);
       setAssignTargetClass(null);
@@ -481,7 +399,7 @@ export default function TeacherDashboard() {
 
             {/* 모바일 전용 상단 우측 로그아웃 */}
             <button
-              onClick={() => { localStorage.removeItem('user'); router.push('/login'); }}
+              onClick={async () => { await logout(); router.push('/login'); }}
               className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3 py-1.5 rounded-xl transition md:hidden"
             >
               로그아웃
@@ -528,7 +446,7 @@ export default function TeacherDashboard() {
 
             {/* 데스크톱 전용 로그아웃 */}
             <button
-              onClick={() => { localStorage.removeItem('user'); router.push('/login'); }}
+              onClick={async () => { await logout(); router.push('/login'); }}
               className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3.5 py-2 rounded-xl transition whitespace-nowrap hidden md:inline-block"
             >
               로그아웃
@@ -901,10 +819,8 @@ export default function TeacherDashboard() {
                         onClick={() => handleDeleteStudent(st.id, st.name)}
                         className="text-rose-500 hover:text-rose-700 hover:underline font-bold px-1 text-xs cursor-pointer"
                         title={isHeadTeacher ? '원생을 학원에서 영구 삭제합니다' : '내 담당 수업에서 이 학생을 제외합니다 (학생 계정 유지)'}
-                        className="text-rose-500 hover:underline font-bold px-1 text-xs"
                       >
                         {isHeadTeacher ? '삭제' : '제외'}
-                        삭제
                       </button>
                     </div>
                   </div>

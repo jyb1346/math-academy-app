@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import EvaluationBarChart from '@/components/EvaluationBarChart';
 import { parseEvaluationRecord } from '@/lib/evalUtils';
@@ -29,28 +28,10 @@ export default function StudentEvalPage() {
 
   const fetchStudentEvaluations = async (studentId) => {
     try {
-      const { data: tData } = await supabase
-        .from('users')
-        .select('id, name')
-        .in('role', ['TEACHER', 'HEAD_TEACHER', 'ADMIN']);
-      const teacherMap = (tData || []).reduce((acc, t) => {
-        acc[t.id] = t.name;
-        return acc;
-      }, {});
-
-      const { data, error } = await supabase
-        .from('daily_evaluations')
-        .select('*')
-        .eq('student_id', studentId)
-        .order('eval_date', { ascending: false });
-
-      if (error) throw error;
-      setEvaluations(data || []);
-      const enriched = (data || []).map((ev) => ({
-        ...ev,
-        teacher_name: teacherMap[ev.teacher_id] || '',
-      }));
-      setEvaluations(enriched);
+      const res = await fetch(`/api/eval?studentId=${encodeURIComponent(studentId)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '조회 실패');
+      setEvaluations(data.evaluations || []);
     } catch (err) {
       console.error(err);
     } finally {

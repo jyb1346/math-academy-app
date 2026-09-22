@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getSupabaseForServer } from '@/lib/supabase';
+import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { comparePassword, hashPassword, isPasswordHashed } from '@/lib/securityUtils';
+import { attachSessionCookie } from '@/lib/session';
 
 export async function POST(req) {
   try {
@@ -17,7 +18,7 @@ export async function POST(req) {
     const cleanEmail = email.trim();
     const cleanPassword = password.trim();
 
-    const dbClient = getSupabaseForServer(req);
+    const dbClient = getSupabaseAdmin(req);
 
     // 1. 서버에서 사용자 정보 조회 (비밀번호 컬럼은 클라이언트로 노출되지 않음)
     const { data: user, error } = await dbClient
@@ -58,10 +59,15 @@ export async function POST(req) {
     // 4. 클라이언트 반환 시 비밀번호 필드 완전 제거
     const { password: _, ...safeUser } = user;
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       ok: true,
       user: safeUser,
     });
+
+    // 5. 서버 인증의 근거가 되는 httpOnly 세션 쿠키 발급 (localStorage는 화면 표시용 캐시일 뿐, 권한 판단에 쓰지 않음)
+    attachSessionCookie(res, safeUser);
+
+    return res;
   } catch (err) {
     console.error('Login auth error:', err);
     return NextResponse.json(

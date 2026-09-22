@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import { createLuckyEvent, getLuckyEventHistory, deleteLuckyEvent, getJangStudentUserIds } from '@/lib/luckyBugService';
 import { getNormalBugs, getBossBugs, getBugById, getRandomBug } from '@/lib/bugCatalog';
 
 export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
@@ -58,8 +57,9 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
 
   const fetchHistory = async () => {
     setLoadingHistory(true);
-    const data = await getLuckyEventHistory(user.id);
-    setHistory(data);
+    const res = await fetch('/api/lucky-bug/history');
+    const data = await res.json();
+    setHistory(data.history || []);
     setLoadingHistory(false);
   };
 
@@ -73,19 +73,28 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
       let finalBug = selectedBugId === 'RANDOM' ? getRandomBug() : getBugById(selectedBugId);
       const parsedSpeedSec = customSpeedSec ? Number(customSpeedSec) : undefined;
 
-      const result = await createLuckyEvent({
-        teacherId: user.id,
-        classId: selectedClassId || null,
-        bugId: finalBug.id,
-        isBossRaid: false,
-        targetCount: Number(targetCount) || 2,
-        rewardText: rewardText.trim(),
-        speedMode,
-        customSpeedSec: parsedSpeedSec,
-        escapeGimmick,
-      });
+      const classNameLabel = selectedClassId
+        ? classes.find((c) => String(c.id) === String(selectedClassId))?.name || '우리 반'
+        : '내 담당 모든 반';
 
-      if (!result.success) throw new Error(result.error);
+      const createRes = await fetch('/api/lucky-bug/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          classId: selectedClassId || null,
+          bugId: finalBug.id,
+          isBossRaid: false,
+          targetCount: Number(targetCount) || 2,
+          rewardText: rewardText.trim(),
+          speedMode,
+          customSpeedSec: parsedSpeedSec,
+          escapeGimmick,
+          pushTitle: `🚨 [${classNameLabel} 돌발] ${finalBug.name} 출현! ${finalBug.emoji}`,
+          pushMessage: `선착순 ${targetCount}명! 화면의 ${finalBug.name}을(를) 잡으세요! (${rewardText})`,
+        }),
+      });
+      const result = await createRes.json();
+      if (!createRes.ok) throw new Error(result.error);
 
       const event = result.event;
       const targetClassIds = selectedClassId
@@ -113,41 +122,6 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
         });
       }
 
-      // 2. 푸시 알림 (선생님 제외, 담당 학생에게만 발송)
-      try {
-        let targetUserIds = [];
-        if (selectedClassId) {
-          const { data: csData } = await supabase
-            .from('class_students')
-            .select('student_id, users!class_students_student_id_fkey(role)')
-            .eq('class_id', selectedClassId);
-          targetUserIds = (csData || [])
-            .filter((cs) => cs.users?.role === 'STUDENT' || !cs.users)
-            .map((cs) => cs.student_id);
-        } else {
-          targetUserIds = await getJangStudentUserIds(user.id);
-        }
-
-        const classNameLabel = selectedClassId
-          ? classes.find((c) => String(c.id) === String(selectedClassId))?.name || '우리 반'
-          : '내 담당 모든 반';
-
-        if (targetUserIds && targetUserIds.length > 0) {
-          fetch('/api/push/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userIds: targetUserIds,
-              title: `🚨 [${classNameLabel} 돌발] ${finalBug.name} 출현! ${finalBug.emoji}`,
-              message: `선착순 ${targetCount}명! 화면의 ${finalBug.name}을(를) 잡으세요! (${rewardText})`,
-              url: '/student/dashboard',
-              tag: `lucky-bug-${event.id}`,
-              renotify: true,
-            }),
-          }).catch((e) => console.warn('Push send warning:', e));
-        }
-      } catch (pushErr) {}
-
       setSpawnSuccessMessage(
         `🎉 성공적으로 [${finalBug.name} (${finalBug.emoji})] ${targetCount}마리가 소환되었습니다!`
       );
@@ -172,20 +146,29 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
       const parsedHitDamage = Number(hitDamage) || 5;
       const parsedLimit = Number(perUserHitLimit) || 5;
 
-      const result = await createLuckyEvent({
-        teacherId: user.id,
-        classId: selectedClassId || null,
-        bugId: bossInfo.id,
-        isBossRaid: true,
-        bossHp: parsedHp,
-        hitDamage: parsedHitDamage,
-        perUserHitLimit: parsedLimit,
-        rewardText: bossRewardText.trim(),
-        speedMode: 'FAST',
-        escapeGimmick: false,
-      });
+      const bossClassNameLabel = selectedClassId
+        ? classes.find((c) => String(c.id) === String(selectedClassId))?.name || '우리 반'
+        : '내 담당 모든 반';
 
-      if (!result.success) throw new Error(result.error);
+      const createRes = await fetch('/api/lucky-bug/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          classId: selectedClassId || null,
+          bugId: bossInfo.id,
+          isBossRaid: true,
+          bossHp: parsedHp,
+          hitDamage: parsedHitDamage,
+          perUserHitLimit: parsedLimit,
+          rewardText: bossRewardText.trim(),
+          speedMode: 'FAST',
+          escapeGimmick: false,
+          pushTitle: `👑 [${bossClassNameLabel} 긴급] ${bossInfo.name} 레이드 출현!`,
+          pushMessage: `보스 HP: ${parsedHp}! 반 전체가 힘을 합쳐 보스를 쓰러뜨리세요! (${bossRewardText})`,
+        }),
+      });
+      const result = await createRes.json();
+      if (!createRes.ok) throw new Error(result.error);
 
       const event = result.event;
       const targetClassIds = selectedClassId
@@ -215,41 +198,6 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
         });
       }
 
-      // 2. 푸시 알림 (선생님 제외, 담당 학생에게만 발송)
-      try {
-        let targetUserIds = [];
-        if (selectedClassId) {
-          const { data: csData } = await supabase
-            .from('class_students')
-            .select('student_id, users!class_students_student_id_fkey(role)')
-            .eq('class_id', selectedClassId);
-          targetUserIds = (csData || [])
-            .filter((cs) => cs.users?.role === 'STUDENT' || !cs.users)
-            .map((cs) => cs.student_id);
-        } else {
-          targetUserIds = await getJangStudentUserIds(user.id);
-        }
-
-        const classNameLabel = selectedClassId
-          ? classes.find((c) => String(c.id) === String(selectedClassId))?.name || '우리 반'
-          : '내 담당 모든 반';
-
-        if (targetUserIds && targetUserIds.length > 0) {
-          fetch('/api/push/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userIds: targetUserIds,
-              title: `👑 [${classNameLabel} 긴급] ${bossInfo.name} 레이드 출현!`,
-              message: `보스 HP: ${parsedHp}! 반 전체가 힘을 합쳐 보스를 쓰러뜨리세요! (${bossRewardText})`,
-              url: '/student/dashboard',
-              tag: `lucky-bug-${event.id}`,
-              renotify: true,
-            }),
-          }).catch((e) => console.warn('Push send warning:', e));
-        }
-      } catch (pushErr) {}
-
       setSpawnSuccessMessage(
         `👑 [${bossInfo.name}] (HP: ${parsedHp}) 레이드가 소환되었습니다! 학생들의 화면에 실시간 레이드 UI가 출현합니다.`
       );
@@ -268,47 +216,9 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
     try {
       const targetEvent = history.find((h) => h.id === eventId);
       if (targetEvent) {
-        await supabase
-          .from('posts')
-          .update({
-            content: JSON.stringify({
-              targetCount: targetEvent.targetCount,
-              rewardText: targetEvent.rewardText,
-              bugId: targetEvent.bugId,
-              isBossRaid: targetEvent.isBossRaid,
-              maxHp: targetEvent.maxHp,
-              status: 'FINISHED',
-            }),
-          })
-          .eq('id', eventId);
-
-        try {
-          let targetUserIds = [];
-          if (targetEvent.classId) {
-            const { data: csData } = await supabase
-              .from('class_students')
-              .select('student_id')
-              .eq('class_id', targetEvent.classId);
-            targetUserIds = (csData || []).map((cs) => cs.student_id);
-          } else {
-            targetUserIds = await getJangStudentUserIds(user.id);
-          }
-
-          if (targetUserIds && targetUserIds.length > 0) {
-            fetch('/api/push/send', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                userIds: targetUserIds,
-                title: '💨 [황금 벌레 마감] 이벤트 종료 ⚡',
-                message: '이벤트가 종료되었습니다. 다음 돌발 이벤트를 기대하세요!',
-                url: '/student/dashboard',
-                tag: `lucky-bug-${eventId}`,
-                renotify: false,
-              }),
-            }).catch((e) => console.warn('Push end warning:', e));
-          }
-        } catch (e) {}
+        const endRes = await fetch(`/api/lucky-bug/${eventId}/end`, { method: 'POST' });
+        const endData = await endRes.json();
+        if (!endRes.ok) throw new Error(endData.error || '종료 실패');
 
         if (channelRef.current) {
           channelRef.current.send({
@@ -329,8 +239,9 @@ export default function TeacherLuckyBugModal({ user, classes = [], onClose }) {
     if (!confirm('정말 이 벌레 이벤트를 히스토리에서 완전히 삭제하시겠습니까?\n(테스트 기록 정리 시 유용하며 해당 이벤트 포획 데이터도 함께 삭제됩니다)')) return;
 
     try {
-      const res = await deleteLuckyEvent(eventId);
-      if (!res.success) throw new Error(res.error);
+      const delRes = await fetch(`/api/lucky-bug/${eventId}`, { method: 'DELETE' });
+      const res = await delRes.json();
+      if (!delRes.ok) throw new Error(res.error);
 
       if (channelRef.current) {
         channelRef.current.send({

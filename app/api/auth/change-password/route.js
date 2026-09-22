@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
-import { getSupabaseForServer } from '@/lib/supabase';
+import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { comparePassword, hashPassword } from '@/lib/securityUtils';
+import { requireSession } from '@/lib/session';
 
 export async function POST(req) {
   try {
+    const { user: sessionUser, error: sessionError } = requireSession(req);
+    if (sessionError) return sessionError;
+
     const body = await req.json();
     const { userId, currentPassword, newPassword } = body;
 
@@ -14,6 +18,11 @@ export async function POST(req) {
       );
     }
 
+    // 본인 계정만 변경 가능 (세션의 사용자와 요청된 userId가 다르면 거부)
+    if (userId !== sessionUser.id) {
+      return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 });
+    }
+
     if (newPassword.length < 4) {
       return NextResponse.json(
         { error: '새 비밀번호는 최소 4자리 이상이어야 합니다.' },
@@ -21,7 +30,7 @@ export async function POST(req) {
       );
     }
 
-    const dbClient = getSupabaseForServer(req);
+    const dbClient = getSupabaseAdmin(req);
 
     // 1. 현재 사용자 조회
     const { data: user, error: fetchErr } = await dbClient

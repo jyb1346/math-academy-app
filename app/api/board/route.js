@@ -24,11 +24,19 @@ export async function GET(req) {
   const db = getSupabaseAdmin(req);
   const isStudent = user.role === 'STUDENT';
 
-  const { data: allClassesData } = await db.from('classes').select('*');
-  const allClasses = allClassesData || [];
+  // 서로 의존관계가 없는 조회는 병렬로 실행해 왕복 지연을 줄인다
+  const [classesRes, csRes, postsRes, confirmRes, studentsRes] = await Promise.all([
+    db.from('classes').select('*'),
+    db.from('class_students').select('*'),
+    db.from('posts').select('*, users!posts_author_id_fkey(name), classes(name, teacher_id)').order('created_at', { ascending: false }),
+    db.from('post_confirmations').select('*'),
+    isStudent ? Promise.resolve({ data: [] }) : db.from('users').select('id, name, email').eq('role', 'STUDENT'),
+  ]);
 
-  const { data: csData } = await db.from('class_students').select('*');
-  const classStudents = csData || [];
+  if (postsRes.error) return NextResponse.json({ error: postsRes.error.message }, { status: 500 });
+
+  const allClasses = classesRes.data || [];
+  const classStudents = csRes.data || [];
 
   let myClasses = [];
   let myClassIds = [];
@@ -40,24 +48,12 @@ export async function GET(req) {
   } else {
     myClasses = allClasses.filter((c) => c.teacher_id === user.id);
     myClassIds = myClasses.map((c) => c.id);
-
-    const { data: stData } = await db.from('users').select('id, name, email').eq('role', 'STUDENT');
-    allStudents = stData || [];
+    allStudents = studentsRes.data || [];
   }
 
-  const { data: postsData, error: postsErr } = await db
-    .from('posts')
-    .select('*, users!posts_author_id_fkey(name), classes(name, teacher_id)')
-    .order('created_at', { ascending: false });
-
-  if (postsErr) return NextResponse.json({ error: postsErr.message }, { status: 500 });
-
-  const visiblePosts = filterVisiblePosts(postsData || [], user, myClassIds);
+  const visiblePosts = filterVisiblePosts(postsRes.data || [], user, myClassIds);
   const visiblePostIds = new Set(visiblePosts.map((p) => p.id));
-
-  let confirmationsQuery = db.from('post_confirmations').select('*');
-  const { data: confirmData } = await confirmationsQuery;
-  const confirmations = (confirmData || []).filter((c) => visiblePostIds.has(c.post_id));
+  const confirmations = (confirmRes.data || []).filter((c) => visiblePostIds.has(c.post_id));
 
   return NextResponse.json({
     posts: visiblePosts,

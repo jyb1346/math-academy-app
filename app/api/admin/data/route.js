@@ -9,28 +9,20 @@ export async function GET(req) {
 
   const db = getSupabaseAdmin(req);
 
-  const { data: tData, error: tErr } = await db
-    .from('users')
-    .select('id, name, email, role, parent_phone, teacher_id, created_at')
-    .in('role', ['TEACHER', 'HEAD_TEACHER']);
-  if (tErr) return NextResponse.json({ error: tErr.message }, { status: 500 });
+  const [teachersRes, classesRes, studentsRes, csRes] = await Promise.all([
+    db.from('users').select('id, name, email, role, parent_phone, teacher_id, created_at').in('role', ['TEACHER', 'HEAD_TEACHER']),
+    db.from('classes').select('*'),
+    db.from('users').select('id, name, email, role, parent_phone, teacher_id, created_at').eq('role', 'STUDENT'),
+    db.from('class_students').select('*'),
+  ]);
 
-  const { data: cData, error: cErr } = await db.from('classes').select('*');
-  if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 });
-
-  const { data: stData, error: stErr } = await db
-    .from('users')
-    .select('id, name, email, role, parent_phone, teacher_id, created_at')
-    .eq('role', 'STUDENT');
-  if (stErr) return NextResponse.json({ error: stErr.message }, { status: 500 });
-
-  const { data: csData, error: csErr } = await db.from('class_students').select('*');
-  if (csErr) return NextResponse.json({ error: csErr.message }, { status: 500 });
+  const firstError = teachersRes.error || classesRes.error || studentsRes.error || csRes.error;
+  if (firstError) return NextResponse.json({ error: firstError.message }, { status: 500 });
 
   return NextResponse.json({
-    teachers: tData || [],
-    classes: cData || [],
-    students: stData || [],
-    classStudents: csData || [],
+    teachers: teachersRes.data || [],
+    classes: classesRes.data || [],
+    students: studentsRes.data || [],
+    classStudents: csRes.data || [],
   });
 }

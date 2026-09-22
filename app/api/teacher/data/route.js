@@ -9,17 +9,19 @@ export async function GET(req) {
 
   const db = getSupabaseAdmin(req);
 
-  const { data: cData, error: cErr } = await db.from('classes').select('*').eq('teacher_id', user.id);
-  if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 });
-  const myClasses = cData || [];
-  const myClassIds = myClasses.map((c) => c.id);
+  // 서로 무관한 조회 4개를 병렬 실행
+  const [classesRes, directStRes, teachersRes, qnaRes] = await Promise.all([
+    db.from('classes').select('*').eq('teacher_id', user.id),
+    db.from('users').select('id, name, email, role, parent_phone, teacher_id, created_at').eq('role', 'STUDENT').eq('teacher_id', user.id),
+    db.from('users').select('id, name, email, role').in('role', ['TEACHER', 'HEAD_TEACHER', 'ADMIN']).order('name'),
+    db.from('qna').select('id, status, replies').eq('teacher_id', user.id),
+  ]);
 
-  const { data: directStData, error: stErr } = await db
-    .from('users')
-    .select('id, name, email, role, parent_phone, teacher_id, created_at')
-    .eq('role', 'STUDENT')
-    .eq('teacher_id', user.id);
-  if (stErr) return NextResponse.json({ error: stErr.message }, { status: 500 });
+  if (classesRes.error) return NextResponse.json({ error: classesRes.error.message }, { status: 500 });
+  if (directStRes.error) return NextResponse.json({ error: directStRes.error.message }, { status: 500 });
+
+  const myClasses = classesRes.data || [];
+  const myClassIds = myClasses.map((c) => c.id);
 
   let enrolledStudentIds = [];
   let myClassStudents = [];
@@ -32,7 +34,7 @@ export async function GET(req) {
     enrolledStudentIds = myClassStudents.map((item) => item.student_id);
   }
 
-  let allTeacherStudents = directStData || [];
+  let allTeacherStudents = directStRes.data || [];
   const missingIds = enrolledStudentIds.filter((id) => !allTeacherStudents.some((s) => s.id === id));
 
   if (missingIds.length > 0) {
@@ -45,13 +47,8 @@ export async function GET(req) {
     }
   }
 
-  const { data: tData } = await db
-    .from('users')
-    .select('id, name, email, role')
-    .in('role', ['TEACHER', 'HEAD_TEACHER', 'ADMIN'])
-    .order('name');
-
-  const { data: qnaData } = await db.from('qna').select('id, status, replies').eq('teacher_id', user.id);
+  const tData = teachersRes.data;
+  const qnaData = qnaRes.data;
 
   return NextResponse.json({
     classes: myClasses,

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getSupabaseForServer } from '@/lib/supabase';
 import { comparePassword, hashPassword, isPasswordHashed } from '@/lib/securityUtils';
 
 export async function POST(req) {
@@ -17,10 +17,12 @@ export async function POST(req) {
     const cleanEmail = email.trim();
     const cleanPassword = password.trim();
 
+    const dbClient = getSupabaseForServer(req);
+
     // 1. 서버에서 사용자 정보 조회 (비밀번호 컬럼은 클라이언트로 노출되지 않음)
-    const { data: user, error } = await supabase
+    const { data: user, error } = await dbClient
       .from('users')
-      .select('id, name, email, role, phone, parent_phone, teacher_id, password, created_at')
+      .select('id, name, email, role, parent_phone, teacher_id, password, created_at')
       .eq('email', cleanEmail)
       .maybeSingle();
 
@@ -44,7 +46,7 @@ export async function POST(req) {
     if (!isPasswordHashed(user.password)) {
       try {
         const hashedPassword = hashPassword(cleanPassword);
-        await supabase
+        await dbClient
           .from('users')
           .update({ password: hashedPassword })
           .eq('id', user.id);

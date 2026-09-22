@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getSupabaseForServer } from '@/lib/supabase';
 import { comparePassword, hashPassword } from '@/lib/securityUtils';
 
 export async function POST(req) {
@@ -21,10 +21,12 @@ export async function POST(req) {
       );
     }
 
+    const dbClient = getSupabaseForServer(req);
+
     // 1. 현재 사용자 조회
-    const { data: user, error: fetchErr } = await supabase
+    const { data: user, error: fetchErr } = await dbClient
       .from('users')
-      .select('id, name, email, role, phone, parent_phone, teacher_id, password')
+      .select('id, name, email, role, parent_phone, teacher_id, password')
       .eq('id', userId)
       .maybeSingle();
 
@@ -46,7 +48,7 @@ export async function POST(req) {
 
     // 3. 새 비밀번호 bcrypt 해싱 후 DB 저장
     const hashedNewPassword = hashPassword(newPassword.trim());
-    const { error: updateErr } = await supabase
+    const { error: updateErr } = await dbClient
       .from('users')
       .update({ password: hashedNewPassword })
       .eq('id', userId);

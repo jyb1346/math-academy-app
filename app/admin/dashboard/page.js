@@ -62,7 +62,7 @@ export default function AdminDashboard() {
       // 1. 전체 강사 목록 조회 (비밀번호 제외한 안전한 컬럼만 조회)
       const { data: tData } = await supabase
         .from('users')
-        .select('id, name, email, role, phone, parent_phone, teacher_id, created_at')
+        .select('id, name, email, role, parent_phone, teacher_id, created_at')
         .in('role', ['TEACHER', 'HEAD_TEACHER']);
       const teachers = tData || [];
       setAllTeachers(teachers);
@@ -80,7 +80,7 @@ export default function AdminDashboard() {
       // 3. 전체 학생 목록 조회 (비밀번호 제외한 안전한 컬럼만 조회)
       const { data: stData } = await supabase
         .from('users')
-        .select('id, name, email, role, phone, parent_phone, teacher_id, created_at')
+        .select('id, name, email, role, parent_phone, teacher_id, created_at')
         .eq('role', 'STUDENT');
       setAllStudents(stData || []);
 

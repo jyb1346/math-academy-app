@@ -110,12 +110,13 @@ export default function TeacherDashboard() {
       const myClasses = cData || [];
       setClasses(myClasses);
 
-      // 1) 내가 직속 담당인 학생 조회 (비밀번호 제외한 안전한 컬럼만 조회)
+      // 1) 내가 직속 담당인 학생 조회
       const { data: directStData } = await supabase
         .from('users')
-        .select('id, name, email, role, phone, parent_phone, teacher_id, created_at')
+        .select('id, name, email, role, parent_phone, teacher_id, created_at')
         .eq('role', 'STUDENT')
         .eq('teacher_id', teacherId);
+      setStudents(directStData || []);
 
       // 2) 내 개설 반에 배정된 학생 ID들 조회
       const myClassIds = myClasses.map((c) => c.id);
@@ -137,7 +138,7 @@ export default function TeacherDashboard() {
       if (missingIds.length > 0) {
         const { data: extraStData } = await supabase
           .from('users')
-          .select('id, name, email, role, phone, parent_phone, teacher_id, created_at')
+          .select('id, name, email, role, parent_phone, teacher_id, created_at')
           .in('id', missingIds);
         if (extraStData) {
           allTeacherStudents = [...allTeacherStudents, ...extraStData];
@@ -222,7 +223,6 @@ export default function TeacherDashboard() {
   const handleDeleteClass = async (classId, className) => {
     if (!confirm(`[${className}] 반을 삭제하시겠습니까?`)) return;
     try {
-      await supabase.from('class_students').delete().eq('class_id', classId);
       const { error } = await supabase.from('classes').delete().eq('id', classId);
       if (error) throw error;
       fetchTeacherData(user.id);
@@ -259,7 +259,7 @@ export default function TeacherDashboard() {
       const payloads = nameList.map((name, index) => {
         const rawPhone = phoneList[index] || '';
         const cleanPhone = rawPhone.replace(/[^0-9]/g, '');
-        const randomNum = Math.floor(100000 + Math.random() * 900000);
+        const randomNum = Math.floor(1000 + Math.random() * 9000);
 
         return {
           name,
@@ -355,6 +355,7 @@ export default function TeacherDashboard() {
     );
     if (!confirmDelete) return;
 
+    if (!confirm(`[${studentName}] 학생을 삭제하시겠습니까?`)) return;
     try {
       await supabase.from('class_students').delete().eq('student_id', studentId);
       await supabase.from('push_subscriptions').delete().eq('user_id', studentId);
@@ -383,6 +384,7 @@ export default function TeacherDashboard() {
           .eq('student_id', studentId)
           .in('class_id', myClassIds);
       }
+      await supabase.from('class_students').delete().eq('student_id', studentId);
 
       const { error } = await supabase.from('class_students').insert([
         { student_id: studentId, class_id: classId }
@@ -823,15 +825,8 @@ export default function TeacherDashboard() {
               <p className="text-center py-12 text-slate-400 text-xs font-bold">등록된 학생이 없습니다.</p>
             ) : (
               students.map((st) => {
-                const myClassIds = (classes || []).map((c) => String(c.id));
-                const studentEnrolledClassIds = (classStudents || [])
-                  .filter((cs) => cs.student_id === st.id)
-                  .map((cs) => String(cs.class_id));
-
-                const myAssignedClasses = (classes || []).filter((c) =>
-                  studentEnrolledClassIds.includes(String(c.id))
-                );
-                const otherClassCount = studentEnrolledClassIds.filter((cid) => !myClassIds.includes(cid)).length;
+                const assignedClassInfo = classStudents.find((cs) => cs.student_id === st.id);
+                const assignedClass = classes.find((c) => String(c.id) === String(assignedClassInfo?.class_id));
 
                 return (
                   <div
@@ -849,6 +844,7 @@ export default function TeacherDashboard() {
                           </span>
                         )}
 
+                        
                         {st.parent_phone ? (
                           <span className="bg-amber-100 text-amber-900 border border-amber-200 px-2.5 py-0.5 rounded-full font-bold text-[11px]">
                             📱 학부모: {st.parent_phone}
@@ -860,22 +856,15 @@ export default function TeacherDashboard() {
                         )}
                       </div>
 
-                      <div className="flex items-center gap-1.5 text-xs flex-wrap">
+                      <div className="flex items-center gap-2 text-xs">
                         <span className="text-slate-500 font-bold">소속 반:</span>
-                        {myAssignedClasses.length > 0 ? (
-                          myAssignedClasses.map((cls) => (
-                            <span key={cls.id} className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-0.5 rounded-full font-bold text-[11px]">
-                              📘 {cls.name}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="bg-rose-50 text-rose-600 border border-rose-100 px-2.5 py-0.5 rounded-full font-bold text-[11px]">
-                            내 수업 미배정
+                        {assignedClass ? (
+                          <span className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-0.5 rounded-full font-bold">
+                            📘 {assignedClass.name}
                           </span>
-                        )}
-                        {otherClassCount > 0 && (
-                          <span className="bg-slate-100 text-slate-500 border border-slate-200 px-2 py-0.5 rounded-full font-medium text-[10px]" title="다른 선생님의 수업에도 배정되어 있습니다">
-                            +타 강사 {otherClassCount}개 반
+                        ) : (
+                          <span className="bg-rose-50 text-rose-600 border border-rose-100 px-2.5 py-0.5 rounded-full font-bold">
+                            미배정
                           </span>
                         )}
                       </div>
@@ -883,7 +872,7 @@ export default function TeacherDashboard() {
 
                     <div className="flex items-center gap-2">
                       <select
-                        value={selectedClassMap[st.id] || (myAssignedClasses.length > 0 ? String(myAssignedClasses[0].id) : '')}
+                        value={selectedClassMap[st.id] || (assignedClass ? String(assignedClass.id) : '')}
                         onChange={(e) => setSelectedClassMap({ ...selectedClassMap, [st.id]: e.target.value })}
                         className="p-2 border rounded-xl text-xs font-bold text-slate-700 bg-white"
                       >
@@ -912,8 +901,10 @@ export default function TeacherDashboard() {
                         onClick={() => handleDeleteStudent(st.id, st.name)}
                         className="text-rose-500 hover:text-rose-700 hover:underline font-bold px-1 text-xs cursor-pointer"
                         title={isHeadTeacher ? '원생을 학원에서 영구 삭제합니다' : '내 담당 수업에서 이 학생을 제외합니다 (학생 계정 유지)'}
+                        className="text-rose-500 hover:underline font-bold px-1 text-xs"
                       >
                         {isHeadTeacher ? '삭제' : '제외'}
+                        삭제
                       </button>
                     </div>
                   </div>

@@ -220,7 +220,8 @@ export default function EvalHistoryPage() {
   };
 
   const handleResendNotification = async (item) => {
-    return alert('🧪 [1주일 현장 점검 모드] 현재는 화면 및 기능 테스트 기간으로 학부모 알림톡 발송이 일시 비활성화되어 있습니다.');
+    const studentName = item.users?.name || '학생';
+    const parentPhone = item.users?.parent_phone;
 
     setSendingId(item.id);
     try {
@@ -246,7 +247,9 @@ export default function EvalHistoryPage() {
               : ev
           )
         );
-        alert(`✅ [${studentName}] 학부모님(${parentPhone})께 피드백 리포트 알림이 성공적으로 발송되었습니다!`);
+        alert(`✅ [${studentName}] 학부모님(${parentPhone || '연락처'})께 피드백 리포트 알림이 성공적으로 발송되었습니다!`);
+      } else if (data.skipped) {
+        alert(data.message || '알림톡 발송이 건너뛰어졌습니다.');
       } else {
         alert(`발송 실패: ${data.error || data.message}`);
       }
@@ -259,8 +262,6 @@ export default function EvalHistoryPage() {
 
   // 미발송 학생 일괄 발송 핸들러
   const handleBatchSendUnsent = async (unsentList) => {
-    return alert('🧪 [1주일 현장 점검 모드] 현재는 화면 및 기능 테스트 기간으로 학부모 알림톡 발송이 일시 비활성화되어 있습니다.');
-
     const withoutPhone = unsentList.filter((e) => !e.users?.parent_phone);
     let confirmMsg = `🚀 현재 미발송 피드백 총 ${unsentList.length}건의 알림톡을 학부모님께 일괄 발송하시겠습니까?`;
     if (withoutPhone.length > 0) {

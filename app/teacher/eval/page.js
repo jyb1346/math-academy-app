@@ -882,7 +882,7 @@ export default function TeacherEvalPage() {
 
       // 📲 학부모 알림톡 자동 발송 (체크된 경우)
       let alimtalkNotice = '';
-      if (sendAlimtalk && evalId && selectedStudent?.parent_phone) {
+      if (sendAlimtalk && evalId) {
         try {
           const res = await fetch('/api/solapi/send-eval', {
             method: 'POST',
@@ -890,18 +890,23 @@ export default function TeacherEvalPage() {
             body: JSON.stringify({
               evalId,
               studentId: selectedStudentId,
-              studentName: selectedStudent.name,
+              studentName: selectedStudent?.name || studentName,
               evalDate,
-              parentPhone: selectedStudent.parent_phone,
+              parentPhone: selectedStudent?.parent_phone,
               teacherName: user?.name,
             }),
           });
           const alimData = await res.json();
           if (alimData.success) {
             alimtalkNotice = '\n📲 학부모님께 카카오 알림톡이 성공적으로 발송되었습니다!';
+          } else if (alimData.skipped || alimData.disabled) {
+            alimtalkNotice = `\n⚠️ (${alimData.message || '알림톡 발송 건너뜀'})`;
+          } else {
+            alimtalkNotice = `\n❌ 알림톡 발송 실패: ${alimData.error || alimData.message}`;
           }
         } catch (alimErr) {
           console.error('Alimtalk send error:', alimErr);
+          alimtalkNotice = `\n❌ 알림톡 통신 오류: ${alimErr.message}`;
         }
       }
 

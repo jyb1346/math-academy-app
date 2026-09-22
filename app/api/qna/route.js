@@ -24,24 +24,23 @@ export async function GET(req) {
 
   const questions = qData || [];
 
-  // 목록에 등장하는 학생/강사 이름만 조회 (전체 users 테이블 노출 방지)
+  // 목록에 등장하는 학생/강사 이름 조회와 대상 목록 조회는 서로 무관하므로 병렬 실행
   const relevantIds = [...new Set(questions.flatMap((q) => [q.student_id, q.teacher_id]).filter(Boolean))];
+
+  const [usersRes, secondaryRes] = await Promise.all([
+    relevantIds.length > 0
+      ? db.from('users').select('id, name').in('id', relevantIds)
+      : Promise.resolve({ data: [] }),
+    user.role === 'STUDENT'
+      ? computeAvailableTargets(db, user)
+      : db.from('users').select('id, name').in('role', ['TEACHER', 'HEAD_TEACHER']),
+  ]);
+
   const usersMap = {};
-  if (relevantIds.length > 0) {
-    const { data: uData } = await db.from('users').select('id, name').in('id', relevantIds);
-    (uData || []).forEach((u) => { usersMap[u.id] = { name: u.name }; });
-  }
+  (usersRes.data || []).forEach((u) => { usersMap[u.id] = { name: u.name }; });
 
-  let teachersList = [];
-  let availableTargets = [];
-
-  if (user.role === 'STUDENT') {
-    const { targets } = await computeAvailableTargets(db, user);
-    availableTargets = targets;
-  } else {
-    const { data: tData } = await db.from('users').select('id, name').in('role', ['TEACHER', 'HEAD_TEACHER']);
-    teachersList = tData || [];
-  }
+  const teachersList = user.role === 'STUDENT' ? [] : (secondaryRes.data || []);
+  const availableTargets = user.role === 'STUDENT' ? secondaryRes.targets : [];
 
   return NextResponse.json({ questions, usersMap, teachersList, availableTargets });
 }

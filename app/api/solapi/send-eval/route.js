@@ -1,24 +1,12 @@
 import { NextResponse } from 'next/server';
 import { sendSolapiMessage, cleanPhoneNumber } from '@/lib/solapi';
-import { getSupabaseForServer, isTestEnvironment } from '@/lib/supabase';
+import { getSupabaseForServer } from '@/lib/supabase';
 import { markAlimtalkSentInComment } from '@/lib/evalUtils';
 import { getKSTDateString } from '@/lib/dateUtils';
 import { generateReportToken } from '@/lib/securityUtils';
 
 export async function POST(req) {
   try {
-    const isDevEnvironment = isTestEnvironment(req);
-
-    // 🛑 [본서버 1주일 현장 점검 기간] 본서버는 실제 발송 일시 중단 유지, 테스트서버는 정상 발송(ON)
-    if (!isDevEnvironment) {
-      return NextResponse.json({
-        success: false,
-        skipped: true,
-        disabled: true,
-        message: '현재 본서버는 1주일 현장 점검 기간으로 학부모 알림톡 발송이 일시 중단되어 있습니다.',
-      });
-    }
-
     const body = await req.json();
     const { evalId, studentId, studentName, evalDate, parentPhone, teacherName } = body;
 

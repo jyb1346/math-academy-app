@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { requireSession } from '@/lib/session';
 
 export async function POST(req) {
   try {
+    const { user, error } = requireSession(req);
+    if (error) return error;
+
     const body = await req.json();
-    const { subscription, userId } = body;
+    const { subscription } = body;
 
     if (!subscription || !subscription.endpoint) {
       return NextResponse.json({ error: '유효하지 않은 구독 정보입니다.' }, { status: 400 });
@@ -18,24 +22,22 @@ export async function POST(req) {
       return NextResponse.json({ error: '구독 키가 누락되었습니다.' }, { status: 400 });
     }
 
-    // Supabase push_subscriptions 테이블에 저장 (없으면 안내 메시지)
-    const { data, error } = await supabase
-      .from('push_subscriptions')
-      .upsert(
-        [
-          {
-            user_id: userId || null,
-            endpoint,
-            p256dh,
-            auth,
-          },
-        ],
-        { onConflict: 'endpoint' }
-      );
+    const db = getSupabaseAdmin(req);
+    const { error: dbError } = await db.from('push_subscriptions').upsert(
+      [
+        {
+          user_id: user.id,
+          endpoint,
+          p256dh,
+          auth,
+        },
+      ],
+      { onConflict: 'endpoint' }
+    );
 
-    if (error) {
-      console.warn('push_subscriptions table error:', error.message);
-      return NextResponse.json({ warning: error.message, ok: true });
+    if (dbError) {
+      console.warn('push_subscriptions table error:', dbError.message);
+      return NextResponse.json({ warning: dbError.message, ok: true });
     }
 
     return NextResponse.json({ success: true });

@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import StudentHomeworkTable from '@/components/StudentHomeworkTable';
 import {
@@ -217,15 +216,11 @@ export default function TeacherEvalPage() {
   const fetchStudentEvaluationHistory = async (studentId, currentDate) => {
     try {
       setLoadingPrevEval(true);
-      const { data, error } = await supabase
-        .from('daily_evaluations')
-        .select('*')
-        .eq('student_id', studentId)
-        .order('eval_date', { ascending: false });
+      const res = await fetch(`/api/eval?studentId=${encodeURIComponent(studentId)}`);
+      const resData = await res.json();
+      if (!res.ok) throw new Error(resData.error || '조회 실패');
 
-      if (error) throw error;
-
-      const evals = data || [];
+      const evals = resData.evaluations || [];
       setStudentEvals(evals);
 
       // 현재 선택된 날짜의 평가가 이미 작성되었는지 확인
@@ -341,12 +336,15 @@ export default function TeacherEvalPage() {
         newStatus
       );
 
-      const { error } = await supabase
-        .from('daily_evaluations')
-        .update({ teacher_comment: updatedComment })
-        .eq('id', evalId);
-
-      if (error) throw error;
+      const res = await fetch(`/api/eval/${evalId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teacherComment: updatedComment }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || '수정 실패');
+      }
 
       setStudentEvals((prev) =>
         prev.map((item) =>
@@ -373,12 +371,15 @@ export default function TeacherEvalPage() {
         updatedBooks
       );
 
-      const { error } = await supabase
-        .from('daily_evaluations')
-        .update({ teacher_comment: updatedComment })
-        .eq('id', evalId);
-
-      if (error) throw error;
+      const res = await fetch(`/api/eval/${evalId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teacherComment: updatedComment }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || '수정 실패');
+      }
 
       setStudentEvals((prev) =>
         prev.map((item) =>
@@ -397,12 +398,11 @@ export default function TeacherEvalPage() {
   // 1:1 과제표에서 특정 회차 삭제
   const handleDeleteEvaluation = async (evalId, formattedDate) => {
     try {
-      const { error } = await supabase
-        .from('daily_evaluations')
-        .delete()
-        .eq('id', evalId);
-
-      if (error) throw error;
+      const res = await fetch(`/api/eval/${evalId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || '삭제 실패');
+      }
 
       setStudentEvals((prev) => prev.filter((item) => item.id !== evalId));
       fetchStudentEvaluationHistory(selectedStudentId, evalDate);
@@ -661,18 +661,17 @@ export default function TeacherEvalPage() {
   // 초기 반 및 학생 데이터 로드
   const fetchData = async (currentUser) => {
     try {
-      const { data: cData } = await supabase
-        .from('classes')
-        .select('*')
-        .eq('teacher_id', currentUser.id);
-      
-      const classList = cData || [];
+      const res = await fetch('/api/eval/classes');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '조회 실패');
+
+      const classList = data.classes || [];
       setClasses(classList);
 
       if (classList.length > 0) {
         const initialClassId = String(classList[0].id);
         setSelectedClassId(initialClassId);
-        
+
         // 반 수업 유형 확인
         try {
           const stored = localStorage.getItem('poom_class_types');
@@ -684,13 +683,9 @@ export default function TeacherEvalPage() {
 
         fetchClassStudents(initialClassId);
       } else {
-        const { data: stData } = await supabase
-          .from('users')
-          .select('id, name, email, parent_phone')
-          .eq('role', 'STUDENT')
-          .eq('teacher_id', currentUser.id);
-        setStudents(stData || []);
-        if (stData && stData.length > 0) setSelectedStudentId(stData[0].id);
+        const stData = data.directStudents || [];
+        setStudents(stData);
+        if (stData.length > 0) setSelectedStudentId(stData[0].id);
       }
     } catch (err) {
       console.error(err);
@@ -702,14 +697,11 @@ export default function TeacherEvalPage() {
   // 특정 반의 소속 학생 및 일괄 데이터 불러오기
   const fetchClassStudents = async (classId) => {
     try {
-      const { data: csData } = await supabase
-        .from('class_students')
-        .select('student_id, users(id, name, email, parent_phone)')
-        .eq('class_id', classId);
+      const res = await fetch(`/api/eval/class/${classId}`);
+      const resData = await res.json();
+      if (!res.ok) throw new Error(resData.error || '조회 실패');
 
-      if (!csData) return;
-
-      const stList = csData.map((item) => item.users).filter(Boolean);
+      const stList = resData.students || [];
       setStudents(stList);
       if (stList.length > 0) setSelectedStudentId(stList[0].id);
       else setSelectedStudentId('');
@@ -720,15 +712,7 @@ export default function TeacherEvalPage() {
         return;
       }
 
-      // 이 반 학생들의 최근 피드백 기록 일괄 조회
-      const studentIds = stList.map((s) => s.id);
-      const { data: batchEvals } = await supabase
-        .from('daily_evaluations')
-        .select('*')
-        .in('student_id', studentIds)
-        .order('eval_date', { ascending: false });
-
-      const allEvals = batchEvals || [];
+      const allEvals = resData.evaluations || [];
 
       // 1) 반 전체 학생들이 사용했던 고유 교재명 추출 (칩 생성용)
       const uniqueBooks = extractAllUniqueBookNamesFromEvaluations(allEvals);
@@ -815,14 +799,12 @@ export default function TeacherEvalPage() {
     const studentName = selectedStudent ? selectedStudent.name : '해당';
 
     try {
-      const { data: existingEval, error: checkError } = await supabase
-        .from('daily_evaluations')
-        .select('id')
-        .eq('student_id', selectedStudentId)
-        .eq('eval_date', evalDate)
-        .maybeSingle();
+      const existingEval = todayEvalRecord;
 
-      if (checkError) throw checkError;
+      if (existingEval && existingEval.teacher_id && existingEval.teacher_id !== user.id) {
+        alert('⚠️ 이미 다른 강사님이 이 날짜에 기록을 남기셨습니다. 본인이 작성한 기록만 수정할 수 있습니다.');
+        return;
+      }
 
       const effectiveTestType = testType === '기타' ? (customTestType.trim() || '기타평가') : testType;
 
@@ -850,8 +832,6 @@ export default function TeacherEvalPage() {
         teacher_comment: combinedComment,
       };
 
-      let evalId = null;
-
       if (existingEval) {
         const confirmOverwrite = confirm(
           `⚠️ [${studentName}] 학생의 ${evalDate} 날짜 피드백이 이미 작성되어 있습니다.\n\n새로 작성한 내용으로 수정(덮어쓰기)하시겠습니까?`
@@ -861,24 +841,16 @@ export default function TeacherEvalPage() {
           alert('기존 피드백이 유지되었습니다.');
           return;
         }
-
-        const { error: updateError } = await supabase
-          .from('daily_evaluations')
-          .update(payload)
-          .eq('id', existingEval.id);
-
-        if (updateError) throw updateError;
-        evalId = existingEval.id;
-      } else {
-        const { data: insertedData, error: insertError } = await supabase
-          .from('daily_evaluations')
-          .insert([payload])
-          .select('id')
-          .single();
-
-        if (insertError) throw insertError;
-        evalId = insertedData?.id;
       }
+
+      const saveRes = await fetch('/api/eval', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId: selectedStudentId, evalDate, payload }),
+      });
+      const saveData = await saveRes.json();
+      if (!saveRes.ok) throw new Error(saveData.error || '저장 실패');
+      const evalId = saveData.id;
 
       // 📲 학부모 알림톡 자동 발송 (체크된 경우)
       let alimtalkNotice = '';
@@ -949,10 +921,9 @@ export default function TeacherEvalPage() {
       let errorCount = 0;
       let alimtalkSentCount = 0;
 
-      for (let i = 0; i < targets.length; i++) {
-        const st = targets[i];
-        setBatchProgressText(`(${i + 1}/${targets.length}) [${st.name}] 학생 피드백 저장 중...`);
+      setBatchProgressText(`${targets.length}명의 피드백을 저장하는 중...`);
 
+      const batchTargets = targets.map((st) => {
         const effectiveTestType = st.testType === '기타' ? (st.customTestType.trim() || '기타평가') : st.testType;
 
         const combinedComment = formatTeacherCommentWithTestScoreAndItems({
@@ -964,58 +935,46 @@ export default function TeacherEvalPage() {
           homeworkBooks: validBooks,
         });
 
-        const payload = {
-          teacher_id: user.id,
-          student_id: st.student_id,
-          eval_date: evalDate,
-          attendance_status: st.attendanceStatus,
-          lateness_minutes: st.attendanceStatus === 'LATE' ? parseInt(st.latenessMinutes || 5) : 0,
-          concept_score: st.scores.concept,
-          calc_score: st.scores.calc,
-          app_score: st.scores.app,
-          attitude_score: st.scores.attitude,
-          homework_score: st.scores.homework,
-          perseverance_score: st.scores.perseverance,
-          teacher_comment: combinedComment,
+        return {
+          studentId: st.student_id,
+          payload: {
+            attendance_status: st.attendanceStatus,
+            lateness_minutes: st.attendanceStatus === 'LATE' ? parseInt(st.latenessMinutes || 5) : 0,
+            concept_score: st.scores.concept,
+            calc_score: st.scores.calc,
+            app_score: st.scores.app,
+            attitude_score: st.scores.attitude,
+            homework_score: st.scores.homework,
+            perseverance_score: st.scores.perseverance,
+            teacher_comment: combinedComment,
+          },
         };
+      });
 
-        // 기존 평가 존재 여부 확인
-        const { data: existing, error: findErr } = await supabase
-          .from('daily_evaluations')
-          .select('id')
-          .eq('student_id', st.student_id)
-          .eq('eval_date', evalDate)
-          .maybeSingle();
+      const batchRes = await fetch('/api/eval/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ evalDate, targets: batchTargets }),
+      });
+      const batchData = await batchRes.json();
+      if (!batchRes.ok) throw new Error(batchData.error || '일괄 저장 실패');
 
-        if (findErr) throw findErr;
+      const resultByStudentId = new Map((batchData.results || []).map((r) => [r.studentId, r]));
 
-        let savedEvalId = null;
+      for (let i = 0; i < targets.length; i++) {
+        const st = targets[i];
+        const result = resultByStudentId.get(st.student_id);
 
-        if (existing) {
-          const { error: updErr } = await supabase
-            .from('daily_evaluations')
-            .update(payload)
-            .eq('id', existing.id);
-          if (updErr) errorCount++;
-          else {
-            successCount++;
-            savedEvalId = existing.id;
-          }
-        } else {
-          const { data: insData, error: insErr } = await supabase
-            .from('daily_evaluations')
-            .insert([payload])
-            .select('id')
-            .single();
-          if (insErr) errorCount++;
-          else {
-            successCount++;
-            savedEvalId = insData?.id;
-          }
+        if (!result || !result.ok) {
+          errorCount++;
+          continue;
         }
+        successCount++;
+        const savedEvalId = result.id;
 
         // 📲 알림톡 발송 체크 시 전송
         if (sendAlimtalk && savedEvalId && st.parent_phone) {
+          setBatchProgressText(`(${i + 1}/${targets.length}) [${st.name}] 학부모님께 알림톡 발송 중...`);
           try {
             const res = await fetch('/api/solapi/send-eval', {
               method: 'POST',

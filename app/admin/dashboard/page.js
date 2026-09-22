@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
+import { logout } from '@/lib/useSession';
 
 export default function AdminDashboard() {
   const [user, setUser] = useState(null);
@@ -59,35 +59,20 @@ export default function AdminDashboard() {
 
   const fetchAdminData = async (headTeacherId) => {
     try {
-      // 1. 전체 강사 목록 조회 (비밀번호 제외한 안전한 컬럼만 조회)
-      const { data: tData } = await supabase
-        .from('users')
-        .select('id, name, email, role, parent_phone, teacher_id, created_at')
-        .in('role', ['TEACHER', 'HEAD_TEACHER']);
-      const teachers = tData || [];
+      const res = await fetch('/api/admin/data');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '조회 실패');
+
+      const teachers = data.teachers || [];
       setAllTeachers(teachers);
 
       if (teachers.length > 0 && !selectedTeacherId) {
         setSelectedTeacherId(headTeacherId || teachers[0]?.id || '');
       }
 
-      // 2. 전체 반 목록 조회
-      const { data: cData } = await supabase
-        .from('classes')
-        .select('*');
-      setAllClasses(cData || []);
-
-      // 3. 전체 학생 목록 조회 (비밀번호 제외한 안전한 컬럼만 조회)
-      const { data: stData } = await supabase
-        .from('users')
-        .select('id, name, email, role, parent_phone, teacher_id, created_at')
-        .eq('role', 'STUDENT');
-      setAllStudents(stData || []);
-
-      // 4. 반-학생 배정 현황 조회
-      const { data: csData } = await supabase.from('class_students').select('*');
-      setClassStudents(csData || []);
-
+      setAllClasses(data.classes || []);
+      setAllStudents(data.students || []);
+      setClassStudents(data.classStudents || []);
     } catch (err) {
       console.error('Admin Fetch Error:', err);
     } finally {
@@ -103,15 +88,13 @@ export default function AdminDashboard() {
     }
 
     try {
-      const payload = {
-        name: teacherName.trim(),
-        email: teacherEmail.trim(),
-        password: '1234',
-        role: 'TEACHER',
-      };
-
-      const { error } = await supabase.from('users').insert([payload]);
-      if (error) throw error;
+      const res = await fetch('/api/admin/teachers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: teacherName.trim(), email: teacherEmail.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '생성 실패');
 
       alert(`[${teacherName}] 선생님 계정이 생성되었습니다.`);
       setTeacherName('');
@@ -133,8 +116,9 @@ export default function AdminDashboard() {
     }
 
     try {
-      const { error } = await supabase.from('users').delete().eq('id', teacherId);
-      if (error) throw error;
+      const res = await fetch(`/api/admin/teachers/${teacherId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '삭제 실패');
 
       alert(`[${teacherName}] 선생님 계정이 삭제되었습니다.`);
       fetchAdminData(user.id);
@@ -149,13 +133,13 @@ export default function AdminDashboard() {
     if (!newClassName.trim()) return alert('반 이름을 입력해 주세요.');
 
     try {
-      const { error } = await supabase.from('classes').insert([
-        {
-          name: newClassName.trim(),
-          teacher_id: selectedTeacherId || user.id,
-        },
-      ]);
-      if (error) throw error;
+      const res = await fetch('/api/admin/classes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newClassName.trim(), teacherId: selectedTeacherId || user.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '개설 실패');
 
       alert(`[${newClassName}] 반이 성공적으로 개설되었습니다.`);
       setNewClassName('');
@@ -169,9 +153,9 @@ export default function AdminDashboard() {
   const handleDeleteClass = async (classId, className) => {
     if (!confirm(`[${className}] 반을 삭제하시겠습니까?`)) return;
     try {
-      await supabase.from('class_students').delete().eq('class_id', classId);
-      const { error } = await supabase.from('classes').delete().eq('id', classId);
-      if (error) throw error;
+      const res = await fetch(`/api/admin/classes/${classId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '삭제 실패');
       fetchAdminData(user.id);
     } catch (err) {
       alert(`삭제 실패: ${err.message}`);
@@ -203,22 +187,13 @@ export default function AdminDashboard() {
     if (!assignTargetClass) return;
 
     try {
-      // 1. 기존 반 배정 해제
-      await supabase
-        .from('class_students')
-        .delete()
-        .eq('class_id', assignTargetClass.id);
-
-      // 2. 선택된 학생들 새롭게 배정
-      if (selectedStudentIds.length > 0) {
-        const insertPayloads = selectedStudentIds.map((stId) => ({
-          student_id: stId,
-          class_id: assignTargetClass.id,
-        }));
-
-        const { error } = await supabase.from('class_students').insert(insertPayloads);
-        if (error) throw error;
-      }
+      const res = await fetch('/api/admin/class-assignments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ classId: assignTargetClass.id, studentIds: selectedStudentIds }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '배정 실패');
 
       alert(`[${assignTargetClass.name}] 반에 ${selectedStudentIds.length}명의 학생 배정이 완료되었습니다.`);
       setAssignTargetClass(null);
@@ -231,11 +206,13 @@ export default function AdminDashboard() {
   // 👨‍🏫 원생 담당 선생님 원클릭 즉시 변경
   const handleQuickChangeTeacher = async (studentId, newTeacherId) => {
     try {
-      const { error } = await supabase
-        .from('users')
-        .update({ teacher_id: newTeacherId })
-        .eq('id', studentId);
-      if (error) throw error;
+      const res = await fetch(`/api/admin/students/${studentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teacherId: newTeacherId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '변경 실패');
 
       const teacherObj = allTeachers.find((t) => t.id === newTeacherId);
       alert(`담당 선생님이 [${teacherObj?.name || '선생님'}]으로 변경되었습니다.`);
@@ -251,17 +228,18 @@ export default function AdminDashboard() {
     if (!editingStudent) return;
 
     try {
-      const { error } = await supabase
-        .from('users')
-        .update({
+      const res = await fetch(`/api/admin/students/${editingStudent.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           name: editingStudent.name,
           email: editingStudent.email,
-          parent_phone: editingStudent.parent_phone ? editingStudent.parent_phone.replace(/[^0-9]/g, '') : '',
-          teacher_id: editingStudent.teacher_id,
-        })
-        .eq('id', editingStudent.id);
-
-      if (error) throw error;
+          parentPhone: editingStudent.parent_phone,
+          teacherId: editingStudent.teacher_id,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '수정 실패');
 
       alert('원생 정보가 수정되었습니다.');
       setEditingStudent(null);
@@ -275,10 +253,9 @@ export default function AdminDashboard() {
   const handleDeleteStudent = async (studentId, studentName) => {
     if (!confirm(`[${studentName}] 원생을 학원에서 삭제하시겠습니까?\n삭제 시 반 배정 및 로그인 정보가 영구 제거됩니다.`)) return;
     try {
-      await supabase.from('class_students').delete().eq('student_id', studentId);
-      await supabase.from('push_subscriptions').delete().eq('user_id', studentId);
-      const { error } = await supabase.from('users').delete().eq('id', studentId);
-      if (error) throw error;
+      const res = await fetch(`/api/admin/students/${studentId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '삭제 실패');
 
       alert(`[${studentName}] 원생이 삭제되었습니다.`);
       fetchAdminData(user.id);
@@ -342,7 +319,7 @@ export default function AdminDashboard() {
             📘 내 수업 대시보드로 이동
           </button>
           <button
-            onClick={() => { localStorage.removeItem('user'); router.push('/login'); }}
+            onClick={async () => { await logout(); router.push('/login'); }}
             className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3.5 py-2 rounded-xl transition"
           >
             로그아웃

@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { getStudentBugDex, getMonthlyBugLeaderboard, synthesizeBugs } from '@/lib/luckyBugService';
 import { BUG_TIERS, BUG_CATALOG } from '@/lib/bugCatalog';
 
 export default function StudentBugDexModal({ user, onClose }) {
@@ -31,14 +30,16 @@ export default function StudentBugDexModal({ user, onClose }) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [dex, ranks] = await Promise.all([
-        getStudentBugDex(user.id),
-        getMonthlyBugLeaderboard(),
+      const [dexRes, leaderboardRes] = await Promise.all([
+        fetch('/api/lucky-bug/dex'),
+        fetch('/api/lucky-bug/leaderboard'),
       ]);
-      setDexData(dex);
-      setLeaderboard(ranks);
-      if (dex?.terrariumBugs) {
-        randomizeTerrariumPositions(dex.terrariumBugs);
+      const dexJson = await dexRes.json();
+      const leaderboardJson = await leaderboardRes.json();
+      setDexData(dexJson.dex);
+      setLeaderboard(leaderboardJson.leaderboard || []);
+      if (dexJson.dex?.terrariumBugs) {
+        randomizeTerrariumPositions(dexJson.dex.terrariumBugs);
       }
     } catch (e) {
       console.error('Dex load error:', e);
@@ -173,7 +174,12 @@ export default function StudentBugDexModal({ user, onClose }) {
     setHatchState('SHAKING');
 
     try {
-      const res = await synthesizeBugs(user.id, synthTier);
+      const synthRes = await fetch('/api/lucky-bug/synthesize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier: synthTier }),
+      });
+      const res = await synthRes.json();
       if (!res.success) {
         setSynthError(res.error || '합성에 실패했습니다.');
         setHatchState(null);

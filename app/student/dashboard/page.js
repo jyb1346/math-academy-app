@@ -7,7 +7,7 @@ import PushNotificationManager from '@/components/PushNotificationManager';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import StudentHomeworkTable from '@/components/StudentHomeworkTable';
 import StudentBugDexModal from '@/components/StudentBugDexModal';
-import { checkIfUserIsJangTeacherOrStudent } from '@/lib/luckyBugService';
+import { logout } from '@/lib/useSession';
 
 export default function StudentDashboard() {
   const [user, setUser] = useState(null);
@@ -29,7 +29,10 @@ export default function StudentDashboard() {
       const parsedUser = JSON.parse(userData);
       setUser(parsedUser);
       fetchStudentData(parsedUser.id);
-      checkIfUserIsJangTeacherOrStudent(parsedUser).then((res) => setIsJangStudent(res));
+      fetch('/api/lucky-bug/check')
+        .then((res) => res.json())
+        .then((data) => setIsJangStudent(Boolean(data.isEligible)))
+        .catch(() => setIsJangStudent(false));
     } catch (e) {
       router.push('/login');
     }
@@ -124,7 +127,7 @@ export default function StudentDashboard() {
 
             {/* 모바일 전용 상단 우측 로그아웃 */}
             <button
-              onClick={() => { localStorage.removeItem('user'); router.push('/login'); }}
+              onClick={async () => { await logout(); router.push('/login'); }}
               className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3 py-1.5 rounded-xl transition sm:hidden"
             >
               로그아웃
@@ -152,7 +155,7 @@ export default function StudentDashboard() {
 
             {/* 데스크톱 전용 로그아웃 */}
             <button
-              onClick={() => { localStorage.removeItem('user'); router.push('/login'); }}
+              onClick={async () => { await logout(); router.push('/login'); }}
               className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3.5 py-2 rounded-xl transition whitespace-nowrap hidden sm:inline-block"
             >
               로그아웃

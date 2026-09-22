@@ -2,7 +2,6 @@
 import { compressImage } from '@/lib/imageCompressor';
 
 import { useState, useEffect, Suspense } from 'react';
-import { supabase } from '@/lib/supabase';
 import { useRouter, useSearchParams } from 'next/navigation';
 import CategoryTabs from './components/CategoryTabs';
 import PostCreateForm from './components/PostCreateForm';
@@ -140,32 +139,27 @@ function BoardMain() {
     try {
       const parsedUser = JSON.parse(userData);
       setUser(parsedUser);
-      initData(parsedUser);
+      loadBoardData(parsedUser);
     } catch (e) {
       console.error(e);
       router.push('/login');
     }
   }, []);
 
-  const initData = async (currentUser) => {
+  const loadBoardData = async (currentUser) => {
     try {
-      // 1. 전체 반 & 배정 정보 & 전체 학생 정보 로드
-      const { data: cData } = await supabase.from('classes').select('*');
-      const allC = cData || [];
-      setClasses(allC);
+      const res = await fetch('/api/board');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '조회 실패');
 
-      const { data: csData } = await supabase.from('class_students').select('*');
-      setClassStudents(csData || []);
+      setClasses(data.classes || []);
+      setClassStudents(data.classStudents || []);
+      setAllStudents(data.allStudents || []);
 
-      const { data: stData } = await supabase.from('users').select('id, name, email').eq('role', 'STUDENT');
-      setAllStudents(stData || []);
+      const myC = data.myClasses || [];
+      setMyClasses(myC);
 
-      // 2. 사용자 권한별 담당/소속 반 분기
-      // 💡 요구사항: 원장님(HEAD_TEACHER)도 직접 수업을 담당하므로 일반 선생님과 동일하게 본인 담당 반만 노출!
       if (currentUser.role !== 'STUDENT') {
-        const myC = allC.filter((c) => c.teacher_id === currentUser.id);
-        setMyClasses(myC);
-
         if (myC.length > 0) {
           setSelectedClassId(String(myC[0].id));
           setTargetClassId(String(myC[0].id));
@@ -174,23 +168,32 @@ function BoardMain() {
           setTargetClassId('ALL_STUDENTS');
         }
       } else {
-        const myEnrolledIds = (csData || [])
-          .filter((cs) => cs.student_id === currentUser.id)
-          .map((cs) => cs.class_id);
-        setMyClassIds(myEnrolledIds);
-
-        const studentMyClasses = allC.filter((c) => myEnrolledIds.includes(c.id));
-        setMyClasses(studentMyClasses);
-
-        if (studentMyClasses.length > 0) {
-          setSelectedClassId(String(studentMyClasses[0].id));
-        } else {
-          setSelectedClassId('PUBLIC');
-        }
+        setMyClassIds(data.myClassIds || []);
+        setSelectedClassId(myC.length > 0 ? String(myC[0].id) : 'PUBLIC');
       }
 
-      await fetchPosts();
-      await fetchConfirmations();
+      const filtered = (data.posts || []).filter((p) => {
+        try {
+          const m = JSON.parse(p.content || '{}');
+          return !m.isLuckyEvent;
+        } catch {
+          return true;
+        }
+      });
+      setPosts(filtered);
+
+      const confirmMap = {};
+      const dateMap = {};
+      (data.confirmations || []).forEach((item) => {
+        if (!confirmMap[item.post_id]) {
+          confirmMap[item.post_id] = new Set();
+          dateMap[item.post_id] = {};
+        }
+        confirmMap[item.post_id].add(item.student_id);
+        dateMap[item.post_id][item.student_id] = item.created_at;
+      });
+      setConfirmations(confirmMap);
+      setConfirmationDates(dateMap);
     } catch (err) {
       console.error(err);
     } finally {
@@ -198,99 +201,36 @@ function BoardMain() {
     }
   };
 
-  const fetchPosts = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('posts')
-        .select('*, users!posts_author_id_fkey(name), classes(name, teacher_id)')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.warn('Post fetch error, fallback:', error);
-        const { data: fbData } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
-        setPosts(fbData || []);
-      } else {
-        const filtered = (data || []).filter((p) => {
-          try {
-            const m = JSON.parse(p.content || '{}');
-            return !m.isLuckyEvent;
-          } catch {
-            return true;
-          }
-        });
-        setPosts(filtered);
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  // 🎯 읽음 확인 데이터 패칭
-  const fetchConfirmations = async () => {
-    try {
-      const { data, error } = await supabase.from('post_confirmations').select('*');
-      if (!error && data) {
-        const confirmMap = {};
-        const dateMap = {};
-        data.forEach((item) => {
-          if (!confirmMap[item.post_id]) {
-            confirmMap[item.post_id] = new Set();
-            dateMap[item.post_id] = {};
-          }
-          confirmMap[item.post_id].add(item.student_id);
-          dateMap[item.post_id][item.student_id] = item.created_at;
-        });
-        setConfirmations(confirmMap);
-        setConfirmationDates(dateMap);
-      }
-    } catch (e) {
-      console.warn('Error fetching confirmations:', e);
-    }
-  };
-
   // 🎯 학생: 게시글 [확인했습니다] 토글
   const handleToggleConfirm = async (postId) => {
     if (!user || user.role !== 'STUDENT') return;
 
-    const isConfirmed = confirmations[postId]?.has(user.id);
-
     try {
-      if (isConfirmed) {
-        const { error } = await supabase
-          .from('post_confirmations')
-          .delete()
-          .eq('post_id', postId)
-          .eq('student_id', user.id);
+      const res = await fetch(`/api/board/${postId}/confirm`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '요청 실패');
 
-        if (!error) {
-          setConfirmations((prev) => {
-            const next = { ...prev };
-            if (next[postId]) {
-              next[postId] = new Set(next[postId]);
-              next[postId].delete(user.id);
-            }
-            return next;
-          });
-        }
+      if (data.confirmed) {
+        setConfirmations((prev) => {
+          const next = { ...prev };
+          const s = new Set(next[postId] || []);
+          s.add(user.id);
+          next[postId] = s;
+          return next;
+        });
+        setConfirmationDates((prev) => ({
+          ...prev,
+          [postId]: { ...(prev[postId] || {}), [user.id]: data.createdAt || new Date().toISOString() },
+        }));
       } else {
-        const { error } = await supabase
-          .from('post_confirmations')
-          .insert([{ post_id: postId, student_id: user.id }]);
-
-        if (!error) {
-          const nowStr = new Date().toISOString();
-          setConfirmations((prev) => {
-            const next = { ...prev };
-            const s = new Set(next[postId] || []);
-            s.add(user.id);
-            next[postId] = s;
-            return next;
-          });
-          setConfirmationDates((prev) => ({
-            ...prev,
-            [postId]: { ...(prev[postId] || {}), [user.id]: nowStr }
-          }));
-        }
+        setConfirmations((prev) => {
+          const next = { ...prev };
+          if (next[postId]) {
+            next[postId] = new Set(next[postId]);
+            next[postId].delete(user.id);
+          }
+          return next;
+        });
       }
     } catch (err) {
       alert('확인 상태 변경에 실패했습니다: ' + err.message);
@@ -360,19 +300,14 @@ function BoardMain() {
       if (attachedFile) {
         try {
           const fileToUpload = await compressImage(attachedFile);
-          const fileExt = attachedFile.name.split('.').pop();
-          const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
-          const filePath = `board_files/${fileName}`;
-
-          const { error: uploadError } = await supabase.storage
-            .from('attachments')
-            .upload(filePath, fileToUpload);
-
-          if (!uploadError) {
-            const { data: urlData } = supabase.storage
-              .from('attachments')
-              .getPublicUrl(filePath);
-            filePublicUrl = urlData?.publicUrl;
+          const uploadForm = new FormData();
+          uploadForm.append('file', fileToUpload, attachedFile.name);
+          const uploadRes = await fetch('/api/board/upload', { method: 'POST', body: uploadForm });
+          const uploadData = await uploadRes.json();
+          if (uploadRes.ok) {
+            filePublicUrl = uploadData.url;
+          } else {
+            console.warn('Upload failed:', uploadData.error);
           }
         } catch (storageErr) {
           console.warn('Storage upload warning:', storageErr);
@@ -400,51 +335,38 @@ function BoardMain() {
                            classes.find((c) => String(c.id) === String(targetClassId));
       const validClassId = (targetClassId === 'ALL_STUDENTS' || !matchedClass) ? null : matchedClass.id;
 
-      const postData = {
-        title: title.trim(),
-        content: finalContent,
-        category: newCategory,
-        author_id: user.id,
-        class_id: validClassId,
-        due_date: newCategory === 'HOMEWORK' ? dueDate : null,
-      };
-
-      const { error } = await supabase.from('posts').insert([postData]);
-      if (error) throw error;
-
-      // 🔔 실시간 웹 푸시 알림 발송 (백그라운드)
-      try {
-        let targetUserIds = [];
-        if (validClassId) {
-          targetUserIds = (classStudents || [])
-            .filter((cs) => String(cs.class_id) === String(validClassId))
-            .map((cs) => cs.student_id);
-        } else {
-          targetUserIds = (allStudents || []).map((st) => st.id);
-        }
-
-        if (targetUserIds.length > 0) {
-          fetch('/api/push/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userIds: targetUserIds,
-              title: `[품수학 ${matchedClass ? matchedClass.name : '학원공지'}] ${title.trim()}`,
-              message: newCategory === 'HOMEWORK' ? '새로운 숙제가 등록되었습니다. 기한을 확인하세요.' : '새로운 공지사항이 등록되었습니다.',
-              url: '/board',
-            }),
-          }).catch((err) => console.warn('Push send warning:', err));
-        }
-      } catch (pushErr) {
-        console.warn('Push dispatch error:', pushErr);
+      let targetUserIds = [];
+      if (validClassId) {
+        targetUserIds = (classStudents || [])
+          .filter((cs) => String(cs.class_id) === String(validClassId))
+          .map((cs) => cs.student_id);
+      } else {
+        targetUserIds = (allStudents || []).map((st) => st.id);
       }
+
+      const createRes = await fetch('/api/board', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          content: finalContent,
+          category: newCategory,
+          classId: validClassId,
+          dueDate,
+          pushTargetUserIds: targetUserIds,
+          pushTitle: `[품수학 ${matchedClass ? matchedClass.name : '학원공지'}] ${title.trim()}`,
+          pushMessage: newCategory === 'HOMEWORK' ? '새로운 숙제가 등록되었습니다. 기한을 확인하세요.' : '새로운 공지사항이 등록되었습니다.',
+        }),
+      });
+      const createData = await createRes.json();
+      if (!createRes.ok) throw new Error(createData.error || '등록 실패');
 
       setTitle('');
       setContent('');
       setGoogleFormUrl('');
       setAttachedFile(null);
       setHomeworkList([{ bookTitle: '', range: '' }]);
-      fetchPosts();
+      loadBoardData(user);
       alert(`${matchedClass ? `[${matchedClass.name}] 반` : '학원 전체'} 게시글이 성공적으로 등록되었습니다!`);
     } catch (err) {
       console.error(err);
@@ -523,20 +445,14 @@ function BoardMain() {
 
       if (editNewFile) {
         const fileToUpload = await compressImage(editNewFile);
-        const fileExt = editNewFile.name.split('.').pop();
-        const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
-        const filePath = `board_files/${fileName}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('attachments')
-          .upload(filePath, fileToUpload);
-
-        if (uploadError) {
-          throw new Error('첨부파일 업로드 실패: ' + uploadError.message);
+        const uploadForm = new FormData();
+        uploadForm.append('file', fileToUpload, editNewFile.name);
+        const uploadRes = await fetch('/api/board/upload', { method: 'POST', body: uploadForm });
+        const uploadData = await uploadRes.json();
+        if (!uploadRes.ok) {
+          throw new Error('첨부파일 업로드 실패: ' + uploadData.error);
         }
-
-        const { data: urlData } = supabase.storage.from('attachments').getPublicUrl(filePath);
-        filePublicUrl = urlData?.publicUrl;
+        filePublicUrl = uploadData.url;
         originalFileName = editNewFile.name;
       } else if (editExistingAttachment) {
         filePublicUrl = editExistingAttachment.url;
@@ -569,20 +485,23 @@ function BoardMain() {
       const matchedClass = classes.find((c) => String(c.id) === String(editTargetClassId));
       const validClassId = (editTargetClassId === 'ALL_STUDENTS' || !matchedClass) ? null : matchedClass.id;
 
-      const updateData = {
-        title: editTitle.trim(),
-        content: finalContent,
-        category: editCategory,
-        class_id: validClassId,
-        due_date: editCategory === 'HOMEWORK' ? editDueDate : null,
-      };
-
-      const { error } = await supabase.from('posts').update(updateData).eq('id', editingPost.id);
-      if (error) throw error;
+      const updateRes = await fetch(`/api/board/${editingPost.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: editTitle,
+          content: finalContent,
+          category: editCategory,
+          classId: validClassId,
+          dueDate: editDueDate,
+        }),
+      });
+      const updateData = await updateRes.json();
+      if (!updateRes.ok) throw new Error(updateData.error || '수정 실패');
 
       alert('게시글이 성공적으로 수정되었습니다.');
       setEditingPost(null);
-      fetchPosts();
+      loadBoardData(user);
     } catch (err) {
       alert(`수정 실패: ${err.message}`);
     } finally {
@@ -593,9 +512,10 @@ function BoardMain() {
   const handleDeletePost = async (postId, postTitle) => {
     if (!confirm(`[${postTitle}] 게시글을 삭제하시겠습니까?`)) return;
     try {
-      const { error } = await supabase.from('posts').delete().eq('id', postId);
-      if (error) throw error;
-      fetchPosts();
+      const res = await fetch(`/api/board/${postId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '삭제 실패');
+      loadBoardData(user);
       alert('삭제되었습니다.');
     } catch (err) {
       alert(`삭제 실패: ${err.message}`);

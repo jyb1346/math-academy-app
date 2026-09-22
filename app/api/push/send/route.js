@@ -1,72 +1,31 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
-import webpush from '@/lib/webpush';
+import { requireSession } from '@/lib/session';
+import { sendPushToUsers, broadcastPush } from '@/lib/pushService';
 
 export async function POST(req) {
   try {
+    const { user, error } = requireSession(req);
+    if (error) return error;
+
     const body = await req.json();
     const { userIds, title, message, url, tag, renotify, broadcastAll } = body;
 
-    // 🛡️ 보안 및 유효성 검증
-    if (!broadcastAll) {
-      if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
-        return NextResponse.json({ ok: true, count: 0, message: 'No target userIds specified' });
-      }
+    if (broadcastAll && user.role !== 'HEAD_TEACHER') {
+      return NextResponse.json({ error: '전체 발송 권한이 없습니다.' }, { status: 403 });
     }
 
-    // 유효한 문자열 ID만 필터링
-    const sanitizedUserIds = Array.isArray(userIds)
-      ? userIds.filter((id) => typeof id === 'string' && id.trim().length > 0)
-      : [];
-
-    if (!broadcastAll && sanitizedUserIds.length === 0) {
-      return NextResponse.json({ ok: true, count: 0, message: 'No valid userIds provided' });
+    // STUDENT는 자기 자신에게 보내는 테스트 알림만 허용, 타인 대상 발송은 TEACHER/HEAD_TEACHER만 가능
+    const isSelfOnly = Array.isArray(userIds) && userIds.length === 1 && userIds[0] === user.id;
+    if (!broadcastAll && user.role === 'STUDENT' && !isSelfOnly) {
+      return NextResponse.json({ error: '알림 발송 권한이 없습니다.' }, { status: 403 });
     }
 
-    let query = supabase.from('push_subscriptions').select('*');
-    if (!broadcastAll && sanitizedUserIds.length > 0) {
-      query = query.in('user_id', sanitizedUserIds);
-    }
+    const payload = { title, message, url, tag, renotify };
+    const result = broadcastAll
+      ? await broadcastPush(req, payload)
+      : await sendPushToUsers(req, userIds, payload);
 
-    const { data: subscriptions, error } = await query;
-    if (error) {
-      console.warn('Could not fetch subscriptions:', error.message);
-      return NextResponse.json({ ok: false, warning: error.message });
-    }
-
-    if (!subscriptions || subscriptions.length === 0) {
-      return NextResponse.json({ ok: true, count: 0 });
-    }
-
-    const payload = JSON.stringify({
-      title: title || '품수학 학원',
-      body: message || '새로운 공지 또는 알림이 도착했습니다.',
-      url: url || '/',
-      tag: tag || undefined,
-      renotify: typeof renotify === 'boolean' ? renotify : undefined,
-    });
-
-    const sendPromises = subscriptions.map((sub) => {
-      const pushConfig = {
-        endpoint: sub.endpoint,
-        keys: {
-          p256dh: sub.p256dh,
-          auth: sub.auth,
-        },
-      };
-
-      return webpush.sendNotification(pushConfig, payload).catch((err) => {
-        if (err.statusCode === 410 || err.statusCode === 404) {
-          // 만료된 구독 정리
-          return supabase.from('push_subscriptions').delete().eq('id', sub.id);
-        }
-        console.warn('Push send single error:', err.message);
-      });
-    });
-
-    await Promise.allSettled(sendPromises);
-
-    return NextResponse.json({ ok: true, count: subscriptions.length });
+    return NextResponse.json(result);
   } catch (err) {
     console.error('Push send error:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });

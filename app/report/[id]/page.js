@@ -1,19 +1,29 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
-import { useParams } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
 import EvaluationBarChart from '@/components/EvaluationBarChart';
 import StudentHomeworkTable from '@/components/StudentHomeworkTable';
 import { parseEvaluationRecord } from '@/lib/evalUtils';
 
 export default function StudentReportPage() {
+  return (
+    <Suspense fallback={<div className="p-10 text-center text-gray-500 font-bold">리포트를 불러오는 중입니다...</div>}>
+      <StudentReportContent />
+    </Suspense>
+  );
+}
+
+function StudentReportContent() {
   const { id } = useParams();
+  const searchParams = useSearchParams();
+  const token = searchParams.get('t');
   const [evalData, setEvalData] = useState(null);
   const [authorTeacherName, setAuthorTeacherName] = useState('');
   const [studentAllEvals, setStudentAllEvals] = useState([]);
   const [loading, setLoading] = useState(true);
-  
+  const [errorMsg, setErrorMsg] = useState('');
+
   // 학부모 답장 상태
   const [replyText, setReplyText] = useState('');
   const [submittingReply, setSubmittingReply] = useState(false);
@@ -24,49 +34,23 @@ export default function StudentReportPage() {
 
   const fetchEvaluation = async () => {
     try {
-      const { data, error } = await supabase
-        .from('daily_evaluations')
-        .select('*, users!daily_evaluations_student_id_fkey(name)')
-        .eq('id', id)
-        .single();
+      const res = await fetch(`/api/report/${id}?t=${encodeURIComponent(token || '')}`);
+      const data = await res.json();
 
-      if (error) throw error;
-      setEvalData(data);
-      if (data?.parent_reply) {
-        setReplyText(data.parent_reply);
+      if (!res.ok) {
+        setErrorMsg(data.error || '리포트를 불러올 수 없습니다.');
+        return;
       }
 
-      // 담당 선생님 목록 및 작성자 강사명 조회
-      const { data: tData } = await supabase
-        .from('users')
-        .select('id, name')
-        .in('role', ['TEACHER', 'HEAD_TEACHER', 'ADMIN']);
-      const teacherMap = (tData || []).reduce((acc, t) => {
-        acc[t.id] = t.name;
-        return acc;
-      }, {});
-
-      if (data?.teacher_id && teacherMap[data.teacher_id]) {
-        setAuthorTeacherName(teacherMap[data.teacher_id]);
-      }
-
-      // 학생의 전체 평가 기록 조회 (누적 과제표용)
-      if (data?.student_id) {
-        const { data: allEvals } = await supabase
-          .from('daily_evaluations')
-          .select('*')
-          .eq('student_id', data.student_id)
-          .order('eval_date', { ascending: true });
-
-        const enrichedAllEvals = (allEvals || []).map((ev) => ({
-          ...ev,
-          teacher_name: teacherMap[ev.teacher_id] || '',
-        }));
-
-        setStudentAllEvals(enrichedAllEvals);
+      setEvalData(data.evalData);
+      setAuthorTeacherName(data.authorTeacherName || '');
+      setStudentAllEvals(data.studentAllEvals || []);
+      if (data.evalData?.parent_reply) {
+        setReplyText(data.evalData.parent_reply);
       }
     } catch (err) {
       console.error(err);
+      setErrorMsg('리포트를 불러오는 중 오류가 발생했습니다.');
     } finally {
       setLoading(false);
     }
@@ -80,37 +64,13 @@ export default function StudentReportPage() {
     setSubmittingReply(true);
 
     try {
-      const { error } = await supabase
-        .from('daily_evaluations')
-        .update({
-          parent_reply: replyText,
-          parent_reply_at: new Date().toISOString(),
-        })
-        .eq('id', id);
-
-      if (error) throw error;
-
-      // 🔔 담당 선생님께 실시간 웹 푸시 알림 발송
-      if (evalData?.teacher_id) {
-        try {
-          const studentName = evalData.users?.name || '학생';
-          const trimmedReply = replyText.trim();
-          const preview = trimmedReply.length > 50 ? `${trimmedReply.slice(0, 50)}...` : trimmedReply;
-
-          fetch('/api/push/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userIds: [evalData.teacher_id],
-              title: `💌 [학부모 답장] ${studentName} 학생 학부모님`,
-              message: `"${preview}"`,
-              url: '/teacher/eval/history',
-            }),
-          }).catch((err) => console.warn('Parent reply push send warning:', err));
-        } catch (pushErr) {
-          console.warn('Push dispatch error:', pushErr);
-        }
-      }
+      const res = await fetch(`/api/report/${id}?t=${encodeURIComponent(token || '')}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ replyText }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '답장 전송 실패');
 
       alert('담당 선생님께 답장이 성공적으로 전달되었습니다!');
       fetchEvaluation();
@@ -127,7 +87,7 @@ export default function StudentReportPage() {
   }
 
   if (!evalData) {
-    return <div className="p-10 text-center text-gray-500 font-bold">등록된 피드백 정보를 찾을 수 없습니다.</div>;
+    return <div className="p-10 text-center text-gray-500 font-bold">{errorMsg || '등록된 피드백 정보를 찾을 수 없습니다.'}</div>;
   }
 
   const renderAttendanceText = () => {

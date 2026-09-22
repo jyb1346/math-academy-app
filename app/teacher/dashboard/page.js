@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import PushNotificationManager from '@/components/PushNotificationManager';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
+import { logout } from '@/lib/useSession';
 
 export default function TeacherDashboard() {
   const [user, setUser] = useState(null);
@@ -481,7 +482,7 @@ export default function TeacherDashboard() {
 
             {/* 모바일 전용 상단 우측 로그아웃 */}
             <button
-              onClick={() => { localStorage.removeItem('user'); router.push('/login'); }}
+              onClick={async () => { await logout(); router.push('/login'); }}
               className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3 py-1.5 rounded-xl transition md:hidden"
             >
               로그아웃
@@ -528,7 +529,7 @@ export default function TeacherDashboard() {
 
             {/* 데스크톱 전용 로그아웃 */}
             <button
-              onClick={() => { localStorage.removeItem('user'); router.push('/login'); }}
+              onClick={async () => { await logout(); router.push('/login'); }}
               className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3.5 py-2 rounded-xl transition whitespace-nowrap hidden md:inline-block"
             >
               로그아웃

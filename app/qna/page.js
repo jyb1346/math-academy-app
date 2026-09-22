@@ -2,7 +2,6 @@
 import { compressImage } from '@/lib/imageCompressor';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 
 export default function QnaPage() {
@@ -70,94 +69,16 @@ export default function QnaPage() {
     try {
       setLoading(true);
 
-      // 1. 전체 사용자(학생 및 선생님) 이름/이메일 사전 로드
-      const { data: uData } = await supabase.from('users').select('id, name, email, role, teacher_id');
-      const uMap = {};
-      const tList = [];
-      (uData || []).forEach((u) => {
-        uMap[u.id] = u;
-        if (u.role === 'TEACHER' || u.role === 'HEAD_TEACHER') {
-          tList.push(u);
-        }
-      });
-      setUsersMap(uMap);
-      setTeachersList(tList);
+      const res = await fetch('/api/qna');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '조회 실패');
 
-      // 2. 학생인 경우: 본인이 소속된 반 및 담당 선생님 목록 추출
+      setUsersMap(data.usersMap || {});
+      setTeachersList(data.teachersList || []);
+      setQuestions(data.questions || []);
+
       if (currentUser.role === 'STUDENT') {
-        const { data: csData } = await supabase
-          .from('class_students')
-          .select('class_id')
-          .eq('student_id', currentUser.id);
-
-        const { data: clsData } = await supabase
-          .from('classes')
-          .select('id, name, teacher_id');
-
-        const classMap = {};
-        (clsData || []).forEach((c) => {
-          classMap[c.id] = c;
-        });
-
-        const teacherNameMap = {};
-        tList.forEach((t) => {
-          teacherNameMap[t.id] = t.name;
-        });
-
-        const targets = [];
-        const seenKeys = new Set();
-
-        // 1) 반 배정 기반 타겟
-        (csData || []).forEach((cs) => {
-          const cls = classMap[cs.class_id];
-          if (cls && cls.teacher_id && teacherNameMap[cls.teacher_id]) {
-            const key = `cls_${cls.id}`;
-            if (!seenKeys.has(key)) {
-              seenKeys.add(key);
-              targets.push({
-                key,
-                teacherId: cls.teacher_id,
-                teacherName: teacherNameMap[cls.teacher_id],
-                classId: cls.id,
-                className: cls.name,
-                label: `${teacherNameMap[cls.teacher_id]} 선생님 (${cls.name})`,
-              });
-            }
-          }
-        });
-
-        // 2) 사용자 테이블의 직접 지정 teacher_id 확인 (반 미지정 시 또는 추가 과외/수업 시)
-        const studentRecord = uMap[currentUser.id] || currentUser;
-        if (studentRecord?.teacher_id && teacherNameMap[studentRecord.teacher_id]) {
-          const key = `tch_${studentRecord.teacher_id}`;
-          const alreadyHasTeacher = targets.some((t) => t.teacherId === studentRecord.teacher_id);
-          if (!alreadyHasTeacher && !seenKeys.has(key)) {
-            seenKeys.add(key);
-            targets.push({
-              key,
-              teacherId: studentRecord.teacher_id,
-              teacherName: teacherNameMap[studentRecord.teacher_id],
-              classId: null,
-              className: null,
-              label: `${teacherNameMap[studentRecord.teacher_id]} 선생님 (담당 강사)`,
-            });
-          }
-        }
-
-        // 3) 만약 등록된 반/강사가 아예 없을 때의 예외 처리: 모든 강사 선택 가능하도록 제공
-        if (targets.length === 0 && tList.length > 0) {
-          tList.forEach((t) => {
-            targets.push({
-              key: `all_tch_${t.id}`,
-              teacherId: t.id,
-              teacherName: t.name,
-              classId: null,
-              className: null,
-              label: `${t.name} 선생님`,
-            });
-          });
-        }
-
+        const targets = data.availableTargets || [];
         setAvailableTargets(targets);
         if (targets.length > 0) {
           setSelectedTargetKey((prev) => {
@@ -166,20 +87,6 @@ export default function QnaPage() {
           });
         }
       }
-
-      // 3. QnA 데이터 조회
-      let query = supabase.from('qna').select('*');
-      if (currentUser.role === 'STUDENT') {
-        query = query.eq('student_id', currentUser.id);
-      } else if (currentUser.role === 'HEAD_TEACHER') {
-        // 원장 선생님은 학원 전체 질문 조회 가능
-      } else {
-        query = query.eq('teacher_id', currentUser.id);
-      }
-
-      const { data: qData, error } = await query.order('created_at', { ascending: false });
-      if (error) throw error;
-      setQuestions(qData || []);
     } catch (err) {
       console.error('QnA fetch error:', err);
     } finally {
@@ -208,20 +115,11 @@ export default function QnaPage() {
     for (const rawFile of files) {
       const file = await compressImage(rawFile);
       try {
-        const fileExt = file.name.split('.').pop() || 'png';
-        const fileName = `qna_${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
-        const filePath = `qna_files/${fileName}`;
-
-        const { error: uploadErr } = await supabase.storage
-          .from('attachments')
-          .upload(filePath, file);
-
-        if (!uploadErr) {
-          const { data: urlData } = supabase.storage
-            .from('attachments')
-            .getPublicUrl(filePath);
-          if (urlData?.publicUrl) uploadedUrls.push(urlData.publicUrl);
-        }
+        const form = new FormData();
+        form.append('file', file, rawFile.name);
+        const res = await fetch('/api/qna/upload', { method: 'POST', body: form });
+        const data = await res.json();
+        if (res.ok && data.url) uploadedUrls.push(data.url);
       } catch (err) {
         console.warn('Storage upload error:', err);
       }
@@ -246,40 +144,19 @@ export default function QnaPage() {
     try {
       const imageUrls = await uploadFilesToStorage(selectedFiles);
 
-      let finalTitle = title.trim();
-      if (selectedTarget?.className && !finalTitle.startsWith(`[${selectedTarget.className}]`)) {
-        finalTitle = `[${selectedTarget.className}] ${finalTitle}`;
-      }
-
-      const payload = {
-        student_id: user.id,
-        teacher_id: targetTeacherId,
-        title: finalTitle,
-        question: questionText.trim(),
-        question_image_url: imageUrls.length > 0 ? JSON.stringify(imageUrls) : null,
-        status: 'PENDING',
-        replies: [],
-      };
-
-      const { error } = await supabase.from('qna').insert([payload]);
-      if (error) throw error;
-
-      if (targetTeacherId) {
-        try {
-          fetch('/api/push/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userIds: [targetTeacherId],
-              title: `[1:1 질문] ${user.name} 학생의 새 질문`,
-              message: finalTitle,
-              url: '/qna',
-            }),
-          }).catch((e) => console.warn('QnA push warning:', e));
-        } catch (e) {
-          console.warn('Push error:', e);
-        }
-      }
+      const createRes = await fetch('/api/qna', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: title.trim(),
+          question: questionText.trim(),
+          targetTeacherId,
+          targetClassName: selectedTarget?.className || null,
+          imageUrls,
+        }),
+      });
+      const createData = await createRes.json();
+      if (!createRes.ok) throw new Error(createData.error || '질문 등록 실패');
 
       alert(`${selectedTarget?.teacherName || '담당'} 선생님께 질문이 성공적으로 전달되었습니다! 🚀`);
       setTitle('');
@@ -301,10 +178,10 @@ export default function QnaPage() {
     if (!confirm(`[${qTitle}] 질문을 삭제하시겠습니까?`)) return;
     if (!confirm(`[${qTitle || '해당 질문'}]을(를) 삭제하시겠습니까?\n\n※ 삭제 시 질문 내용, 첨부 사진 및 모든 답변 스레드가 완전히 삭제됩니다.`)) return;
     try {
-      const { error } = await supabase.from('qna').delete().eq('id', id);
-      if (error) throw error;
+      const res = await fetch(`/api/qna/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '삭제 실패');
       fetchQuestions(user);
-      alert('삭제되었습니다.');
       alert('질문이 삭제되었습니다.');
     } catch (err) {
       console.error('Delete question error:', err);
@@ -343,15 +220,13 @@ export default function QnaPage() {
     }));
 
     try {
-      const { error } = await supabase
-        .from('qna')
-        .update({
-          title: st.title.trim(),
-          question: st.question.trim(),
-        })
-        .eq('id', id);
-
-      if (error) throw error;
+      const res = await fetch(`/api/qna/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: st.title.trim(), question: st.question.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '수정 실패');
 
       alert('질문이 성공적으로 수정되었습니다.');
       handleCancelEditQuestion(id);
@@ -382,42 +257,13 @@ export default function QnaPage() {
       const newFiles = state.files || [];
       const newUrls = await uploadFilesToStorage(newFiles);
 
-      let existingUrls = [];
-      if (qnaItem.answer_image_url) {
-        try {
-          existingUrls = JSON.parse(qnaItem.answer_image_url);
-        } catch {
-          existingUrls = [qnaItem.answer_image_url];
-        }
-      }
-      const combinedUrls = [...existingUrls, ...newUrls];
-
-      const payload = {
-        answer: text.trim(),
-        answer_image_url: combinedUrls.length > 0 ? JSON.stringify(combinedUrls) : null,
-        status: 'ANSWERED',
-        answered_at: new Date().toISOString(),
-      };
-
-      const { error } = await supabase.from('qna').update(payload).eq('id', qnaItem.id);
-      if (error) throw error;
-
-      if (qnaItem.student_id) {
-        try {
-          fetch('/api/push/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userIds: [qnaItem.student_id],
-              title: `[1:1 답변 등록] ${user.name} 선생님의 풀이`,
-              message: `'${qnaItem.title}' 질문에 대한 풀이 답변이 등록되었습니다.`,
-              url: '/qna',
-            }),
-          }).catch((e) => console.warn('Answer push warning:', e));
-        } catch (e) {
-          console.warn('Push error:', e);
-        }
-      }
+      const res = await fetch(`/api/qna/${qnaItem.id}/answer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text.trim(), imageUrls: newUrls }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '답변 저장 실패');
 
       alert('답변이 등록되었습니다!');
       setAnswerState((prev) => ({
@@ -454,63 +300,13 @@ export default function QnaPage() {
       const uploadedUrls = await uploadFilesToStorage(files);
       const isStudent = user.role === 'STUDENT';
 
-      const newReply = {
-        id: `reply_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        sender_id: user.id,
-        sender_name: user.name || (isStudent ? '학생' : '선생님'),
-        sender_role: user.role,
-        content: text,
-        images: uploadedUrls,
-        created_at: new Date().toISOString(),
-      };
-
-      let existingReplies = [];
-      if (Array.isArray(qnaItem.replies)) {
-        existingReplies = qnaItem.replies;
-      } else if (typeof qnaItem.replies === 'string') {
-        try {
-          existingReplies = JSON.parse(qnaItem.replies) || [];
-        } catch {
-          existingReplies = [];
-        }
-      }
-
-      const updatedReplies = [...existingReplies, newReply];
-      const nextStatus = isStudent ? 'PENDING' : 'ANSWERED';
-
-      const updatePayload = {
-        replies: updatedReplies,
-        status: nextStatus,
-        answered_at: isStudent ? qnaItem.answered_at : new Date().toISOString(),
-      };
-
-      const { error } = await supabase
-        .from('qna')
-        .update(updatePayload)
-        .eq('id', qnaItem.id);
-
-      if (error) throw error;
-
-      // 푸시 알림 발송
-      const targetUserId = isStudent ? qnaItem.teacher_id : qnaItem.student_id;
-      if (targetUserId) {
-        try {
-          fetch('/api/push/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userIds: [targetUserId],
-              title: isStudent
-                ? `[1:1 추가 질문] ${user.name} 학생의 재질문`
-                : `[1:1 추가 답변] ${user.name} 선생님의 추가 풀이`,
-              message: text ? (text.length > 40 ? text.substring(0, 40) + '...' : text) : '사진이 첨부되었습니다.',
-              url: '/qna',
-            }),
-          }).catch((e) => console.warn('Follow-up push warning:', e));
-        } catch (e) {
-          console.warn('Push error:', e);
-        }
-      }
+      const res = await fetch(`/api/qna/${qnaItem.id}/follow-up`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, imageUrls: uploadedUrls }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '전송 실패');
 
       alert(isStudent ? '추가 질문이 선생님께 성공적으로 전달되었습니다!' : '추가 풀이가 학생에게 전달되었습니다!');
 
@@ -538,47 +334,9 @@ export default function QnaPage() {
 
     setResolvingId(qnaItem.id);
     try {
-      const existingReplies = parseReplies(qnaItem.replies);
-      const resolveEvent = {
-        id: `resolve_${Date.now()}`,
-        type: 'RESOLVED',
-        sender_id: user.id,
-        sender_name: user.name || '학생',
-        sender_role: 'STUDENT',
-        content: '💡 학생이 풀이를 완전히 이해하여 해결 완료되었습니다.',
-        created_at: new Date().toISOString(),
-      };
-
-      const updatedReplies = [...existingReplies, resolveEvent];
-
-      // DB 테이블의 qna_status_check(PENDING/ANSWERED) 제약조건을 준수하며 replies에 해결 이벤트를 기록
-      const { error } = await supabase
-        .from('qna')
-        .update({
-          status: 'ANSWERED',
-          replies: updatedReplies,
-        })
-        .eq('id', qnaItem.id);
-
-      if (error) throw error;
-
-      // 담당 선생님께 푸시 알림 발송
-      if (qnaItem.teacher_id) {
-        try {
-          fetch('/api/push/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userIds: [qnaItem.teacher_id],
-              title: `[질문 해결] ${user.name || '학생'} 학생이 풀이를 완전히 이해했습니다! 💡`,
-              message: `'${qnaItem.title}' 질문이 해결 완료되었습니다.`,
-              url: '/qna',
-            }),
-          }).catch((e) => console.warn('Resolve push warning:', e));
-        } catch (e) {
-          console.warn('Push error:', e);
-        }
-      }
+      const res = await fetch(`/api/qna/${qnaItem.id}/resolve`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '완료 처리 실패');
 
       alert('🎉 질문이 해결 완료되었습니다! 수고했어요! 💡');
       fetchQuestions(user);

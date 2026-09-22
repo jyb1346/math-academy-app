@@ -83,7 +83,6 @@ export default function TeacherEvalPage() {
 
   // 2) 👥 판서수업 (반 일괄 등록 모드) 전용 상태
   const [commonLessonProgress, setCommonLessonProgress] = useState('');
-  const [commonExamName, setCommonExamName] = useState(''); // 반 전체 공통 시험지 이름 (학생별로 따로 지정하면 그 값이 우선)
   const [commonHomeworkBooks, setCommonHomeworkBooks] = useState([
     { id: 'c_book_1', name: '개념서', range: '', status: '미체크' },
     { id: 'c_book_2', name: '유형서', range: '', status: '미체크' },
@@ -600,6 +599,37 @@ export default function TeacherEvalPage() {
     );
   };
 
+  const handleBatchRemoveDefaultKey = (studentId, key) => {
+    setBatchStudents((prev) =>
+      prev.map((s) => {
+        if (s.student_id !== studentId) return s;
+        const currentKeys = s.activeKeys || ['concept', 'calc', 'app', 'attitude', 'homework', 'perseverance'];
+        if (currentKeys.length <= 1 && (!s.customItems || s.customItems.length === 0)) {
+          alert('최소 1개 이상의 평가 항목이 필요합니다.');
+          return s;
+        }
+        return {
+          ...s,
+          activeKeys: currentKeys.filter((k) => k !== key),
+        };
+      })
+    );
+  };
+
+  const handleBatchAddDefaultKey = (studentId, key) => {
+    setBatchStudents((prev) =>
+      prev.map((s) => {
+        if (s.student_id !== studentId) return s;
+        const currentKeys = s.activeKeys || ['concept', 'calc', 'app', 'attitude', 'homework', 'perseverance'];
+        if (currentKeys.includes(key)) return s;
+        return {
+          ...s,
+          activeKeys: [...currentKeys, key],
+        };
+      })
+    );
+  };
+
   const handleBatchTestTypeChange = (studentId, type) => {
     setBatchStudents((prev) =>
       prev.map((s) => (s.student_id === studentId ? { ...s, testType: type } : s))
@@ -609,12 +639,6 @@ export default function TeacherEvalPage() {
   const handleBatchTestScoreChange = (studentId, score) => {
     setBatchStudents((prev) =>
       prev.map((s) => (s.student_id === studentId ? { ...s, testScore: score } : s))
-    );
-  };
-
-  const handleBatchExamNameChange = (studentId, examName) => {
-    setBatchStudents((prev) =>
-      prev.map((s) => (s.student_id === studentId ? { ...s, examName } : s))
     );
   };
 
@@ -924,15 +948,21 @@ export default function TeacherEvalPage() {
           perseverance: 8,
         };
 
+        const activeKeys = [];
         const targetEvalSource = todayEval || prev;
         if (targetEvalSource) {
           DEFAULT_EVAL_KEYS.forEach((def) => {
             const val = targetEvalSource[def.dbCol];
             if (val !== null && val !== undefined) {
               scores[def.key] = Number(val);
+              activeKeys.push(def.key);
             }
           });
         }
+
+        const finalActiveKeys = activeKeys.length > 0
+          ? activeKeys
+          : ['concept', 'calc', 'app', 'attitude', 'homework', 'perseverance'];
 
         let customItemsList = [];
         const parsedSource = parsedToday || parsedPrev;
@@ -961,13 +991,13 @@ export default function TeacherEvalPage() {
           included: true,
           attendanceStatus: todayEval?.attendance_status || 'ATTEND',
           latenessMinutes: todayEval?.lateness_minutes || 5,
+          activeKeys: finalActiveKeys,
           scores: { ...scores },
           initialScores: { ...scores },
           customItems: customItemsList,
           testType: effectiveTestType,
           customTestType: customTestTypeValue,
           testScore: parsedToday?.testScore || '',
-          examName: parsedToday?.examName || '',
           comment: parsedToday?.comment || '',
           showScoreEditor: false,
           prevEvalSummary: prev ? `${prev.eval_date} 피드백` : '첫 피드백',
@@ -1121,13 +1151,12 @@ export default function TeacherEvalPage() {
 
       const batchTargets = targets.map((st) => {
         const effectiveTestType = st.testType === '기타' ? (st.customTestType.trim() || '기타평가') : st.testType;
-        const effectiveExamName = (st.examName || '').trim() || commonExamName.trim();
+        const studentActiveKeys = st.activeKeys || ['concept', 'calc', 'app', 'attitude', 'homework', 'perseverance'];
 
         const combinedComment = formatTeacherCommentWithTestScoreAndItems({
           comment: st.comment,
           testScore: st.testScore,
           testType: effectiveTestType,
-          examName: effectiveExamName,
           customItems: st.customItems || [],
           lessonProgress: commonLessonProgress,
           homeworkBooks: validBooks,
@@ -1138,12 +1167,12 @@ export default function TeacherEvalPage() {
           payload: {
             attendance_status: st.attendanceStatus,
             lateness_minutes: st.attendanceStatus === 'LATE' ? parseInt(st.latenessMinutes || 5) : 0,
-            concept_score: st.scores.concept,
-            calc_score: st.scores.calc,
-            app_score: st.scores.app,
-            attitude_score: st.scores.attitude,
-            homework_score: st.scores.homework,
-            perseverance_score: st.scores.perseverance,
+            concept_score: studentActiveKeys.includes('concept') ? parseInt(st.scores.concept) : null,
+            calc_score: studentActiveKeys.includes('calc') ? parseInt(st.scores.calc) : null,
+            app_score: studentActiveKeys.includes('app') ? parseInt(st.scores.app) : null,
+            attitude_score: studentActiveKeys.includes('attitude') ? parseInt(st.scores.attitude) : null,
+            homework_score: studentActiveKeys.includes('homework') ? parseInt(st.scores.homework) : null,
+            perseverance_score: studentActiveKeys.includes('perseverance') ? parseInt(st.scores.perseverance) : null,
             teacher_comment: combinedComment,
           },
         };
@@ -1372,23 +1401,6 @@ export default function TeacherEvalPage() {
                   />
                 </div>
 
-                {/* 공통 시험지 이름 (학생별로 아래에서 따로 지정하면 그 학생만 그 이름으로 대체됨) */}
-                <div>
-                  <label className="block text-xs font-bold text-indigo-950 mb-1">
-                    📄 오늘 공통 시험지 이름 (선택):
-                  </label>
-                  <input
-                    type="text"
-                    value={commonExamName}
-                    onChange={(e) => setCommonExamName(e.target.value)}
-                    placeholder="예: 3단원 삼각함수 단원평가지 A형 (비워두면 시험지 이름 없이 발송)"
-                    className="w-full p-2.5 border border-indigo-200 rounded-xl text-xs font-bold text-indigo-950 bg-white placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 shadow-2xs"
-                  />
-                  <p className="text-[10.5px] text-indigo-500 font-semibold mt-1">
-                    💡 특정 학생만 다른 시험지를 봤다면, 아래 학생 카드의 "시험점수" 옆 시험지 이름 칸에 따로 입력하면 그 학생에게만 적용됩니다.
-                  </p>
-                </div>
-
                 {/* 교재 인라인 추가 인풋 */}
                 {showCommonAddBookInput && (
                   <div className="p-3 bg-white rounded-xl border border-indigo-300 flex gap-2 items-center animate-fade-in">
@@ -1551,8 +1563,10 @@ export default function TeacherEvalPage() {
                 ) : (
                   <div className="space-y-3">
                     {batchStudents.map((st) => {
-                      const totalScore = Object.values(st.scores).reduce((a, b) => a + Number(b), 0);
-                      const avgScore = (totalScore / 6).toFixed(1);
+                      const activeKeys = st.activeKeys || ['concept', 'calc', 'app', 'attitude', 'homework', 'perseverance'];
+                      const activeScores = activeKeys.map((k) => Number(st.scores[k] || 0));
+                      const totalScore = activeScores.reduce((a, b) => a + b, 0);
+                      const avgScore = activeKeys.length > 0 ? (totalScore / activeKeys.length).toFixed(1) : '0.0';
 
                       return (
                         <div
@@ -1565,8 +1579,7 @@ export default function TeacherEvalPage() {
                               : 'bg-white border-slate-200/90 shadow-2xs hover:border-indigo-300'
                           }`}
                         >
-                          {/* 1행: 체크박스 + 이름 + 출결 버튼 + 점수 슬라이더 토글 */}
-                          {/* 1행: 이름 + 작성상태 + 출결 버튼 + 점수 슬라이더 토글 */}
+                          {/* 1행: 이름 + 작성상태 + 출결 버튼 + 점수 슬라이더 토글 + 과제표 검사 버튼 */}
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                             <div className="flex items-center gap-2.5">
                               <input
@@ -1575,31 +1588,31 @@ export default function TeacherEvalPage() {
                                 onChange={() => handleToggleBatchStudentInclude(st.student_id)}
                                 className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                               />
-                            <div className="flex items-center gap-2.5 flex-wrap">
-                              <div>
-                                <span className="text-sm font-extrabold text-slate-800">{st.name}</span>
-                                <span className="text-[11px] text-slate-400 font-medium ml-1.5">
-                                  ({st.prevEvalSummary})
-                                </span>
+                              <div className="flex items-center gap-2.5 flex-wrap">
+                                <div>
+                                  <span className="text-sm font-extrabold text-slate-800">{st.name}</span>
+                                  <span className="text-[11px] text-slate-400 font-medium ml-1.5">
+                                    ({st.prevEvalSummary})
+                                  </span>
+                                </div>
+                                {st.isSaved && st.alimtalkSentAt && (
+                                  <span className="text-[10px] font-black text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                    <span>✅</span>
+                                    <span>작성 & 발송완료</span>
+                                  </span>
+                                )}
+                                {st.isSaved && !st.alimtalkSentAt && (
+                                  <span className="text-[10px] font-black text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                    <span>📝</span>
+                                    <span>작성됨 (알림톡 미발송)</span>
+                                  </span>
+                                )}
+                                {!st.isSaved && (
+                                  <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+                                    ⚪ 미작성
+                                  </span>
+                                )}
                               </div>
-                              {st.isSaved && st.alimtalkSentAt && (
-                                <span className="text-[10px] font-black text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                  <span>✅</span>
-                                  <span>작성 & 발송완료</span>
-                                </span>
-                              )}
-                              {st.isSaved && !st.alimtalkSentAt && (
-                                <span className="text-[10px] font-black text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                  <span>📝</span>
-                                  <span>작성됨 (알림톡 미발송)</span>
-                                </span>
-                              )}
-                              {!st.isSaved && (
-                                <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
-                                  ⚪ 미작성
-                                </span>
-                              )}
-                            </div>
                             </div>
 
                             <div className="flex items-center gap-2 flex-wrap">
@@ -1667,8 +1680,9 @@ export default function TeacherEvalPage() {
                               >
                                 <span>평균 {avgScore}점</span>
                                 {st.initialScores && (() => {
-                                  const prevTot = Object.values(st.initialScores).reduce((a, b) => a + Number(b), 0);
-                                  const prevAvg = (prevTot / 6).toFixed(1);
+                                  const prevActiveScores = activeKeys.map((k) => Number(st.initialScores?.[k] || 0));
+                                  const prevTot = prevActiveScores.reduce((a, b) => a + b, 0);
+                                  const prevAvg = activeKeys.length > 0 ? (prevTot / activeKeys.length).toFixed(1) : '0.0';
                                   const diff = Number((avgScore - prevAvg).toFixed(1));
                                   if (diff > 0) return <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 px-1 py-0.2 rounded">▲+{diff}</span>;
                                   if (diff < 0) return <span className="text-[10px] font-black text-rose-700 bg-rose-100 px-1 py-0.2 rounded">▼{diff}</span>;
@@ -1690,9 +1704,9 @@ export default function TeacherEvalPage() {
                             </div>
                           </div>
 
-                          {/* 2행: 시험 성적/시험지 이름 및 개별 코멘트 입력칸 */}
-                          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-1 border-t border-slate-100 text-xs">
-                            <div className="flex items-center gap-1.5 sm:col-span-1">
+                          {/* 2행: 시험 성적 및 개별 코멘트 입력칸 (넓고 쾌적한 2분할 레이아웃) */}
+                          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 pt-1 border-t border-slate-100 text-xs">
+                            <div className="sm:col-span-5 flex items-center gap-1.5">
                               <select
                                 value={st.testType}
                                 onChange={(e) => handleBatchTestTypeChange(st.student_id, e.target.value)}
@@ -1709,8 +1723,8 @@ export default function TeacherEvalPage() {
                                   type="text"
                                   value={st.customTestType || ''}
                                   onChange={(e) => handleBatchCustomTestTypeChange(st.student_id, e.target.value)}
-                                  placeholder="시험명 입력"
-                                  className="w-24 p-1.5 bg-white border border-indigo-300 rounded-lg text-xs font-bold placeholder:text-slate-400 shrink-0"
+                                  placeholder="시험명 직접입력"
+                                  className="w-28 p-1.5 bg-white border border-indigo-300 rounded-lg text-xs font-bold placeholder:text-slate-400 shrink-0"
                                 />
                               )}
                               <input
@@ -1722,17 +1736,7 @@ export default function TeacherEvalPage() {
                               />
                             </div>
 
-                            <div className="sm:col-span-1">
-                              <input
-                                type="text"
-                                value={st.examName}
-                                onChange={(e) => handleBatchExamNameChange(st.student_id, e.target.value)}
-                                placeholder={commonExamName ? `시험지 이름(비우면 "${commonExamName}" 적용)` : '이 학생만 다른 시험지 이름(선택)'}
-                                className="w-full p-1.5 bg-white border rounded-lg text-xs font-bold placeholder:text-slate-400"
-                              />
-                            </div>
-
-                            <div className="sm:col-span-2">
+                            <div className="sm:col-span-7">
                               <input
                                 type="text"
                                 value={st.comment}
@@ -1743,11 +1747,11 @@ export default function TeacherEvalPage() {
                             </div>
                           </div>
 
-                          {/* 펼쳐진 6대 역량 점수 슬라이더 에디터 */}
+                          {/* 펼쳐진 역량 점수 슬라이더 에디터 */}
                           {st.showScoreEditor && (
                             <div className="space-y-2.5 animate-fade-in">
                               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 text-xs">
-                                {DEFAULT_EVAL_KEYS.map((def) => {
+                                {DEFAULT_EVAL_KEYS.filter((def) => activeKeys.includes(def.key)).map((def) => {
                                   const prevVal = st.initialScores?.[def.key];
                                   return (
                                     <div key={def.key} className="bg-white p-2.5 rounded-xl border border-slate-200/90 space-y-1.5 shadow-2xs">
@@ -1756,6 +1760,14 @@ export default function TeacherEvalPage() {
                                         <div className="flex items-center gap-1.5 shrink-0">
                                           {renderScoreDiffBadge(st.scores[def.key], prevVal)}
                                           <span className="text-blue-600 font-black text-xs">{st.scores[def.key]}점</span>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleBatchRemoveDefaultKey(st.student_id, def.key)}
+                                            className="text-slate-400 hover:text-rose-500 font-bold text-xs ml-0.5 p-0.5"
+                                            title={`${def.name} 항목 제외`}
+                                          >
+                                            ✕
+                                          </button>
                                         </div>
                                       </div>
                                       <input
@@ -1800,6 +1812,26 @@ export default function TeacherEvalPage() {
                                   </div>
                                 ))}
                               </div>
+
+                              {/* 제외된 기본 항목 복구 칩 목록 */}
+                              {DEFAULT_EVAL_KEYS.some((def) => !activeKeys.includes(def.key)) && (
+                                <div className="flex items-center gap-1.5 flex-wrap p-2 bg-indigo-50/40 rounded-xl border border-indigo-100 text-xs">
+                                  <span className="text-[11px] font-bold text-indigo-900 shrink-0">
+                                    ➕ 제외된 기본 항목 복구:
+                                  </span>
+                                  {DEFAULT_EVAL_KEYS.filter((def) => !activeKeys.includes(def.key)).map((def) => (
+                                    <button
+                                      key={def.key}
+                                      type="button"
+                                      onClick={() => handleBatchAddDefaultKey(st.student_id, def.key)}
+                                      className="text-[11px] font-bold bg-white hover:bg-indigo-600 hover:text-white text-indigo-700 border border-indigo-200 px-2.5 py-1 rounded-lg transition shadow-2xs flex items-center gap-1 active:scale-95"
+                                    >
+                                      <span>+</span>
+                                      <span>{def.name}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
 
                               {/* 학생별 커스텀 평가 항목 추가 */}
                               <div className="flex items-center justify-between gap-2">

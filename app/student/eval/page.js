@@ -117,6 +117,7 @@ export default function StudentEvalPage() {
                     {parsed.testScore && (
                       <span className="bg-indigo-50 text-indigo-800 border border-indigo-200 text-xs font-black px-2.5 py-0.5 rounded-full shadow-2xs">
                         📝 {parsed.testType}: {parsed.testScore.endsWith('점') || parsed.testScore.includes('/') || parsed.testScore.includes('등급') ? parsed.testScore : `${parsed.testScore}점`}
+                        {parsed.examName && ` (${parsed.examName})`}
                       </span>
                     )}
                   </div>

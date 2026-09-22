@@ -83,6 +83,7 @@ export default function TeacherEvalPage() {
 
   // 2) 👥 판서수업 (반 일괄 등록 모드) 전용 상태
   const [commonLessonProgress, setCommonLessonProgress] = useState('');
+  const [commonExamName, setCommonExamName] = useState(''); // 반 전체 공통 시험지 이름 (학생별로 따로 지정하면 그 값이 우선)
   const [commonHomeworkBooks, setCommonHomeworkBooks] = useState([
     { id: 'c_book_1', name: '개념서', range: '', status: '미체크' },
     { id: 'c_book_2', name: '유형서', range: '', status: '미체크' },
@@ -95,6 +96,10 @@ export default function TeacherEvalPage() {
   const [batchStudents, setBatchStudents] = useState([]);
   const [batchSubmitting, setBatchSubmitting] = useState(false);
   const [batchProgressText, setBatchProgressText] = useState('');
+
+  // 판서수업: 학생별 커스텀 평가 항목 추가 입력 상태 (studentId -> 값)
+  const [batchShowAddCustomMap, setBatchShowAddCustomMap] = useState({});
+  const [batchNewCustomNameMap, setBatchNewCustomNameMap] = useState({});
 
   const [loading, setLoading] = useState(true);
   const router = useRouter();
@@ -581,9 +586,75 @@ export default function TeacherEvalPage() {
     );
   };
 
+  const handleBatchExamNameChange = (studentId, examName) => {
+    setBatchStudents((prev) =>
+      prev.map((s) => (s.student_id === studentId ? { ...s, examName } : s))
+    );
+  };
+
   const handleBatchCommentChange = (studentId, comment) => {
     setBatchStudents((prev) =>
       prev.map((s) => (s.student_id === studentId ? { ...s, comment } : s))
+    );
+  };
+
+  // 판서수업: 학생별 커스텀 평가 항목 추가/삭제/점수 조작
+  const handleBatchToggleAddCustomInput = (studentId) => {
+    setBatchShowAddCustomMap((prev) => ({ ...prev, [studentId]: !prev[studentId] }));
+  };
+
+  const handleBatchCustomNameChange = (studentId, value) => {
+    setBatchNewCustomNameMap((prev) => ({ ...prev, [studentId]: value }));
+  };
+
+  const handleBatchAddCustomItem = (studentId) => {
+    const trimmed = (batchNewCustomNameMap[studentId] || '').trim();
+    if (!trimmed) return alert('항목 이름을 입력해 주세요.');
+
+    const target = batchStudents.find((s) => s.student_id === studentId);
+    if (target && (target.customItems || []).some((c) => c.name === trimmed)) {
+      return alert('이미 추가된 항목 이름입니다.');
+    }
+
+    setBatchStudents((prev) =>
+      prev.map((s) =>
+        s.student_id === studentId
+          ? {
+              ...s,
+              customItems: [
+                ...(s.customItems || []),
+                { id: `custom_${studentId}_${Date.now()}`, name: trimmed, score: 8 },
+              ],
+            }
+          : s
+      )
+    );
+    setBatchNewCustomNameMap((prev) => ({ ...prev, [studentId]: '' }));
+    setBatchShowAddCustomMap((prev) => ({ ...prev, [studentId]: false }));
+  };
+
+  const handleBatchRemoveCustomItem = (studentId, itemId) => {
+    setBatchStudents((prev) =>
+      prev.map((s) =>
+        s.student_id === studentId
+          ? { ...s, customItems: (s.customItems || []).filter((c) => c.id !== itemId) }
+          : s
+      )
+    );
+  };
+
+  const handleBatchCustomScoreChange = (studentId, itemId, newScore) => {
+    setBatchStudents((prev) =>
+      prev.map((s) =>
+        s.student_id === studentId
+          ? {
+              ...s,
+              customItems: (s.customItems || []).map((c) =>
+                c.id === itemId ? { ...c, score: Number(newScore) } : c
+              ),
+            }
+          : s
+      )
     );
   };
 
@@ -771,6 +842,7 @@ export default function TeacherEvalPage() {
           testType: '단원평가',
           customTestType: '',
           testScore: '',
+          examName: '',
           comment: '',
           showScoreEditor: false,
           prevEvalSummary: prev ? `${prev.eval_date} 피드백` : '첫 피드백',
@@ -925,11 +997,13 @@ export default function TeacherEvalPage() {
 
       const batchTargets = targets.map((st) => {
         const effectiveTestType = st.testType === '기타' ? (st.customTestType.trim() || '기타평가') : st.testType;
+        const effectiveExamName = (st.examName || '').trim() || commonExamName.trim();
 
         const combinedComment = formatTeacherCommentWithTestScoreAndItems({
           comment: st.comment,
           testScore: st.testScore,
           testType: effectiveTestType,
+          examName: effectiveExamName,
           customItems: st.customItems || [],
           lessonProgress: commonLessonProgress,
           homeworkBooks: validBooks,
@@ -1172,6 +1246,23 @@ export default function TeacherEvalPage() {
                     placeholder="예: 수1 3단원 삼각함수의 그래프 45p ~ 52p 개념 및 필수예제"
                     className="w-full p-2.5 border border-indigo-200 rounded-xl text-xs font-bold text-indigo-950 bg-white placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 shadow-2xs"
                   />
+                </div>
+
+                {/* 공통 시험지 이름 (학생별로 아래에서 따로 지정하면 그 학생만 그 이름으로 대체됨) */}
+                <div>
+                  <label className="block text-xs font-bold text-indigo-950 mb-1">
+                    📄 오늘 공통 시험지 이름 (선택):
+                  </label>
+                  <input
+                    type="text"
+                    value={commonExamName}
+                    onChange={(e) => setCommonExamName(e.target.value)}
+                    placeholder="예: 3단원 삼각함수 단원평가지 A형 (비워두면 시험지 이름 없이 발송)"
+                    className="w-full p-2.5 border border-indigo-200 rounded-xl text-xs font-bold text-indigo-950 bg-white placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 shadow-2xs"
+                  />
+                  <p className="text-[10.5px] text-indigo-500 font-semibold mt-1">
+                    💡 특정 학생만 다른 시험지를 봤다면, 아래 학생 카드의 "시험점수" 옆 시험지 이름 칸에 따로 입력하면 그 학생에게만 적용됩니다.
+                  </p>
                 </div>
 
                 {/* 교재 인라인 추가 인풋 */}
@@ -1464,8 +1555,8 @@ export default function TeacherEvalPage() {
                             </div>
                           </div>
 
-                          {/* 2행: 시험 성적 및 개별 코멘트 입력칸 */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-slate-100 text-xs">
+                          {/* 2행: 시험 성적/시험지 이름 및 개별 코멘트 입력칸 */}
+                          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-1 border-t border-slate-100 text-xs">
                             <div className="flex items-center gap-1.5 sm:col-span-1">
                               <select
                                 value={st.testType}
@@ -1486,6 +1577,16 @@ export default function TeacherEvalPage() {
                               />
                             </div>
 
+                            <div className="sm:col-span-1">
+                              <input
+                                type="text"
+                                value={st.examName}
+                                onChange={(e) => handleBatchExamNameChange(st.student_id, e.target.value)}
+                                placeholder={commonExamName ? `시험지 이름(비우면 "${commonExamName}" 적용)` : '이 학생만 다른 시험지 이름(선택)'}
+                                className="w-full p-1.5 bg-white border rounded-lg text-xs font-bold placeholder:text-slate-400"
+                              />
+                            </div>
+
                             <div className="sm:col-span-2">
                               <input
                                 type="text"
@@ -1499,29 +1600,92 @@ export default function TeacherEvalPage() {
 
                           {/* 펼쳐진 6대 역량 점수 슬라이더 에디터 */}
                           {st.showScoreEditor && (
-                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 text-xs animate-fade-in">
-                              {DEFAULT_EVAL_KEYS.map((def) => {
-                                const prevVal = st.initialScores?.[def.key];
-                                return (
-                                  <div key={def.key} className="bg-white p-2.5 rounded-xl border border-slate-200/90 space-y-1.5 shadow-2xs">
+                            <div className="space-y-2.5 animate-fade-in">
+                              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 text-xs">
+                                {DEFAULT_EVAL_KEYS.map((def) => {
+                                  const prevVal = st.initialScores?.[def.key];
+                                  return (
+                                    <div key={def.key} className="bg-white p-2.5 rounded-xl border border-slate-200/90 space-y-1.5 shadow-2xs">
+                                      <div className="flex justify-between items-center text-[11px] font-bold">
+                                        <span className="text-slate-700">{def.name}</span>
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                          {renderScoreDiffBadge(st.scores[def.key], prevVal)}
+                                          <span className="text-blue-600 font-black text-xs">{st.scores[def.key]}점</span>
+                                        </div>
+                                      </div>
+                                      <input
+                                        type="range"
+                                        min="1"
+                                        max="10"
+                                        value={st.scores[def.key]}
+                                        onChange={(e) => handleBatchScoreChange(st.student_id, def.key, e.target.value)}
+                                        className="w-full accent-blue-600 h-1.5 cursor-pointer"
+                                      />
+                                    </div>
+                                  );
+                                })}
+
+                                {(st.customItems || []).map((c) => (
+                                  <div key={c.id} className="bg-indigo-50/50 p-2.5 rounded-xl border border-indigo-200 space-y-1.5">
                                     <div className="flex justify-between items-center text-[11px] font-bold">
-                                      <span className="text-slate-700">{def.name}</span>
+                                      <span className="text-indigo-950 flex items-center gap-1 truncate">
+                                        <span>✨</span>
+                                        <span className="truncate">{c.name}</span>
+                                      </span>
                                       <div className="flex items-center gap-1.5 shrink-0">
-                                        {renderScoreDiffBadge(st.scores[def.key], prevVal)}
-                                        <span className="text-blue-600 font-black text-xs">{st.scores[def.key]}점</span>
+                                        <span className="text-indigo-600 font-black text-xs">{c.score}점</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleBatchRemoveCustomItem(st.student_id, c.id)}
+                                          className="text-slate-400 hover:text-rose-500 text-xs font-bold"
+                                          title="항목 삭제"
+                                        >
+                                          ✕
+                                        </button>
                                       </div>
                                     </div>
                                     <input
                                       type="range"
                                       min="1"
                                       max="10"
-                                      value={st.scores[def.key]}
-                                      onChange={(e) => handleBatchScoreChange(st.student_id, def.key, e.target.value)}
-                                      className="w-full accent-blue-600 h-1.5 cursor-pointer"
+                                      value={c.score}
+                                      onChange={(e) => handleBatchCustomScoreChange(st.student_id, c.id, e.target.value)}
+                                      className="w-full accent-indigo-600 h-1.5 cursor-pointer"
                                     />
                                   </div>
-                                );
-                              })}
+                                ))}
+                              </div>
+
+                              {/* 학생별 커스텀 평가 항목 추가 */}
+                              <div className="flex items-center justify-between gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleBatchToggleAddCustomInput(st.student_id)}
+                                  className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition flex items-center gap-1"
+                                >
+                                  <span>+</span>
+                                  <span>이 학생만 평가 항목 추가</span>
+                                </button>
+                              </div>
+
+                              {batchShowAddCustomMap[st.student_id] && (
+                                <div className="p-2.5 bg-white rounded-xl border border-indigo-200 flex gap-2 items-center">
+                                  <input
+                                    type="text"
+                                    value={batchNewCustomNameMap[st.student_id] || ''}
+                                    onChange={(e) => handleBatchCustomNameChange(st.student_id, e.target.value)}
+                                    placeholder="새 평가 항목명 입력 (예: 질문 적극성)"
+                                    className="flex-1 p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:outline-none"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleBatchAddCustomItem(st.student_id)}
+                                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-2 rounded-lg shadow-xs shrink-0"
+                                  >
+                                    추가
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>

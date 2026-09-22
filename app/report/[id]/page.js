@@ -203,6 +203,9 @@ function StudentReportContent() {
                       : 'Evaluation Result'}
                   </span>
                   <h4 className="text-sm font-black text-white">{parsed.testType} 결과</h4>
+                  {parsed.examName && (
+                    <p className="text-[10.5px] text-indigo-100 font-bold mt-0.5">📄 {parsed.examName}</p>
+                  )}
                 </div>
               </div>
               <div className="bg-white text-indigo-950 px-3.5 py-1.5 rounded-xl shadow-md text-right border border-indigo-100 flex items-baseline gap-1">

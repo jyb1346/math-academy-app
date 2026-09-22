@@ -1,19 +1,31 @@
 import { NextResponse } from 'next/server';
 import { sendSolapiMessage, cleanPhoneNumber } from '@/lib/solapi';
-import { supabase } from '@/lib/supabase';
+import { getSupabaseForServer } from '@/lib/supabase';
 import { markAlimtalkSentInComment } from '@/lib/evalUtils';
 import { getKSTDateString } from '@/lib/dateUtils';
 import { generateReportToken } from '@/lib/securityUtils';
 
 export async function POST(req) {
   try {
-    // 🛑 [1주일 현장 화면 점검 기간] 학부모 알림톡 실제 발송 일시 중단
-    return NextResponse.json({
-      success: false,
-      skipped: true,
-      disabled: true,
-      message: '현재 1주일 현장 점검 기간으로 학부모 알림톡 발송이 일시 중단되어 있습니다.',
-    });
+    const host = req.headers.get('host') || req.headers.get('referer') || '';
+    const isDevEnvironment =
+      host.includes('dev') ||
+      host.includes('-git-') ||
+      host.includes('localhost') ||
+      host.includes('127.0.0.1') ||
+      process.env.NEXT_PUBLIC_VERCEL_ENV === 'preview' ||
+      process.env.VERCEL_GIT_COMMIT_REF === 'dev' ||
+      process.env.NODE_ENV === 'development';
+
+    // 🛑 [본서버 1주일 현장 점검 기간] 본서버는 실제 발송 일시 중단 유지, 테스트서버는 정상 발송(ON)
+    if (!isDevEnvironment) {
+      return NextResponse.json({
+        success: false,
+        skipped: true,
+        disabled: true,
+        message: '현재 본서버는 1주일 현장 점검 기간으로 학부모 알림톡 발송이 일시 중단되어 있습니다.',
+      });
+    }
 
     const body = await req.json();
     const { evalId, studentId, studentName, evalDate, parentPhone, teacherName } = body;
@@ -22,11 +34,13 @@ export async function POST(req) {
       return NextResponse.json({ error: 'evalId가 필요합니다.' }, { status: 400 });
     }
 
+    const dbClient = getSupabaseForServer(req);
+
     let targetPhone = parentPhone;
 
     // 만약 전달받은 학부모 번호가 없으면 DB에서 학생 정보 조회
     if (!targetPhone && studentId) {
-      const { data: studentUser } = await supabase
+      const { data: studentUser } = await dbClient
         .from('users')
         .select('name, parent_phone')
         .eq('id', studentId)
@@ -91,7 +105,7 @@ ${reportUrl}`;
     // 🎯 발송 성공 시 daily_evaluations 에 [ALIMTALK_SENT:ISO_STRING] 기록
     const sentAt = new Date().toISOString();
     try {
-      const { data: currentEval } = await supabase
+      const { data: currentEval } = await dbClient
         .from('daily_evaluations')
         .select('teacher_comment')
         .eq('id', evalId)
@@ -99,7 +113,7 @@ ${reportUrl}`;
 
       if (currentEval) {
         const updatedComment = markAlimtalkSentInComment(currentEval.teacher_comment, sentAt);
-        await supabase
+        await dbClient
           .from('daily_evaluations')
           .update({ teacher_comment: updatedComment })
           .eq('id', evalId);

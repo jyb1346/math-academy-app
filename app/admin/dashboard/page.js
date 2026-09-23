@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { logout } from '@/lib/useSession';
+import PushSubscribersModal from '@/components/PushSubscribersModal';
 
 export default function AdminDashboard() {
   const [user, setUser] = useState(null);
@@ -11,6 +12,9 @@ export default function AdminDashboard() {
   const [allStudents, setAllStudents] = useState([]);
   const [classStudents, setClassStudents] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // 알림 명단 모달 상태
+  const [showPushModal, setShowPushModal] = useState(false);
 
   // 신규 반 생성 폼
   const [newClassName, setNewClassName] = useState('');
@@ -313,8 +317,14 @@ export default function AdminDashboard() {
 
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setShowPushModal(true)}
+            className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold px-3.5 py-2 rounded-xl transition border border-emerald-200"
+          >
+            🔔 알림 켠 학생 명단 보기
+          </button>
+          <button
             onClick={() => router.push('/teacher/dashboard')}
-            className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3.5 py-2 rounded-xl transition border border-indigo-200"
+            className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3.5 py-2 rounded-xl transition border border-indigo-200 hidden sm:block"
           >
             📘 내 수업 대시보드로 이동
           </button>
@@ -328,6 +338,7 @@ export default function AdminDashboard() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 mt-8 space-y-8">
+        {showPushModal && <PushSubscribersModal onClose={() => setShowPushModal(false)} />}
 
         {/* 📊 학원 전체 현황 요약 카운트 */}
         <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">

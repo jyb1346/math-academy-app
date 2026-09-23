@@ -1044,6 +1044,9 @@ export default function TeacherDashboard() {
         />
       )}
 
+      {/* 🔔 푸시 알림 매니저 */}
+      {user && <PushNotificationManager user={user} />}
+
     </div>
   );
 }

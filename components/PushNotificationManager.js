@@ -90,7 +90,7 @@ export default function PushNotificationManager({ user }) {
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       });
 
-      await fetch('/api/push/subscribe', {
+      const res = await fetch('/api/push/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -98,6 +98,11 @@ export default function PushNotificationManager({ user }) {
           userId: user?.id || null,
         }),
       });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || '서버 통신 오류 (DB 저장 실패)');
+      }
 
       setIsSubscribed(true);
       alert('🔔 품수학 학원 실시간 알림이 성공적으로 켜졌습니다! [📲 내 폰으로 테스트 알림] 버튼을 눌러 소리/진동을 확인해 보세요.');

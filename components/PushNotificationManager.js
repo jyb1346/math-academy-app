@@ -85,6 +85,14 @@ export default function PushNotificationManager({ user }) {
       }
 
       const registration = await navigator.serviceWorker.ready;
+      
+      // 🚨 핵심 포인트: 기존에 꼬인 옛날 구독키가 있다면 강제로 삭제(초기화)합니다.
+      const existingSub = await registration.pushManager.getSubscription();
+      if (existingSub) {
+        await existingSub.unsubscribe().catch((e) => console.warn('Unsubscribe error:', e));
+      }
+
+      // 새 VAPID 키로 다시 깔끔하게 구독 생성
       const sub = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),

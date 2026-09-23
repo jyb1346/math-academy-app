@@ -13,7 +13,8 @@ export async function GET(req) {
 
   let query = db.from('qna').select('*');
   if (user.role === 'STUDENT') {
-    query = query.eq('student_id', user.id);
+    // 학생은 내 질문이거나, 공개된 질문(is_public=true)을 조회 가능
+    query = query.or(`student_id.eq.${user.id},is_public.eq.true`);
   } else if (user.role === 'TEACHER') {
     query = query.eq('teacher_id', user.id);
   }

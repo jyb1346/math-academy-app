@@ -1,8 +1,11 @@
 'use client';
 import { compressImage } from '@/lib/imageCompressor';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+
+import MathText from '@/components/MathText';
+import MathToolbar from '@/components/MathToolbar';
 
 export default function QnaPage() {
   const [user, setUser] = useState(null);
@@ -845,7 +848,7 @@ export default function QnaPage() {
                         <span>학생 질문 내용:</span>
                       </div>
                       <div className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap bg-slate-50 p-4 rounded-2xl border border-slate-100 font-medium">
-                        {item.question}
+                        <MathText text={item.question} />
                       </div>
 
                       {/* 질문 다중 사진 갤러리 */}
@@ -902,9 +905,9 @@ export default function QnaPage() {
                         )}
                       </div>
 
-                      <p className="text-xs text-slate-800 leading-relaxed whitespace-pre-wrap bg-white/90 p-4 rounded-xl border border-indigo-100 font-medium">
-                        {item.answer}
-                      </p>
+                      <div className="text-xs text-slate-800 leading-relaxed whitespace-pre-wrap bg-white/90 p-4 rounded-xl border border-indigo-100 font-medium">
+                        <MathText text={item.answer} />
+                      </div>
 
                       {/* 선생님 답변 사진 갤러리 */}
                       {answerImages.length > 0 && (
@@ -950,6 +953,15 @@ export default function QnaPage() {
                         )}
                       </div>
 
+                      <MathToolbar 
+                        onInsert={(snippet) => {
+                          const currentText = qState.text !== undefined ? qState.text : (item.answer || '');
+                          setAnswerState((prev) => ({
+                            ...prev,
+                            [item.id]: { ...(prev[item.id] || {}), text: currentText + snippet },
+                          }));
+                        }} 
+                      />
                       <textarea
                         placeholder="학생에게 이해하기 쉽게 풀이 과정이나 개념 힌트를 설명해 주세요."
                         value={qState.text !== undefined ? qState.text : (item.answer || '')}
@@ -1064,9 +1076,9 @@ export default function QnaPage() {
                             </div>
 
                             {reply.content && (
-                              <p className="text-xs text-slate-800 leading-relaxed whitespace-pre-wrap bg-white/90 p-3.5 rounded-xl border border-slate-100 font-medium">
-                                {reply.content}
-                              </p>
+                              <div className="text-xs text-slate-800 leading-relaxed whitespace-pre-wrap bg-white/90 p-3.5 rounded-xl border border-slate-100 font-medium">
+                                <MathText text={reply.content} />
+                              </div>
                             )}
 
                             {replyImages.length > 0 && (
@@ -1199,6 +1211,15 @@ export default function QnaPage() {
                             </button>
                           </div>
 
+                          <MathToolbar 
+                            onInsert={(snippet) => {
+                              const currentText = currentFollowUp.text || '';
+                              setFollowUpState((prev) => ({
+                                ...prev,
+                                [item.id]: { ...(prev[item.id] || {}), text: currentText + snippet },
+                              }));
+                            }}
+                          />
                           <textarea
                             placeholder={
                               !isTeacher

@@ -406,9 +406,6 @@ export default function StudentDashboard() {
         />
       )}
 
-      {/* 🔔 푸시 알림 매니저 (화면 하단 고정 바) */}
-      {user && <PushNotificationManager user={user} />}
-
     </div>
   );
 }

@@ -71,6 +71,12 @@ export default function PushNotificationManager({ user }) {
 
     setLoading(true);
     try {
+      if (!VAPID_PUBLIC_KEY || VAPID_PUBLIC_KEY.trim() === '') {
+        alert('⚠️ 알림 서버 키(VAPID)가 설정되지 않았습니다. Vercel 환경 변수를 확인하고 재배포해 주세요.');
+        setLoading(false);
+        return;
+      }
+
       const perm = await Notification.requestPermission();
       if (perm !== 'granted') {
         alert('알림 권한이 거부되어 있습니다. 브라우저 주소창 왼쪽 자물쇠 아이콘(또는 스마트폰 설정)에서 알림을 [허용]으로 변경해 주세요.');

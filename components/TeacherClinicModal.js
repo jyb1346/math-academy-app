@@ -238,18 +238,40 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
   const handleCopyKakaoSummary = () => {
     if (!currentSchedule) return;
     const bookings = (currentSchedule.bookings || []).filter((b) => b.status !== 'CANCELLED');
+    // 학생별 그룹화
+    const studentMap = new Map();
+    const sorted = [...bookings].sort((a, b) => timeToMinutes(a.start_time) - timeToMinutes(b.start_time));
+    sorted.forEach((b) => {
+      const sId = b.student_id || b.users?.id || b.users?.name;
+      if (!studentMap.has(sId)) {
+        studentMap.set(sId, {
+          name: b.users?.name || '학생',
+          bookings: [],
+          subjects: [],
+        });
+      }
+      studentMap.get(sId).bookings.push(b);
+      if (b.subject && !studentMap.get(sId).subjects.includes(b.subject)) {
+        studentMap.get(sId).subjects.push(b.subject);
+      }
+    });
 
     let text = `[품수학 ⏰ ${currentSchedule.date} 클리닉 시간표]\n`;
     text += `운영시간: ${currentSchedule.start_time} ~ ${currentSchedule.end_time}\n`;
-    text += `총 신청 인원: ${bookings.length}명\n\n`;
+    text += `총 신청 학생: ${studentMap.size}명\n\n`;
 
-    // 시간 순 정렬
-    const sorted = [...bookings].sort((a, b) => timeToMinutes(a.start_time) - timeToMinutes(b.start_time));
-    sorted.forEach((b) => {
-      const name = b.users?.name || '학생';
-      const subject = b.subject ? ` (${b.subject})` : '';
-      const dur = timeToMinutes(b.end_time) - timeToMinutes(b.start_time);
-      text += `▪️ ${b.start_time}~${b.end_time} (${formatDurationLabel(dur)}) : ${name}${subject}\n`;
+    studentMap.forEach((data) => {
+      const timeParts = data.bookings.map((b) => {
+        const dur = timeToMinutes(b.end_time) - timeToMinutes(b.start_time);
+        return `${b.start_time}~${b.end_time} (${formatDurationLabel(dur)})`;
+      });
+      const totalMins = data.bookings.reduce(
+        (sum, b) => sum + (timeToMinutes(b.end_time) - timeToMinutes(b.start_time)),
+        0
+      );
+      const totalStr = data.bookings.length > 1 ? ` [총 ${formatDurationLabel(totalMins)}]` : '';
+      const subjectStr = data.subjects.length > 0 ? ` (${data.subjects.join(', ')})` : '';
+      text += `▪️ ${data.name} : ${timeParts.join(' + ')}${totalStr}${subjectStr}\n`;
     });
 
     if (currentSchedule.notice) {

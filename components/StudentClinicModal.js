@@ -6,15 +6,17 @@ import {
   minutesToTime,
   formatDurationLabel,
   generateIntervalsWithAvailability,
-  checkRangeCapacity,
+  blocksToRanges,
+  formatRangesSummary,
+  checkMultipleRangesCapacity,
 } from '@/lib/clinicUtils';
 
 export default function StudentClinicModal({ user, onClose, onBookingUpdated }) {
   const [schedules, setSchedules] = useState([]);
   const [selectedScheduleId, setSelectedScheduleId] = useState(null);
 
-  // 선택된 30분 블록들의 시작 시간 목록 (예: ['10:00', '10:30', '11:00', '11:30'])
-  const [selectedBlocks, setSelectedBlocks] = useState(['10:00', '10:30', '11:00', '11:30']);
+  // 선택된 30분 블록들의 시작 시간 목록 (예: ['13:00', '13:30', '16:00', '16:30', '17:00'])
+  const [selectedBlocks, setSelectedBlocks] = useState([]);
   const [subject, setSubject] = useState('');
 
   const [loading, setLoading] = useState(true);
@@ -34,33 +36,41 @@ export default function StudentClinicModal({ user, onClose, onBookingUpdated }) 
       if (activeList.length > 0) {
         const initial = activeList[0];
         setSelectedScheduleId(initial.id);
-
-        if (initial.myBooking) {
-          // 기존 예약이 있으면 해당 시간대 블록들 선택
-          const startM = timeToMinutes(initial.myBooking.start_time);
-          const endM = timeToMinutes(initial.myBooking.end_time);
-          const blocks = [];
-          for (let m = startM; m < endM; m += 30) {
-            blocks.push(minutesToTime(m));
-          }
-          setSelectedBlocks(blocks);
-          if (initial.myBooking.subject) setSubject(initial.myBooking.subject);
-        } else {
-          // 기본 2시간 (4개 블록) 또는 첫 번째 블록 선택
-          const initStartM = timeToMinutes(initial.start_time || '10:00');
-          const schedEndM = timeToMinutes(initial.end_time || '18:00');
-          const blocks = [];
-          for (let m = initStartM; m < Math.min(initStartM + 120, schedEndM); m += 30) {
-            blocks.push(minutesToTime(m));
-          }
-          setSelectedBlocks(blocks.length > 0 ? blocks : [initial.start_time]);
-          setSubject('');
-        }
+        applyScheduleSelection(initial);
       }
     } catch (err) {
       console.error('fetchSchedules error:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const applyScheduleSelection = (sched) => {
+    const myBookings = sched.myBookings || (sched.myBooking ? [sched.myBooking] : []);
+    if (myBookings.length > 0) {
+      // 기존 예약이 있으면 해당 시간대 블록들 모두 채우기
+      const blocks = [];
+      let initialSubject = '';
+      myBookings.forEach((b) => {
+        const startM = timeToMinutes(b.start_time);
+        const endM = timeToMinutes(b.end_time);
+        for (let m = startM; m < endM; m += 30) {
+          blocks.push(minutesToTime(m));
+        }
+        if (b.subject && !initialSubject) initialSubject = b.subject;
+      });
+      setSelectedBlocks([...new Set(blocks)]);
+      setSubject(initialSubject);
+    } else {
+      // 기존 예약이 없으면 기본 2시간 (4개 블록) 또는 첫 2블록 선택
+      const initStartM = timeToMinutes(sched.start_time || '10:00');
+      const schedEndM = timeToMinutes(sched.end_time || '18:00');
+      const blocks = [];
+      for (let m = initStartM; m < Math.min(initStartM + 120, schedEndM); m += 30) {
+        blocks.push(minutesToTime(m));
+      }
+      setSelectedBlocks(blocks.length > 0 ? blocks : [sched.start_time]);
+      setSubject('');
     }
   };
 
@@ -81,134 +91,72 @@ export default function StudentClinicModal({ user, onClose, onBookingUpdated }) 
       currentSchedule.end_time,
       currentSchedule.bookings || [],
       currentSchedule.max_capacity,
-      currentSchedule.myBooking?.id
+      user.id
     );
+  }, [currentSchedule, user.id]);
+
+  // 선택된 블록들을 연속된 구간들(Ranges)로 변환
+  const ranges = useMemo(() => {
+    return blocksToRanges(selectedBlocks);
+  }, [selectedBlocks]);
+
+  // 총 선택 분 수
+  const totalMinutes = useMemo(() => {
+    return ranges.reduce((acc, r) => acc + (r.durationMinutes || 0), 0);
+  }, [ranges]);
+
+  // 전체 선택 요약 문구 (예: "13:00~14:00 (1시간) + 16:00~19:00 (3시간) [총 4시간]")
+  const summaryText = useMemo(() => {
+    return formatRangesSummary(ranges);
+  }, [ranges]);
+
+  // 전체 선택된 구간의 정원 체크
+  const capacityCheck = useMemo(() => {
+    if (!currentSchedule || ranges.length === 0) {
+      return { isAvailable: false, isFull: false, remainingCapacity: null, isUnlimited: true };
+    }
+
+    return checkMultipleRangesCapacity(
+      ranges,
+      currentSchedule.bookings || [],
+      currentSchedule.max_capacity,
+      user.id
+    );
+  }, [currentSchedule, ranges, user.id]);
+
+  // 기존 내 예약 목록
+  const myExistingBookings = useMemo(() => {
+    if (!currentSchedule) return [];
+    return currentSchedule.myBookings || (currentSchedule.myBooking ? [currentSchedule.myBooking] : []);
   }, [currentSchedule]);
 
   // 일정 변경 시
   const handleSelectSchedule = (sched) => {
     setSelectedScheduleId(sched.id);
-    if (sched.myBooking) {
-      const startM = timeToMinutes(sched.myBooking.start_time);
-      const endM = timeToMinutes(sched.myBooking.end_time);
-      const blocks = [];
-      for (let m = startM; m < endM; m += 30) {
-        blocks.push(minutesToTime(m));
-      }
-      setSelectedBlocks(blocks);
-      setSubject(sched.myBooking.subject || '');
-    } else {
-      const initStartM = timeToMinutes(sched.start_time || '10:00');
-      const schedEndM = timeToMinutes(sched.end_time || '18:00');
-      const blocks = [];
-      for (let m = initStartM; m < Math.min(initStartM + 120, schedEndM); m += 30) {
-        blocks.push(minutesToTime(m));
-      }
-      setSelectedBlocks(blocks.length > 0 ? blocks : [sched.start_time]);
-      setSubject('');
-    }
+    applyScheduleSelection(sched);
   };
 
-  // 30분 블록 클릭 핸들러 (연속 구간 자동 선택)
+  // 30분 블록 토글 클릭 핸들러 (자유로운 다중/분리 선택 지원)
   const handleToggleBlock = (blockStartTime, isBlockFull) => {
     if (isBlockFull) return;
 
-    if (selectedBlocks.length === 0) {
-      setSelectedBlocks([blockStartTime]);
-      return;
-    }
-
-    const clickedMins = timeToMinutes(blockStartTime);
-    const sortedSelectedMins = [...selectedBlocks]
-      .map(timeToMinutes)
-      .sort((a, b) => a - b);
-
-    const minMins = sortedSelectedMins[0];
-    const maxMins = sortedSelectedMins[sortedSelectedMins.length - 1];
-
-    if (clickedMins === minMins && clickedMins === maxMins) {
-      // 단일 선택된 상태에서 다시 누르면 유지
-      return;
-    }
-
-    if (clickedMins < minMins) {
-      // 앞쪽으로 확장
-      const newBlocks = [];
-      for (let m = clickedMins; m <= maxMins; m += 30) {
-        newBlocks.push(minutesToTime(m));
-      }
-      setSelectedBlocks(newBlocks);
-    } else if (clickedMins > maxMins) {
-      // 뒤쪽으로 확장
-      const newBlocks = [];
-      for (let m = minMins; m <= clickedMins; m += 30) {
-        newBlocks.push(minutesToTime(m));
-      }
-      setSelectedBlocks(newBlocks);
-    } else {
-      // 선택 구간 내부를 클릭한 경우
-      if (clickedMins === minMins) {
-        // 시작점 축소
-        const newBlocks = [];
-        for (let m = minMins + 30; m <= maxMins; m += 30) {
-          newBlocks.push(minutesToTime(m));
-        }
-        setSelectedBlocks(newBlocks);
-      } else if (clickedMins === maxMins) {
-        // 끝점 축소
-        const newBlocks = [];
-        for (let m = minMins; m <= maxMins - 30; m += 30) {
-          newBlocks.push(minutesToTime(m));
-        }
-        setSelectedBlocks(newBlocks);
+    setSelectedBlocks((prev) => {
+      if (prev.includes(blockStartTime)) {
+        return prev.filter((t) => t !== blockStartTime);
       } else {
-        // 중간을 클릭한 경우 해당 지점까지로 끝점 단축
-        const newBlocks = [];
-        for (let m = minMins; m <= clickedMins; m += 30) {
-          newBlocks.push(minutesToTime(m));
-        }
-        setSelectedBlocks(newBlocks);
+        return [...prev, blockStartTime];
       }
-    }
+    });
   };
 
-  // 선택된 시작 시간 및 종료 시간 계산
-  const { startTime, endTime, totalMinutes } = useMemo(() => {
-    if (selectedBlocks.length === 0) {
-      return { startTime: '', endTime: '', totalMinutes: 0 };
-    }
-    const sorted = [...selectedBlocks]
-      .map(timeToMinutes)
-      .sort((a, b) => a - b);
-
-    const startM = sorted[0];
-    const endM = sorted[sorted.length - 1] + 30;
-
-    return {
-      startTime: minutesToTime(startM),
-      endTime: minutesToTime(endM),
-      totalMinutes: endM - startM,
-    };
-  }, [selectedBlocks]);
-
-  // 전체 선택된 구간의 정원 체크
-  const capacityCheck = useMemo(() => {
-    if (!currentSchedule || !startTime || !endTime || totalMinutes <= 0) {
-      return { isAvailable: false, isFull: false, remainingCapacity: null, isUnlimited: true };
-    }
-
-    return checkRangeCapacity(
-      startTime,
-      endTime,
-      currentSchedule.bookings || [],
-      currentSchedule.max_capacity,
-      currentSchedule.myBooking?.id
-    );
-  }, [currentSchedule, startTime, endTime, totalMinutes]);
+  // 전체 선택 해제
+  const handleClearBlocks = () => {
+    setSelectedBlocks([]);
+  };
 
   // 예약 신청 핸들러
   const handleBook = async () => {
-    if (!currentSchedule || !startTime || !endTime || totalMinutes <= 0) {
+    if (!currentSchedule || ranges.length === 0 || totalMinutes <= 0) {
       return alert('원하시는 시간 블록을 1개 이상 선택해 주세요.');
     }
 
@@ -223,8 +171,8 @@ export default function StudentClinicModal({ user, onClose, onBookingUpdated }) 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           scheduleId: currentSchedule.id,
-          startTime,
-          endTime,
+          ranges,
+          selectedBlocks,
           subject: subject.trim(),
         }),
       });
@@ -232,7 +180,7 @@ export default function StudentClinicModal({ user, onClose, onBookingUpdated }) 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '예약 신청 실패');
 
-      alert(`🎉 [${currentSchedule.date} ${startTime} ~ ${endTime} (${formatDurationLabel(totalMinutes)})] 클리닉 예약이 완료되었습니다!`);
+      alert(`🎉 [${currentSchedule.date} ${summaryText}] 클리닉 예약이 완료되었습니다!`);
       await fetchSchedules();
       if (onBookingUpdated) onBookingUpdated();
     } catch (err) {
@@ -244,18 +192,17 @@ export default function StudentClinicModal({ user, onClose, onBookingUpdated }) 
 
   // 예약 취소 핸들러
   const handleCancelBooking = async () => {
-    if (!currentSchedule?.myBooking) return;
-    if (!confirm('현재 예약된 클리닉을 취소하시겠습니까?')) return;
+    if (!currentSchedule || myExistingBookings.length === 0) return;
+    if (!confirm(`현재 예약된 [${currentSchedule.date}] 클리닉 일정을 모두 취소하시겠습니까?`)) return;
 
     try {
       setSubmitting(true);
-      const res = await fetch(`/api/clinic/bookings/${currentSchedule.myBooking.id}`, {
-        method: 'DELETE',
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '취소 실패');
+      // 각 예약 ID 삭제 처리
+      for (const b of myExistingBookings) {
+        await fetch(`/api/clinic/bookings/${b.id}`, { method: 'DELETE' });
+      }
 
-      alert('클리닉 예약이 취소되었습니다.');
+      alert('클리닉 예약이 모두 취소되었습니다.');
       await fetchSchedules();
       if (onBookingUpdated) onBookingUpdated();
     } catch (err) {
@@ -279,11 +226,11 @@ export default function StudentClinicModal({ user, onClose, onBookingUpdated }) 
               <h2 className="text-lg sm:text-xl font-black text-white flex items-center gap-2">
                 <span>주말 클리닉 시간 선택</span>
                 <span className="text-xs bg-white/20 text-white border border-white/30 px-2 py-0.5 rounded-full font-bold">
-                  시간 선택
+                  자유 시간 선택
                 </span>
               </h2>
               <p className="text-xs text-blue-100 mt-0.5">
-                원하는 30분 단위 시간 블록들을 터치하여 예약하세요.
+                원하는 30분 단위 블록들을 터치하여 시간대를 자유롭게 선택하세요.
               </p>
             </div>
           </div>
@@ -312,25 +259,28 @@ export default function StudentClinicModal({ user, onClose, onBookingUpdated }) 
               {/* 날짜 선택 탭 */}
               {schedules.length > 1 && (
                 <div className="flex items-center gap-2 overflow-x-auto pb-1">
-                  {schedules.map((s) => (
-                    <button
-                      key={s.id}
-                      onClick={() => handleSelectSchedule(s)}
-                      className={`px-4 py-2 rounded-xl text-xs font-black whitespace-nowrap transition flex items-center gap-1.5 ${
-                        selectedScheduleId === s.id
-                          ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'
-                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
-                      }`}
-                    >
-                      <span>📅</span>
-                      <span>{s.date} ({s.title})</span>
-                      {s.myBooking && (
-                        <span className="text-[10px] bg-emerald-400 text-slate-950 font-black px-1.5 rounded">
-                          예약됨
-                        </span>
-                      )}
-                    </button>
-                  ))}
+                  {schedules.map((s) => {
+                    const hasMyBooking = (s.myBookings && s.myBookings.length > 0) || !!s.myBooking;
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() => handleSelectSchedule(s)}
+                        className={`px-4 py-2 rounded-xl text-xs font-black whitespace-nowrap transition flex items-center gap-1.5 ${
+                          selectedScheduleId === s.id
+                            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+                        }`}
+                      >
+                        <span>📅</span>
+                        <span>{s.date} ({s.title})</span>
+                        {hasMyBooking && (
+                          <span className="text-[10px] bg-emerald-400 text-slate-950 font-black px-1.5 rounded">
+                            예약됨
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
 
@@ -356,25 +306,37 @@ export default function StudentClinicModal({ user, onClose, onBookingUpdated }) 
                   </div>
 
                   {/* ⭐ 이미 예약된 경우: 내 예약 상태 강조 박스 */}
-                  {currentSchedule.myBooking && (
+                  {myExistingBookings.length > 0 && (
                     <div className="bg-emerald-50 border border-emerald-300 p-4 sm:p-5 rounded-2xl space-y-2.5">
                       <div className="flex items-center justify-between">
                         <span className="text-xs sm:text-sm font-black text-emerald-950 flex items-center gap-1.5">
                           <span>⭐</span>
-                          <span>내 예약 현황: {currentSchedule.myBooking.start_time} ~ {currentSchedule.myBooking.end_time}</span>
+                          <span>내 예약 현황</span>
                         </span>
-                        <span className={`text-[11px] font-black px-2.5 py-0.5 rounded-md ${
-                          currentSchedule.myBooking.status === 'ATTENDED'
-                            ? 'bg-emerald-600 text-white'
-                            : 'bg-emerald-200 text-emerald-900'
-                        }`}>
-                          {currentSchedule.myBooking.status === 'ATTENDED' ? '✅ 출석 완료' : '📅 예약 확정'}
+                        <span className="text-[11px] font-black px-2.5 py-0.5 rounded-md bg-emerald-200 text-emerald-900">
+                          📅 예약 확정
                         </span>
                       </div>
+
+                      {/* 예약된 시간대 목록 */}
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        {myExistingBookings.map((b, idx) => {
+                          const dur = timeToMinutes(b.end_time) - timeToMinutes(b.start_time);
+                          return (
+                            <span
+                              key={b.id || idx}
+                              className="bg-white text-emerald-900 border border-emerald-300 px-2.5 py-1 rounded-xl text-xs font-black font-mono shadow-2xs"
+                            >
+                              {myExistingBookings.length > 1 ? `[${idx + 1}차] ` : ''}
+                              {b.start_time} ~ {b.end_time} ({formatDurationLabel(dur)})
+                            </span>
+                          );
+                        })}
+                      </div>
                       
-                      {currentSchedule.myBooking.subject && (
+                      {myExistingBookings[0]?.subject && (
                         <p className="text-xs text-emerald-800 font-bold pl-1">
-                          📖 질문 과목/교재: {currentSchedule.myBooking.subject}
+                          📖 질문 과목/교재: {myExistingBookings[0].subject}
                         </p>
                       )}
 
@@ -387,7 +349,7 @@ export default function StudentClinicModal({ user, onClose, onBookingUpdated }) 
                           disabled={submitting}
                           className="bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 font-black px-3 py-1 rounded-xl transition shadow-2xs"
                         >
-                          예약 취소
+                          전체 예약 취소
                         </button>
                       </div>
                     </div>
@@ -395,14 +357,25 @@ export default function StudentClinicModal({ user, onClose, onBookingUpdated }) 
 
                   {/* ⏰ 30분 단위 블록 선택 영역 */}
                   <div className="space-y-2.5 bg-slate-50/90 p-4 sm:p-5 rounded-3xl border border-slate-200">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
                       <label className="text-xs font-black text-slate-800 flex items-center gap-1.5">
                         <span>⏰</span>
-                        <span>참여할 시간 블록 선택 (터치하여 구간 지정)</span>
+                        <span>참여할 시간 블록 터치 (중간이 비어있어도 자유롭게 선택 가능)</span>
                       </label>
-                      <span className="text-[11px] font-bold text-slate-500">
-                        {currentSchedule.max_capacity ? `타임당 정원 ${currentSchedule.max_capacity}명` : '인원 제한 없음'}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {selectedBlocks.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleClearBlocks}
+                            className="text-[10px] text-slate-500 hover:text-rose-600 font-bold underline"
+                          >
+                            선택 초기화
+                          </button>
+                        )}
+                        <span className="text-[11px] font-bold text-slate-500">
+                          {currentSchedule.max_capacity ? `타임당 정원 ${currentSchedule.max_capacity}명` : '인원 제한 없음'}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
@@ -416,11 +389,11 @@ export default function StudentClinicModal({ user, onClose, onBookingUpdated }) 
                             type="button"
                             disabled={isFull}
                             onClick={() => handleToggleBlock(item.startTime, isFull)}
-                            className={`p-3 rounded-2xl border text-left transition flex flex-col justify-between gap-1.5 relative select-none ${
+                            className={`p-3 rounded-2xl border text-left transition flex flex-col justify-between gap-1.5 relative select-none cursor-pointer ${
                               isFull
                                 ? 'bg-slate-100 border-slate-200 opacity-50 cursor-not-allowed'
                                 : isSelected
-                                ? 'bg-gradient-to-br from-indigo-600 to-indigo-700 text-white border-indigo-700 shadow-md shadow-indigo-600/20 ring-2 ring-indigo-400'
+                                ? 'bg-gradient-to-br from-indigo-600 to-indigo-700 text-white border-indigo-700 shadow-md shadow-indigo-600/20 ring-2 ring-indigo-400 scale-[1.02]'
                                 : 'bg-white hover:bg-slate-100/80 border-slate-200 text-slate-800 shadow-2xs'
                             }`}
                           >
@@ -471,20 +444,31 @@ export default function StudentClinicModal({ user, onClose, onBookingUpdated }) 
 
                   {/* 📊 실시간 선택 요약 배너 */}
                   {selectedBlocks.length > 0 && (
-                    <div className={`p-4 rounded-2xl border flex items-center justify-between gap-3 ${
+                    <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
                       capacityCheck.isFull
                         ? 'bg-rose-50 border-rose-200 text-rose-900'
                         : 'bg-blue-50 border-blue-200 text-blue-950'
                     }`}>
-                      <div className="space-y-0.5">
+                      <div className="space-y-1">
                         <div className="text-xs font-black flex items-center gap-1.5">
                           <span>⏰</span>
-                          <span>선택한 시간:</span>
-                          <span className="text-sm font-black text-indigo-950">
-                            {startTime} ~ {endTime} ({formatDurationLabel(totalMinutes)})
-                          </span>
+                          <span>선택된 시간대 ({ranges.length}개 구간, 총 {formatDurationLabel(totalMinutes)}):</span>
                         </div>
-                        <p className="text-[11px] font-semibold text-slate-600">
+
+                        {/* 구간별 상세 뱃지 리스트 */}
+                        <div className="flex flex-wrap gap-1.5 pt-0.5">
+                          {ranges.map((r, idx) => (
+                            <span
+                              key={idx}
+                              className="bg-white text-indigo-900 font-mono font-black text-xs px-2.5 py-1 rounded-xl border border-indigo-200 shadow-2xs"
+                            >
+                              {ranges.length > 1 ? `${idx + 1}차: ` : ''}
+                              {r.startTime} ~ {r.endTime} ({formatDurationLabel(r.durationMinutes)})
+                            </span>
+                          ))}
+                        </div>
+
+                        <p className="text-[11px] font-semibold text-slate-600 pt-0.5">
                           {capacityCheck.isUnlimited
                             ? '👥 인원 제한 없이 자유롭게 예약하실 수 있습니다.'
                             : capacityCheck.isFull
@@ -493,7 +477,7 @@ export default function StudentClinicModal({ user, onClose, onBookingUpdated }) 
                         </p>
                       </div>
 
-                      <div className="shrink-0">
+                      <div className="shrink-0 self-end sm:self-center">
                         {capacityCheck.isFull ? (
                           <span className="text-xs bg-rose-600 text-white font-black px-2.5 py-1 rounded-lg">
                             마감됨
@@ -532,11 +516,9 @@ export default function StudentClinicModal({ user, onClose, onBookingUpdated }) 
                     >
                       {submitting
                         ? '예약 처리 중...'
-                        : currentSchedule.myBooking
-                        ? (currentSchedule.myBooking.start_time === startTime && currentSchedule.myBooking.end_time === endTime)
-                          ? '✨ 선택한 시간대로 예약 확정 상태 유지'
-                          : `✨ ${startTime} ~ ${endTime} (${formatDurationLabel(totalMinutes)}) (으)로 시간 변경`
-                        : `✨ ${startTime} ~ ${endTime} (${formatDurationLabel(totalMinutes)}) 클리닉 예약 신청`}
+                        : myExistingBookings.length > 0
+                        ? `✨ ${summaryText} (으)로 시간 변경 저장`
+                        : `✨ ${summaryText} 클리닉 예약 신청`}
                     </button>
                   </div>
 
@@ -550,3 +532,4 @@ export default function StudentClinicModal({ user, onClose, onBookingUpdated }) 
     </div>
   );
 }
+

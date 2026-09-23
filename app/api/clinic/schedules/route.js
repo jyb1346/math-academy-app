@@ -86,22 +86,23 @@ export async function GET(req) {
     // 3. 학생 뷰 가공
     if (isStudent) {
       const enrichedSchedules = scheduleList.map((sched) => {
-        const schedBookings = bookingList.filter((b) => b.schedule_id === sched.id);
-        const myBooking = schedBookings.find(
+        const myBookings = schedBookings.filter(
           (b) => b.student_id === user.id && b.status !== 'CANCELLED'
-        ) || null;
+        );
+        const myBooking = myBookings[0] || null;
 
         const intervals = generateIntervalsWithAvailability(
           sched.start_time,
           sched.end_time,
           schedBookings,
           sched.max_capacity,
-          myBooking?.id
+          user.id
         );
 
         return {
           ...sched,
           myBooking,
+          myBookings,
           intervals,
           totalBookingsCount: schedBookings.filter((b) => b.status !== 'CANCELLED').length,
         };

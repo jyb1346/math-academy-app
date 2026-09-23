@@ -28,9 +28,14 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
   const [newEndTime, setNewEndTime] = useState('18:00');
   const [isUnlimitedCapacity, setIsUnlimitedCapacity] = useState(true);
   const [newMaxCapacity, setNewMaxCapacity] = useState(6);
-  const [newTargetClassId, setNewTargetClassId] = useState('');
   const [newNotice, setNewNotice] = useState('질문할 교재 및 오답노트를 지참해 주세요.');
   const [sendPushOnCreate, setSendPushOnCreate] = useState(true);
+
+  // 🎯 신청 대상 설정 상태 ('TEACHER_STUDENTS' | 'CLASS' | 'STUDENTS' | 'ALL')
+  const [targetType, setTargetType] = useState('TEACHER_STUDENTS');
+  const [targetClassId, setTargetClassId] = useState('');
+  const [targetStudentIds, setTargetStudentIds] = useState([]);
+  const [studentSearchKeyword, setStudentSearchKeyword] = useState('');
 
   // 학생 대리 등록 모달 상태
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
@@ -38,6 +43,18 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
   const [proxyStartTime, setProxyStartTime] = useState('10:00');
   const [proxyEndTime, setProxyEndTime] = useState('12:00');
   const [proxySubject, setProxySubject] = useState('');
+
+  // 대상 학생 검색 필터링 목록
+  const filteredStudentsForTarget = useMemo(() => {
+    if (!studentSearchKeyword.trim()) return students;
+    const kw = studentSearchKeyword.trim().toLowerCase();
+    return students.filter(
+      (s) =>
+        s.name?.toLowerCase().includes(kw) ||
+        s.parent_phone?.includes(kw) ||
+        s.email?.toLowerCase().includes(kw)
+    );
+  }, [students, studentSearchKeyword]);
 
   // 일정 목록 및 예약 데이터 불러오기
   const fetchClinicData = async () => {
@@ -86,6 +103,13 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
     e.preventDefault();
     if (!newDate) return alert('날짜를 선택해 주세요.');
 
+    if (targetType === 'CLASS' && !targetClassId) {
+      return alert('대상 반을 선택해 주세요.');
+    }
+    if (targetType === 'STUDENTS' && targetStudentIds.length === 0) {
+      return alert('클리닉 대상 학생을 1명 이상 선택해 주세요.');
+    }
+
     try {
       setSubmitting(true);
       const res = await fetch('/api/clinic/schedules', {
@@ -99,7 +123,9 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
           slotIntervalMinutes: 30,
           durationMinutes: 120,
           maxCapacity: isUnlimitedCapacity ? null : Number(newMaxCapacity),
-          targetClassId: newTargetClassId || null,
+          targetType,
+          targetClassId: targetType === 'CLASS' ? targetClassId || null : null,
+          targetStudentIds: targetType === 'STUDENTS' ? targetStudentIds : [],
           notice: newNotice,
           sendPush: sendPushOnCreate,
         }),
@@ -110,6 +136,8 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
 
       alert('🎉 클리닉 일정이 성공적으로 개설되었습니다!');
       setActiveTab('TIMETABLE');
+      setTargetStudentIds([]);
+      setTargetClassId('');
       await fetchClinicData();
       if (data.schedule?.id) {
         setSelectedScheduleId(data.schedule.id);
@@ -238,40 +266,20 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
   const handleCopyKakaoSummary = () => {
     if (!currentSchedule) return;
     const bookings = (currentSchedule.bookings || []).filter((b) => b.status !== 'CANCELLED');
-    // 학생별 그룹화
-    const studentMap = new Map();
-    const sorted = [...bookings].sort((a, b) => timeToMinutes(a.start_time) - timeToMinutes(b.start_time));
-    sorted.forEach((b) => {
-      const sId = b.student_id || b.users?.id || b.users?.name;
-      if (!studentMap.has(sId)) {
-        studentMap.set(sId, {
-          name: b.users?.name || '학생',
-          bookings: [],
-          subjects: [],
-        });
-      }
-      studentMap.get(sId).bookings.push(b);
-      if (b.subject && !studentMap.get(sId).subjects.includes(b.subject)) {
-        studentMap.get(sId).subjects.push(b.subject);
-      }
-    });
 
     let text = `[품수학 ⏰ ${currentSchedule.date} 클리닉 시간표]\n`;
+    text += `운영시간: ${currentSchedule.start_time} ~ ${currentSchedule.end_time} (2시간 진행)\n`;
     text += `운영시간: ${currentSchedule.start_time} ~ ${currentSchedule.end_time}\n`;
-    text += `총 신청 학생: ${studentMap.size}명\n\n`;
+    text += `총 신청 인원: ${bookings.length}명\n\n`;
 
-    studentMap.forEach((data) => {
-      const timeParts = data.bookings.map((b) => {
-        const dur = timeToMinutes(b.end_time) - timeToMinutes(b.start_time);
-        return `${b.start_time}~${b.end_time} (${formatDurationLabel(dur)})`;
-      });
-      const totalMins = data.bookings.reduce(
-        (sum, b) => sum + (timeToMinutes(b.end_time) - timeToMinutes(b.start_time)),
-        0
-      );
-      const totalStr = data.bookings.length > 1 ? ` [총 ${formatDurationLabel(totalMins)}]` : '';
-      const subjectStr = data.subjects.length > 0 ? ` (${data.subjects.join(', ')})` : '';
-      text += `▪️ ${data.name} : ${timeParts.join(' + ')}${totalStr}${subjectStr}\n`;
+    // 시간 순 정렬
+    const sorted = [...bookings].sort((a, b) => timeToMinutes(a.start_time) - timeToMinutes(b.start_time));
+    sorted.forEach((b) => {
+      const name = b.users?.name || '학생';
+      const subject = b.subject ? ` (${b.subject})` : '';
+      text += `▪️ ${b.start_time}~${b.end_time} : ${name}${subject}\n`;
+      const dur = timeToMinutes(b.end_time) - timeToMinutes(b.start_time);
+      text += `▪️ ${b.start_time}~${b.end_time} (${formatDurationLabel(dur)}) : ${name}${subject}\n`;
     });
 
     if (currentSchedule.notice) {
@@ -448,6 +456,16 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                             }`}>
                               {currentSchedule.max_capacity ? `👤 타임당 최대 ${currentSchedule.max_capacity}명` : '👥 무제한 수용'}
                             </span>
+                            <span className="text-xs bg-purple-50 text-purple-800 font-extrabold px-2.5 py-0.5 rounded-lg border border-purple-200">
+                              🎯 대상:{' '}
+                              {currentSchedule.target_type === 'CLASS'
+                                ? `반 (${classes.find((c) => c.id === currentSchedule.target_class_id)?.name || '지정 반'})`
+                                : currentSchedule.target_type === 'STUDENTS'
+                                ? `지정 학생 (${Array.isArray(currentSchedule.target_student_ids) ? currentSchedule.target_student_ids.length : 0}명)`
+                                : currentSchedule.target_type === 'ALL'
+                                ? '학원 전체 학생'
+                                : '내 담당 학생'}
+                            </span>
                           </div>
                           {currentSchedule.notice && (
                             <p className="text-xs text-slate-600 font-semibold mt-1">
@@ -622,6 +640,7 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                                           👤 {b.users?.name || '학생'}
                                         </td>
                                         <td className="p-3 font-mono font-bold text-indigo-700">
+                                          ⏰ {b.start_time} ~ {b.end_time} (2시간)
                                           ⏰ {b.start_time} ~ {b.end_time} ({formatDurationLabel(timeToMinutes(b.end_time) - timeToMinutes(b.start_time))})
                                         </td>
                                         <td className="p-3 text-slate-600 max-w-xs truncate">
@@ -710,6 +729,185 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                   className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-800 focus:outline-indigo-500"
                   required
                 />
+              </div>
+
+              {/* 🎯 신청 대상 설정 (노출 범위) */}
+              <div className="space-y-3 bg-white p-4 rounded-2xl border border-slate-200">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                    <span>🎯</span>
+                    <span>신청 대상 설정 (누구에게 보일지 선택)</span>
+                  </label>
+                  <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md">
+                    {targetType === 'TEACHER_STUDENTS'
+                      ? '내 담당 학생'
+                      : targetType === 'CLASS'
+                      ? '특정 반 지정'
+                      : targetType === 'STUDENTS'
+                      ? `지정 학생 (${targetStudentIds.length}명)`
+                      : '학원 전체 학생'}
+                  </span>
+                </div>
+
+                {/* 4가지 대상 라디오 카드 */}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTargetType('TEACHER_STUDENTS')}
+                    className={`p-3 rounded-xl border text-left transition flex flex-col justify-between gap-1 cursor-pointer ${
+                      targetType === 'TEACHER_STUDENTS'
+                        ? 'bg-indigo-50/90 border-indigo-400 text-indigo-950 font-black shadow-xs ring-1 ring-indigo-400'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 font-bold hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <span>👨‍🏫</span>
+                      <span>내 담당 학생 (기본)</span>
+                    </div>
+                    <p className="text-[10.5px] text-slate-500 font-normal">
+                      내게 배정된 학생 및 내 반 학생 전체
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTargetType('CLASS')}
+                    className={`p-3 rounded-xl border text-left transition flex flex-col justify-between gap-1 cursor-pointer ${
+                      targetType === 'CLASS'
+                        ? 'bg-indigo-50/90 border-indigo-400 text-indigo-950 font-black shadow-xs ring-1 ring-indigo-400'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 font-bold hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <span>🏫</span>
+                      <span>특정 반 지정</span>
+                    </div>
+                    <p className="text-[10.5px] text-slate-500 font-normal">
+                      선택한 반 소속 학생들에게만 노출
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTargetType('STUDENTS')}
+                    className={`p-3 rounded-xl border text-left transition flex flex-col justify-between gap-1 cursor-pointer ${
+                      targetType === 'STUDENTS'
+                        ? 'bg-indigo-50/90 border-indigo-400 text-indigo-950 font-black shadow-xs ring-1 ring-indigo-400'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 font-bold hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <span>👤</span>
+                      <span>특정 학생 개별 지정</span>
+                    </div>
+                    <p className="text-[10.5px] text-slate-500 font-normal">
+                      보충이 필요한 특정 학생들만 1:1 지정
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTargetType('ALL')}
+                    className={`p-3 rounded-xl border text-left transition flex flex-col justify-between gap-1 cursor-pointer ${
+                      targetType === 'ALL'
+                        ? 'bg-indigo-50/90 border-indigo-400 text-indigo-950 font-black shadow-xs ring-1 ring-indigo-400'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 font-bold hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <span>🌐</span>
+                      <span>학원 전체 학생</span>
+                    </div>
+                    <p className="text-[10.5px] text-slate-500 font-normal">
+                      학원에 등록된 모든 학생에게 공개
+                    </p>
+                  </button>
+                </div>
+
+                {/* 반 선택 서브 패널 */}
+                {targetType === 'CLASS' && (
+                  <div className="pt-2 border-t border-slate-100 space-y-1.5 animate-in fade-in">
+                    <label className="text-xs font-bold text-slate-700">대상 반 선택</label>
+                    <select
+                      value={targetClassId}
+                      onChange={(e) => setTargetClassId(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-indigo-500"
+                      required={targetType === 'CLASS'}
+                    >
+                      <option value="">반을 선택하세요</option>
+                      {classes.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* 특정 학생 선택 서브 패널 */}
+                {targetType === 'STUDENTS' && (
+                  <div className="pt-2 border-t border-slate-100 space-y-2 animate-in fade-in">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-700">
+                        보충 대상 학생 선택 ({targetStudentIds.length}명 선택됨)
+                      </label>
+                      {targetStudentIds.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setTargetStudentIds([])}
+                          className="text-[10px] text-rose-600 font-bold hover:underline"
+                        >
+                          선택 초기화
+                        </button>
+                      )}
+                    </div>
+
+                    <input
+                      type="text"
+                      value={studentSearchKeyword}
+                      onChange={(e) => setStudentSearchKeyword(e.target.value)}
+                      placeholder="학생 이름 또는 번호 검색..."
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800"
+                    />
+
+                    <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-xl p-2 bg-slate-50 divide-y divide-slate-100 space-y-1">
+                      {filteredStudentsForTarget.length === 0 ? (
+                        <div className="p-3 text-center text-xs text-slate-400 font-bold">
+                          검색된 학생이 없습니다.
+                        </div>
+                      ) : (
+                        filteredStudentsForTarget.map((s) => {
+                          const isChecked = targetStudentIds.includes(s.id);
+                          return (
+                            <label
+                              key={s.id}
+                              className="flex items-center justify-between p-1.5 hover:bg-white rounded-lg cursor-pointer transition text-xs font-bold text-slate-800"
+                            >
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setTargetStudentIds((prev) => [...prev, s.id]);
+                                    } else {
+                                      setTargetStudentIds((prev) => prev.filter((id) => id !== s.id));
+                                    }
+                                  }}
+                                  className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                                />
+                                <span>{s.name}</span>
+                              </div>
+                              <span className="text-[10.5px] text-slate-400 font-normal">
+                                {s.parent_phone || '전화번호 없음'}
+                              </span>
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* 운영 시간대 (시작 ~ 종료) */}

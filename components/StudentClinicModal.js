@@ -197,7 +197,6 @@ export default function StudentClinicModal({ user, onClose, onBookingUpdated }) 
 
     try {
       setSubmitting(true);
-      // 각 예약 ID 삭제 처리
       for (const b of myExistingBookings) {
         await fetch(`/api/clinic/bookings/${b.id}`, { method: 'DELETE' });
       }
@@ -251,7 +250,7 @@ export default function StudentClinicModal({ user, onClose, onBookingUpdated }) 
           ) : schedules.length === 0 ? (
             <div className="py-16 text-center space-y-3 bg-slate-50 rounded-3xl border border-dashed border-slate-300">
               <div className="text-4xl">🏖️</div>
-              <p className="text-sm font-bold text-slate-700">현재 오픈된 클리닉 일정이 없습니다.</p>
+              <p className="text-sm font-bold text-slate-700">현재 참여 가능한 클리닉 일정이 없습니다.</p>
               <p className="text-xs text-slate-400">선생님이 일정을 개설하면 알림과 함께 열립니다.</p>
             </div>
           ) : (
@@ -532,4 +531,3 @@ export default function StudentClinicModal({ user, onClose, onBookingUpdated }) 
     </div>
   );
 }
-

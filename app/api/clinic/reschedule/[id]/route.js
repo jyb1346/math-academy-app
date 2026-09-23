@@ -9,7 +9,7 @@ import {
 
 // PATCH /api/clinic/reschedule/[id] — 선생님의 클리닉 시간 변경 승인 또는 반려
 export async function PATCH(req, { params }) {
-  const { user, error } = requireRole(req, ['TEACHER', 'ADMIN']);
+  const { user, error } = requireRole(req, ['TEACHER', 'HEAD_TEACHER', 'ADMIN']);
   if (error) return error;
 
   const { id: requestId } = await params;

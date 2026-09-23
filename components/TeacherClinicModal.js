@@ -743,34 +743,25 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                       ? '내 담당 학생'
                       : targetType === 'CLASS'
                       ? '특정 반 지정'
-                      : targetType === 'STUDENTS'
-                      ? `지정 학생 (${targetStudentIds.length}명)`
-                      : '학원 전체 학생'}
                       : `지정 학생 (${targetStudentIds.length}명)`}
                   </span>
                 </div>
 
-                {/* 4가지 대상 라디오 카드 */}
-                <div className="grid grid-cols-2 gap-2">
                 {/* 3가지 대상 라디오 카드 */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                   <button
                     type="button"
                     onClick={() => setTargetType('TEACHER_STUDENTS')}
-                    className={`p-3 rounded-xl border text-left transition flex flex-col justify-between gap-1 cursor-pointer ${
                     className={`p-3.5 rounded-2xl border text-left transition flex flex-col justify-between gap-1.5 cursor-pointer ${
                       targetType === 'TEACHER_STUDENTS'
-                        ? 'bg-indigo-50/90 border-indigo-400 text-indigo-950 font-black shadow-xs ring-1 ring-indigo-400'
                         ? 'bg-indigo-50/90 border-indigo-400 text-indigo-950 font-black shadow-xs ring-2 ring-indigo-400'
                         : 'bg-slate-50 border-slate-200 text-slate-700 font-bold hover:bg-slate-100'
                     }`}
                   >
                     <div className="flex items-center gap-1.5 text-xs">
-                      <span>👨‍🏫</span>
                       <span className="text-base">👨‍🏫</span>
                       <span>내 담당 학생 (기본)</span>
                     </div>
-                    <p className="text-[10.5px] text-slate-500 font-normal">
                     <p className="text-[10.5px] text-slate-500 font-normal leading-tight">
                       내게 배정된 학생 및 내 반 학생 전체
                     </p>
@@ -779,20 +770,16 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                   <button
                     type="button"
                     onClick={() => setTargetType('CLASS')}
-                    className={`p-3 rounded-xl border text-left transition flex flex-col justify-between gap-1 cursor-pointer ${
                     className={`p-3.5 rounded-2xl border text-left transition flex flex-col justify-between gap-1.5 cursor-pointer ${
                       targetType === 'CLASS'
-                        ? 'bg-indigo-50/90 border-indigo-400 text-indigo-950 font-black shadow-xs ring-1 ring-indigo-400'
                         ? 'bg-indigo-50/90 border-indigo-400 text-indigo-950 font-black shadow-xs ring-2 ring-indigo-400'
                         : 'bg-slate-50 border-slate-200 text-slate-700 font-bold hover:bg-slate-100'
                     }`}
                   >
                     <div className="flex items-center gap-1.5 text-xs">
-                      <span>🏫</span>
                       <span className="text-base">🏫</span>
                       <span>특정 반 지정</span>
                     </div>
-                    <p className="text-[10.5px] text-slate-500 font-normal">
                     <p className="text-[10.5px] text-slate-500 font-normal leading-tight">
                       선택한 반 소속 학생들에게만 노출
                     </p>
@@ -801,40 +788,18 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                   <button
                     type="button"
                     onClick={() => setTargetType('STUDENTS')}
-                    className={`p-3 rounded-xl border text-left transition flex flex-col justify-between gap-1 cursor-pointer ${
                     className={`p-3.5 rounded-2xl border text-left transition flex flex-col justify-between gap-1.5 cursor-pointer ${
                       targetType === 'STUDENTS'
-                        ? 'bg-indigo-50/90 border-indigo-400 text-indigo-950 font-black shadow-xs ring-1 ring-indigo-400'
                         ? 'bg-indigo-50/90 border-indigo-400 text-indigo-950 font-black shadow-xs ring-2 ring-indigo-400'
                         : 'bg-slate-50 border-slate-200 text-slate-700 font-bold hover:bg-slate-100'
                     }`}
                   >
                     <div className="flex items-center gap-1.5 text-xs">
-                      <span>👤</span>
                       <span className="text-base">👤</span>
                       <span>특정 학생 개별 지정</span>
                     </div>
-                    <p className="text-[10.5px] text-slate-500 font-normal">
                     <p className="text-[10.5px] text-slate-500 font-normal leading-tight">
                       보충이 필요한 특정 학생들만 1:1 지정
-                    </p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setTargetType('ALL')}
-                    className={`p-3 rounded-xl border text-left transition flex flex-col justify-between gap-1 cursor-pointer ${
-                      targetType === 'ALL'
-                        ? 'bg-indigo-50/90 border-indigo-400 text-indigo-950 font-black shadow-xs ring-1 ring-indigo-400'
-                        : 'bg-slate-50 border-slate-200 text-slate-700 font-bold hover:bg-slate-100'
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <span>🌐</span>
-                      <span>학원 전체 학생</span>
-                    </div>
-                    <p className="text-[10.5px] text-slate-500 font-normal">
-                      학원에 등록된 모든 학생에게 공개
                     </p>
                   </button>
                 </div>

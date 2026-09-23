@@ -196,19 +196,19 @@ export default function StudentDashboard() {
                 </span>
               ) : (
                 <span className="bg-amber-300 text-slate-950 text-[11px] px-3.5 py-1 rounded-full font-black flex items-center gap-1.5 shadow-xs animate-pulse">
-                  <span>⏰ 2시간 클리닉 시간 선택 오픈!</span>
+                  <span>⏰ 클리닉 시간 선택 오픈!</span>
                 </span>
               )}
               <span className="text-2xl text-white/70 group-hover:text-white group-hover:translate-x-1 transition-all">→</span>
             </div>
             <div className="mt-4">
               <h3 className="text-xl font-extrabold text-white">
-                {clinicInfo.myBooking ? '주말 클리닉 예약 확인 및 시간 변경' : '주말 클리닉 시간 선택하기 (2시간)'}
+                {clinicInfo.myBooking ? '주말 클리닉 예약 확인 및 시간 변경' : '주말 클리닉 시간 선택하기'}
               </h3>
               <p className="text-xs text-purple-100 mt-1 leading-relaxed">
                 {clinicInfo.myBooking
                   ? `신청 완료: ${clinicInfo.activeDate} ${clinicInfo.myBooking.start_time} ~ ${clinicInfo.myBooking.end_time} (터치하여 시간 변경 또는 취소)`
-                  : `${clinicInfo.activeDate} 원하는 시작 시간을 골라 2시간 개별 클리닉을 예약하세요.`}
+                  : `${clinicInfo.activeDate} 원하는 시간대를 골라 개별 맞춤 클리닉을 예약하세요.`}
               </p>
             </div>
           </div>

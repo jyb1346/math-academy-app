@@ -3,8 +3,7 @@ import { requireSession, requireRole } from '@/lib/session';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { sendPushToUsers } from '@/lib/pushService';
 import {
-  generateCandidateSlots,
-  calculateSlotAvailability,
+  generateIntervalsWithAvailability,
   generateTeacherTimetableGrid,
 } from '@/lib/clinicUtils';
 
@@ -92,23 +91,18 @@ export async function GET(req) {
           (b) => b.student_id === user.id && b.status !== 'CANCELLED'
         ) || null;
 
-        const candidateSlots = generateCandidateSlots(
+        const intervals = generateIntervalsWithAvailability(
           sched.start_time,
           sched.end_time,
-          sched.slot_interval_minutes || 30,
-          sched.duration_minutes || 120
-        );
-
-        const availability = calculateSlotAvailability(
-          candidateSlots,
           schedBookings,
-          sched.max_capacity
+          sched.max_capacity,
+          myBooking?.id
         );
 
         return {
           ...sched,
           myBooking,
-          slots: availability,
+          intervals,
           totalBookingsCount: schedBookings.filter((b) => b.status !== 'CANCELLED').length,
         };
       });
@@ -223,7 +217,7 @@ export async function POST(req) {
         if (targetStudentIds.length > 0) {
           sendPushToUsers(req, targetStudentIds, {
             title: `[품수학] ⏰ ${date} 클리닉 시간 선택 오픈!`,
-            message: `${date} (${startTime}~${endTime}) 2시간 클리닉 일정이 열렸습니다. 원하는 시간을 선택하세요!`,
+            message: `${date} (${startTime}~${endTime}) 클리닉 일정이 열렸습니다. 원하는 시간을 선택하세요!`,
             url: '/student/dashboard',
           }).catch((e) => console.warn('clinic open push warn:', e));
         }

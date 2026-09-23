@@ -240,7 +240,7 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
     const bookings = (currentSchedule.bookings || []).filter((b) => b.status !== 'CANCELLED');
 
     let text = `[품수학 ⏰ ${currentSchedule.date} 클리닉 시간표]\n`;
-    text += `운영시간: ${currentSchedule.start_time} ~ ${currentSchedule.end_time} (2시간 진행)\n`;
+    text += `운영시간: ${currentSchedule.start_time} ~ ${currentSchedule.end_time}\n`;
     text += `총 신청 인원: ${bookings.length}명\n\n`;
 
     // 시간 순 정렬
@@ -248,7 +248,8 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
     sorted.forEach((b) => {
       const name = b.users?.name || '학생';
       const subject = b.subject ? ` (${b.subject})` : '';
-      text += `▪️ ${b.start_time}~${b.end_time} : ${name}${subject}\n`;
+      const dur = timeToMinutes(b.end_time) - timeToMinutes(b.start_time);
+      text += `▪️ ${b.start_time}~${b.end_time} (${formatDurationLabel(dur)}) : ${name}${subject}\n`;
     });
 
     if (currentSchedule.notice) {
@@ -599,7 +600,7 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                                           👤 {b.users?.name || '학생'}
                                         </td>
                                         <td className="p-3 font-mono font-bold text-indigo-700">
-                                          ⏰ {b.start_time} ~ {b.end_time} (2시간)
+                                          ⏰ {b.start_time} ~ {b.end_time} ({formatDurationLabel(timeToMinutes(b.end_time) - timeToMinutes(b.start_time))})
                                         </td>
                                         <td className="p-3 text-slate-600 max-w-xs truncate">
                                           {b.subject || '-'}
@@ -660,7 +661,7 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                   <span>새 클리닉 운영 일정 만들기</span>
                 </h3>
                 <p className="text-xs text-slate-500 font-semibold mt-0.5">
-                  날짜와 시간대를 정해 오픈하면 학생들이 30분 단위로 원하는 2시간 슬롯을 예약할 수 있습니다.
+                  날짜와 시간대를 정해 오픈하면 학생들이 30분 단위로 원하는 시간대를 골라 예약할 수 있습니다.
                 </p>
               </div>
 

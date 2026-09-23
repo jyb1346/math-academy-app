@@ -122,6 +122,23 @@ export async function POST(req) {
 
     const allBookings = existingBookings || [];
 
+    // 대상 학생의 기존 활성 예약 확인
+    const targetStudentBookings = allBookings.filter(
+      (b) => b.student_id === targetStudentId && b.status !== 'CANCELLED'
+    );
+    const hasExisting = targetStudentBookings.length > 0;
+
+    // [보안/규칙] 학생 본인의 직접 예약인 경우: 이미 활성 예약이 있다면 신규 예약(덮어쓰기) 차단!
+    if (isStudent && hasExisting) {
+      return NextResponse.json(
+        {
+          error:
+            '이미 예약된 클리닉 내역이 있습니다. 시간 변경이 필요한 경우 [시간 변경 요청] 기능을 이용해 주세요.',
+        },
+        { status: 400 }
+      );
+    }
+
     // 다중 구간 전체 정원 체크
     if (schedule.max_capacity && schedule.max_capacity > 0) {
       const capacityValidation = checkMultipleRangesCapacity(
@@ -145,6 +162,20 @@ export async function POST(req) {
       .delete()
       .eq('schedule_id', scheduleId)
       .eq('student_id', targetStudentId);
+
+    // 선생님이 학생 예약을 직접 재배정/수정하는 경우, 해당 일정의 대기 중인 변경 요청 자동 취소(해소)
+    if (!isStudent) {
+      await db
+        .from('clinic_reschedule_requests')
+        .update({
+          status: 'CANCELLED',
+          reject_reason: '선생님이 일정을 직접 변경/재배정하여 자동 취소되었습니다.',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('schedule_id', scheduleId)
+        .eq('student_id', targetStudentId)
+        .eq('status', 'PENDING');
+    }
 
     // 신규 구간들 삽입
     const insertRows = targetRanges.map((r) => ({
@@ -187,10 +218,17 @@ export async function POST(req) {
           url: '/teacher/dashboard',
         }).catch((e) => console.warn('clinic booking teacher push warn:', e));
       } else if (!isStudent && targetStudentId !== user.id) {
-        // 선생님이 대리 예약했을 때 -> 학생에게 알림
+        // 선생님이 대리 예약/수정했을 때 -> 학생에게 알림
+        const actionTitle = hasExisting
+          ? `[품수학 클리닉] ⏰ 예약 시간 변경 안내`
+          : `[품수학 클리닉] ⏰ 예약 완료 안내`;
+        const actionMessage = hasExisting
+          ? `${schedule.date} ${rangesSummary} 주말 클리닉 시간이 변경/조정되었습니다.`
+          : `${schedule.date} ${rangesSummary} 주말 클리닉이 배정되었습니다.`;
+
         sendPushToUsers(req, [targetStudentId], {
-          title: `[품수학 클리닉] ⏰ 예약 완료 안내`,
-          message: `${schedule.date} ${rangesSummary} 주말 클리닉이 배정되었습니다.`,
+          title: actionTitle,
+          message: actionMessage,
           url: '/student/dashboard',
         }).catch((e) => console.warn('clinic booking student push warn:', e));
       }

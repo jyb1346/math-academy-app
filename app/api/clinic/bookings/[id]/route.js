@@ -1,17 +1,16 @@
 import { NextResponse } from 'next/server';
-import { requireSession } from '@/lib/session';
+import { requireRole } from '@/lib/session';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
-// PATCH /api/clinic/bookings/[id] — 클리닉 예약 상태 변경(출석/결석/취소) 또는 정보 수정
+// PATCH /api/clinic/bookings/[id] — 클리닉 예약 상태 변경(출석/결석/취소) 또는 정보 수정 (교사/관리자 전용)
 export async function PATCH(req, { params }) {
-  const { user, error } = requireSession(req);
+  const { user, error } = requireRole(req, ['TEACHER', 'HEAD_TEACHER', 'ADMIN']);
   if (error) return error;
 
   try {
     const { id } = await params;
     const body = await req.json();
     const db = getSupabaseAdmin(req);
-    const isStudent = user.role === 'STUDENT';
 
     // 해당 예약 조회
     const { data: booking, error: fetchErr } = await db
@@ -24,17 +23,8 @@ export async function PATCH(req, { params }) {
       return NextResponse.json({ error: '존재하지 않는 예약입니다.' }, { status: 404 });
     }
 
-    // 학생은 본인의 예약만 취소/수정 가능
-    if (isStudent && booking.student_id !== user.id) {
-      return NextResponse.json({ error: '본인의 예약만 변경할 수 있습니다.' }, { status: 403 });
-    }
-
     const updateData = {};
     if (body.status !== undefined) {
-      // 학생은 CANCELLED만 변경 가능, 교사는 ATTENDED, ABSENT, BOOKED, CANCELLED 모두 가능
-      if (isStudent && body.status !== 'CANCELLED') {
-        return NextResponse.json({ error: '학생은 예약 취소만 가능합니다.' }, { status: 403 });
-      }
       updateData.status = body.status;
     }
     if (body.startTime !== undefined) updateData.start_time = body.startTime;
@@ -61,15 +51,14 @@ export async function PATCH(req, { params }) {
   }
 }
 
-// DELETE /api/clinic/bookings/[id] — 클리닉 예약 취소/삭제
+// DELETE /api/clinic/bookings/[id] — 클리닉 예약 취소/삭제 (교사/관리자 전용)
 export async function DELETE(req, { params }) {
-  const { user, error } = requireSession(req);
+  const { user, error } = requireRole(req, ['TEACHER', 'HEAD_TEACHER', 'ADMIN']);
   if (error) return error;
 
   try {
     const { id } = await params;
     const db = getSupabaseAdmin(req);
-    const isStudent = user.role === 'STUDENT';
 
     const { data: booking, error: fetchErr } = await db
       .from('clinic_bookings')
@@ -79,10 +68,6 @@ export async function DELETE(req, { params }) {
 
     if (fetchErr || !booking) {
       return NextResponse.json({ error: '존재하지 않는 예약입니다.' }, { status: 404 });
-    }
-
-    if (isStudent && booking.student_id !== user.id) {
-      return NextResponse.json({ error: '본인의 예약만 취소할 수 있습니다.' }, { status: 403 });
     }
 
     const { error: delErr } = await db
@@ -100,4 +85,5 @@ export async function DELETE(req, { params }) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
 

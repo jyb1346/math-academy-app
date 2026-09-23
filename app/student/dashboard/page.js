@@ -6,15 +6,18 @@ import PushNotificationManager from '@/components/PushNotificationManager';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import StudentHomeworkTable from '@/components/StudentHomeworkTable';
 import StudentBugDexModal from '@/components/StudentBugDexModal';
+import StudentClinicModal from '@/components/StudentClinicModal';
 import { logout } from '@/lib/useSession';
 
 export default function StudentDashboard() {
   const [user, setUser] = useState(null);
   const [evaluations, setEvaluations] = useState([]);
   const [qnaStats, setQnaStats] = useState({ pending: 0, answered: 0, resolved: 0, total: 0 });
+  const [clinicInfo, setClinicInfo] = useState({ hasActive: false, activeDate: '', myBooking: null });
   const [loadingEvals, setLoadingEvals] = useState(true);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showDexModal, setShowDexModal] = useState(false);
+  const [showClinicModal, setShowClinicModal] = useState(false);
   const [isJangStudent, setIsJangStudent] = useState(false);
   const router = useRouter();
 
@@ -44,6 +47,24 @@ export default function StudentDashboard() {
       if (evRes.ok) {
         setEvaluations(evJson.evaluations || []);
       }
+
+      // ⏰ 클리닉 일정 및 내 예약 상태 조회
+      fetch('/api/clinic/schedules')
+        .then((res) => res.json())
+        .then((data) => {
+          const activeSchedules = (data.schedules || []).filter((s) => s.is_active);
+          if (activeSchedules.length > 0) {
+            const firstActive = activeSchedules[0];
+            setClinicInfo({
+              hasActive: true,
+              activeDate: firstActive.date,
+              myBooking: firstActive.myBooking || null,
+            });
+          } else {
+            setClinicInfo({ hasActive: false, activeDate: '', myBooking: null });
+          }
+        })
+        .catch(() => {});
 
       const qRes = await fetch('/api/qna');
       const qJson = await qRes.json();
@@ -162,6 +183,37 @@ export default function StudentDashboard() {
           )}
         </div>
 
+        {/* ⏰ 주말 클리닉 시간 선택 배너 */}
+        {clinicInfo.hasActive && (
+          <div
+            onClick={() => setShowClinicModal(true)}
+            className="group relative bg-gradient-to-r from-purple-700 via-indigo-700 to-indigo-900 text-white p-6 rounded-3xl shadow-md cursor-pointer overflow-hidden transition-all duration-300 hover:scale-[1.01] hover:shadow-lg border border-purple-500/30"
+          >
+            <div className="flex justify-between items-start">
+              {clinicInfo.myBooking ? (
+                <span className="bg-emerald-400 text-slate-950 text-[11px] px-3.5 py-1 rounded-full font-black flex items-center gap-1.5 shadow-md">
+                  <span>⭐ {clinicInfo.activeDate} ({clinicInfo.myBooking.start_time}~{clinicInfo.myBooking.end_time}) 예약 확정</span>
+                </span>
+              ) : (
+                <span className="bg-amber-300 text-slate-950 text-[11px] px-3.5 py-1 rounded-full font-black flex items-center gap-1.5 shadow-xs animate-pulse">
+                  <span>⏰ 2시간 클리닉 시간 선택 오픈!</span>
+                </span>
+              )}
+              <span className="text-2xl text-white/70 group-hover:text-white group-hover:translate-x-1 transition-all">→</span>
+            </div>
+            <div className="mt-4">
+              <h3 className="text-xl font-extrabold text-white">
+                {clinicInfo.myBooking ? '주말 클리닉 예약 확인 및 시간 변경' : '주말 클리닉 시간 선택하기 (2시간)'}
+              </h3>
+              <p className="text-xs text-purple-100 mt-1 leading-relaxed">
+                {clinicInfo.myBooking
+                  ? `신청 완료: ${clinicInfo.activeDate} ${clinicInfo.myBooking.start_time} ~ ${clinicInfo.myBooking.end_time} (터치하여 시간 변경 또는 취소)`
+                  : `${clinicInfo.activeDate} 원하는 시작 시간을 골라 2시간 개별 클리닉을 예약하세요.`}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* 🎓 2. 학생 전용 2대 핵심 바로가기 메뉴 */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           
@@ -220,6 +272,15 @@ export default function StudentDashboard() {
         </div>
 
       </main>
+
+      {/* ⏰ 주말 클리닉 예약 모달 */}
+      {showClinicModal && user && (
+        <StudentClinicModal
+          user={user}
+          onClose={() => setShowClinicModal(false)}
+          onBookingUpdated={() => fetchStudentData(user.id)}
+        />
+      )}
 
       {/* 📖 20종 벌레 도감 & 랭킹 모달 */}
       {showDexModal && user && (

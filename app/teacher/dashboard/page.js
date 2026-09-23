@@ -1,5 +1,6 @@
 'use client';
 import TeacherLuckyBugModal from "@/components/TeacherLuckyBugModal";
+import TeacherClinicModal from "@/components/TeacherClinicModal";
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -16,9 +17,10 @@ export default function TeacherDashboard() {
   const [qnaStats, setQnaStats] = useState({ pending: 0, inProgress: 0, resolved: 0, total: 0 });
   const [loading, setLoading] = useState(true);
 
-  // 비밀번호 변경 모달 상태
+  // 모달 상태
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showLuckyBugModal, setShowLuckyBugModal] = useState(false);
+  const [showClinicModal, setShowClinicModal] = useState(false);
 
   // 반 생성 폼 및 수업 유형 (판서수업 LECTURE / 개별수업 INDIVIDUAL)
   const [newClassName, setNewClassName] = useState('');
@@ -420,6 +422,15 @@ export default function TeacherDashboard() {
             )}
 
             <button
+              onClick={() => setShowClinicModal(true)}
+              className="text-xs bg-purple-600 hover:bg-purple-700 text-white font-black px-3.5 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0"
+              title="주말 2시간 클리닉 일정 개설 및 시간표 관리"
+            >
+              <span>⏰</span>
+              <span>주말 클리닉 관리</span>
+            </button>
+
+            <button
               onClick={handleShareKakaoLink}
               className="text-xs bg-amber-300 hover:bg-amber-400 text-amber-950 font-black px-3.5 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0"
               title="학부모/학생에게 카톡으로 앱 설치 링크 보내기"
@@ -461,12 +472,12 @@ export default function TeacherDashboard() {
 
         {/* 🎯 1. 메인 대형 액션 메뉴 */}
         <section className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
             
             {/* 카드 A: 일일 피드백 작성 */}
             <div
               onClick={() => router.push('/teacher/eval')}
-              className="group relative bg-gradient-to-br from-blue-600 via-indigo-600 to-indigo-800 p-7 rounded-3xl shadow-xl shadow-indigo-950/10 cursor-pointer overflow-hidden transition-all duration-300 hover:scale-[1.01]"
+              className="group relative bg-gradient-to-br from-blue-600 via-indigo-600 to-indigo-800 p-6 sm:p-7 rounded-3xl shadow-xl shadow-indigo-950/10 cursor-pointer overflow-hidden transition-all duration-300 hover:scale-[1.01]"
             >
               <div className="absolute top-0 right-0 -mt-8 -mr-8 w-40 h-40 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
               
@@ -478,9 +489,9 @@ export default function TeacherDashboard() {
               </div>
 
               <div className="mt-8 space-y-1">
-                <h2 className="text-2xl font-black text-white">일일 학습 피드백 작성</h2>
+                <h2 className="text-xl sm:text-2xl font-black text-white">일일 학습 피드백</h2>
                 <p className="text-xs text-blue-100/90 font-normal leading-relaxed">
-                  오늘 수업 성취도(6대 영역) 및 출결/지각 상태를 기록합니다.
+                  오늘 수업 성취도(6대 영역) 및 출결/지각을 기록합니다.
                 </p>
               </div>
             </div>
@@ -488,7 +499,7 @@ export default function TeacherDashboard() {
             {/* 카드 B: 반별 게시판 관리 */}
             <div
               onClick={() => router.push('/board')}
-              className="group relative bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white p-7 rounded-3xl shadow-xl shadow-indigo-950/10 cursor-pointer overflow-hidden transition-all duration-300 hover:scale-[1.01]"
+              className="group relative bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white p-6 sm:p-7 rounded-3xl shadow-xl shadow-indigo-950/10 cursor-pointer overflow-hidden transition-all duration-300 hover:scale-[1.01]"
             >
               <div className="absolute top-0 right-0 -mt-8 -mr-8 w-40 h-40 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none"></div>
 
@@ -500,9 +511,9 @@ export default function TeacherDashboard() {
               </div>
 
               <div className="mt-8 space-y-1">
-                <h2 className="text-2xl font-black text-white">반별 공지 및 숙제 게시판</h2>
+                <h2 className="text-xl sm:text-2xl font-black text-white">공지 및 숙제 게시판</h2>
                 <p className="text-xs text-slate-300 font-normal leading-relaxed">
-                  숙제 알림 등록 및 학생들의 공지 확인 여부를 체크합니다.
+                  숙제 알림 등록 및 학생들의 공지 확인을 체크합니다.
                 </p>
               </div>
             </div>
@@ -510,12 +521,12 @@ export default function TeacherDashboard() {
             {/* 🎯 카드 C: 1:1 수학 질의응답 (Q&A) */}
             <div
               onClick={() => router.push('/qna')}
-              className="group relative bg-gradient-to-br from-amber-500 via-orange-600 to-amber-700 text-white p-7 rounded-3xl shadow-xl shadow-amber-950/10 cursor-pointer overflow-hidden transition-all duration-300 hover:scale-[1.01]"
+              className="group relative bg-gradient-to-br from-amber-500 via-orange-600 to-amber-700 text-white p-6 sm:p-7 rounded-3xl shadow-xl shadow-amber-950/10 cursor-pointer overflow-hidden transition-all duration-300 hover:scale-[1.01]"
             >
               <div className="absolute top-0 right-0 -mt-8 -mr-8 w-40 h-40 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
 
               <div className="flex justify-between items-start">
-                <span className={`text-xs px-3.5 py-1 rounded-full font-black flex items-center gap-1.5 ${
+                <span className={`text-xs px-3 py-1 rounded-full font-black flex items-center gap-1.5 ${
                   qnaStats.pending > 0
                     ? 'bg-rose-600 text-white animate-pulse shadow-md'
                     : qnaStats.inProgress > 0
@@ -523,20 +534,42 @@ export default function TeacherDashboard() {
                     : 'bg-emerald-500/90 text-white border border-emerald-400/40 font-bold'
                 }`}>
                   {qnaStats.pending > 0 && qnaStats.inProgress > 0
-                    ? `🚨 미답변 ${qnaStats.pending}건 · 💬 확인 중 ${qnaStats.inProgress}건`
+                    ? `🚨 미답변 ${qnaStats.pending}건`
                     : qnaStats.pending > 0
-                    ? `🚨 미답변 질문 ${qnaStats.pending}건`
+                    ? `🚨 미답변 ${qnaStats.pending}건`
                     : qnaStats.inProgress > 0
-                    ? `💬 학생 확인 중 ${qnaStats.inProgress}건`
-                    : '💡 모든 질문 해결 완료'}
+                    ? `💬 확인 중 ${qnaStats.inProgress}건`
+                    : '💡 Q&A 완료'}
                 </span>
                 <span className="text-3xl text-white/60 group-hover:text-white group-hover:translate-x-1 transition-all">→</span>
               </div>
 
               <div className="mt-8 space-y-1">
-                <h2 className="text-2xl font-black text-white">1:1 질의응답 (Q&A)</h2>
+                <h2 className="text-xl sm:text-2xl font-black text-white">1:1 질의응답 (Q&A)</h2>
                 <p className="text-xs text-amber-100 font-normal leading-relaxed">
-                  담당 학생들이 올린 문제 사진과 질문을 확인하고 1:1 풀이 답변을 남깁니다.
+                  학생들이 올린 문제 질문에 1:1 풀이 답변을 남깁니다.
+                </p>
+              </div>
+            </div>
+
+            {/* ⏰ 카드 D: 주말 클리닉 시간표 관리 */}
+            <div
+              onClick={() => setShowClinicModal(true)}
+              className="group relative bg-gradient-to-br from-purple-700 via-indigo-800 to-slate-900 text-white p-6 sm:p-7 rounded-3xl shadow-xl shadow-indigo-950/10 cursor-pointer overflow-hidden transition-all duration-300 hover:scale-[1.01]"
+            >
+              <div className="absolute top-0 right-0 -mt-8 -mr-8 w-40 h-40 bg-purple-500/20 rounded-full blur-2xl pointer-events-none"></div>
+
+              <div className="flex justify-between items-start">
+                <span className="bg-white/20 backdrop-blur-md border border-white/20 text-white text-xs px-3.5 py-1 rounded-full font-bold">
+                  ⏰ Weekend Clinic
+                </span>
+                <span className="text-3xl text-purple-200 group-hover:text-white group-hover:translate-x-1 transition-all">→</span>
+              </div>
+
+              <div className="mt-8 space-y-1">
+                <h2 className="text-xl sm:text-2xl font-black text-white">주말 클리닉 관리</h2>
+                <p className="text-xs text-purple-100 font-normal leading-relaxed">
+                  2시간 클리닉 일정 개설 및 학생별 예약 시간표를 관리합니다.
                 </p>
               </div>
             </div>
@@ -997,6 +1030,16 @@ export default function TeacherDashboard() {
           user={user}
           classes={classes}
           onClose={() => setShowLuckyBugModal(false)}
+        />
+      )}
+
+      {/* ⏰ 모달 5: 주말 클리닉 시간표 및 예약 관리 모달 */}
+      {showClinicModal && user && (
+        <TeacherClinicModal
+          user={user}
+          students={students}
+          classes={classes}
+          onClose={() => setShowClinicModal(false)}
         />
       )}
 

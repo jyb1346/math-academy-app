@@ -76,7 +76,20 @@ export async function GET(req) {
           return true;
         }
         if (targetType === 'CLASS') {
-          return myClassIds.includes(sched.target_class_id);
+          let classIds = [];
+          if (Array.isArray(sched.target_class_ids)) {
+            classIds = sched.target_class_ids;
+          } else if (typeof sched.target_class_ids === 'string') {
+            try {
+              classIds = JSON.parse(sched.target_class_ids);
+            } catch {
+              classIds = [sched.target_class_ids];
+            }
+          }
+          if (sched.target_class_id && !classIds.includes(sched.target_class_id)) {
+            classIds.push(sched.target_class_id);
+          }
+          return myClassIds.some((cid) => classIds.includes(cid));
         }
         if (targetType === 'STUDENTS') {
           let targetIds = [];
@@ -182,12 +195,17 @@ export async function GET(req) {
         schedBookings
       );
 
+      const activeBookings = schedBookings.filter((b) => b.status !== 'CANCELLED');
+      const uniqueStudentIds = new Set(activeBookings.map((b) => b.student_id));
+
       return {
         ...sched,
         bookings: schedBookings,
         timetableGrid,
         stats: {
-          total: schedBookings.length,
+          total: uniqueStudentIds.size,
+          uniqueStudents: uniqueStudentIds.size,
+          totalBookings: schedBookings.length,
           booked: schedBookings.filter((b) => b.status === 'BOOKED').length,
           attended: schedBookings.filter((b) => b.status === 'ATTENDED').length,
           absent: schedBookings.filter((b) => b.status === 'ABSENT').length,
@@ -215,7 +233,7 @@ export async function POST(req) {
     const body = await req.json();
     const {
       date,
-      title = '주말 클리닉',
+      title = '클리닉 시간',
       startTime = '10:00',
       endTime = '18:00',
       slotIntervalMinutes = 30,
@@ -223,6 +241,7 @@ export async function POST(req) {
       maxCapacity = null, // null: 무제한
       targetType = 'TEACHER_STUDENTS', // 'TEACHER_STUDENTS' | 'CLASS' | 'STUDENTS' | 'ALL'
       targetClassId = null,
+      targetClassIds = [],
       targetStudentIds = [],
       notice = '',
       sendPush = false,
@@ -234,6 +253,12 @@ export async function POST(req) {
 
     const db = getSupabaseAdmin(req);
 
+    const classIdsArray = Array.isArray(targetClassIds) && targetClassIds.length > 0
+      ? targetClassIds
+      : targetClassId
+      ? [targetClassId]
+      : [];
+
     const scheduleData = {
       teacher_id: user.id,
       date,
@@ -244,7 +269,8 @@ export async function POST(req) {
       duration_minutes: Number(durationMinutes) || 120,
       max_capacity: maxCapacity && Number(maxCapacity) > 0 ? Number(maxCapacity) : null,
       target_type: targetType || 'TEACHER_STUDENTS',
-      target_class_id: targetType === 'CLASS' ? targetClassId || null : null,
+      target_class_id: targetType === 'CLASS' ? classIdsArray[0] || null : null,
+      target_class_ids: targetType === 'CLASS' ? classIdsArray : [],
       target_student_ids: targetType === 'STUDENTS' ? targetStudentIds || [] : [],
       notice: notice ? notice.trim() : null,
       is_active: true,
@@ -259,12 +285,14 @@ export async function POST(req) {
     if (
       insertErr &&
       (insertErr.message?.includes('target_type') ||
+        insertErr.message?.includes('target_class_ids') ||
         insertErr.message?.includes('target_student_ids') ||
         insertErr.code === '42703')
     ) {
-      // DB에 컬럼이 아직 없는 경우 호환 fallback
+      // DB에 새 컬럼이 아직 없는 경우 호환 fallback
       const fallbackData = { ...scheduleData };
       delete fallbackData.target_type;
+      delete fallbackData.target_class_ids;
       delete fallbackData.target_student_ids;
       const fallbackRes = await db
         .from('clinic_schedules')
@@ -284,11 +312,11 @@ export async function POST(req) {
       try {
         let targetIdsToSend = [];
 
-        if (targetType === 'CLASS' && targetClassId) {
+        if (targetType === 'CLASS' && classIdsArray.length > 0) {
           const { data: cs } = await db
             .from('class_students')
             .select('student_id')
-            .eq('class_id', targetClassId);
+            .in('class_id', classIdsArray);
           targetIdsToSend = (cs || []).map((c) => c.student_id);
         } else if (targetType === 'STUDENTS' && Array.isArray(targetStudentIds) && targetStudentIds.length > 0) {
           targetIdsToSend = targetStudentIds;

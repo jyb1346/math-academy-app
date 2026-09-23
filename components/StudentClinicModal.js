@@ -11,7 +11,7 @@ import {
   checkMultipleRangesCapacity,
 } from '@/lib/clinicUtils';
 
-export default function StudentClinicModal({ user, onClose, onBookingUpdated }) {
+export default function StudentClinicModal({ user, initialScheduleId = null, onClose, onBookingUpdated }) {
   const [schedules, setSchedules] = useState([]);
   const [selectedScheduleId, setSelectedScheduleId] = useState(null);
 
@@ -34,7 +34,17 @@ export default function StudentClinicModal({ user, onClose, onBookingUpdated }) 
       setSchedules(activeList);
 
       if (activeList.length > 0) {
-        const initial = activeList[0];
+        let initial = null;
+        if (initialScheduleId) {
+          initial = activeList.find((s) => s.id === initialScheduleId);
+        }
+        if (!initial) {
+          // 미신청 일정이 있다면 미신청 일정을 기본 선택
+          const unbooked = activeList.find(
+            (s) => !s.myBooking && (!s.myBookings || s.myBookings.length === 0)
+          );
+          initial = unbooked || activeList[0];
+        }
         setSelectedScheduleId(initial.id);
         applyScheduleSelection(initial);
       }
@@ -223,7 +233,7 @@ export default function StudentClinicModal({ user, onClose, onBookingUpdated }) 
             </div>
             <div>
               <h2 className="text-lg sm:text-xl font-black text-white flex items-center gap-2">
-                <span>주말 클리닉 시간 선택</span>
+                <span>클리닉 시간 선택</span>
                 <span className="text-xs bg-white/20 text-white border border-white/30 px-2 py-0.5 rounded-full font-bold">
                   자유 시간 선택
                 </span>
@@ -264,17 +274,21 @@ export default function StudentClinicModal({ user, onClose, onBookingUpdated }) 
                       <button
                         key={s.id}
                         onClick={() => handleSelectSchedule(s)}
-                        className={`px-4 py-2 rounded-xl text-xs font-black whitespace-nowrap transition flex items-center gap-1.5 ${
+                        className={`px-3.5 py-2.5 rounded-2xl text-xs font-black whitespace-nowrap transition flex items-center gap-2 ${
                           selectedScheduleId === s.id
-                            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'
+                            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20 ring-2 ring-indigo-400'
                             : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
                         }`}
                       >
                         <span>📅</span>
                         <span>{s.date} ({s.title})</span>
-                        {hasMyBooking && (
-                          <span className="text-[10px] bg-emerald-400 text-slate-950 font-black px-1.5 rounded">
-                            예약됨
+                        {hasMyBooking ? (
+                          <span className="text-[10px] bg-emerald-400 text-slate-950 font-black px-1.5 py-0.5 rounded shadow-2xs">
+                            ✅ 예약됨
+                          </span>
+                        ) : (
+                          <span className="text-[10px] bg-amber-300 text-slate-950 font-black px-1.5 py-0.5 rounded shadow-2xs animate-pulse">
+                            🚨 미신청
                           </span>
                         )}
                       </button>

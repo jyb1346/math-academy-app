@@ -421,15 +421,6 @@ export default function TeacherDashboard() {
               </button>
             )}
 
-            <button
-              onClick={() => setShowClinicModal(true)}
-              className="text-xs bg-purple-600 hover:bg-purple-700 text-white font-black px-3.5 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0"
-              title="주말 2시간 클리닉 일정 개설 및 시간표 관리"
-              title="주말 클리닉 일정 개설 및 시간표 관리"
-            >
-              <span>⏰</span>
-              <span>주말 클리닉 관리</span>
-            </button>
 
             <button
               onClick={handleShareKakaoLink}
@@ -553,7 +544,7 @@ export default function TeacherDashboard() {
               </div>
             </div>
 
-            {/* ⏰ 카드 D: 주말 클리닉 시간표 관리 */}
+            {/* ⏰ 카드 D: 클리닉 시간 관리 */}
             <div
               onClick={() => setShowClinicModal(true)}
               className="group relative bg-gradient-to-br from-purple-700 via-indigo-800 to-slate-900 text-white p-6 sm:p-7 rounded-3xl shadow-xl shadow-indigo-950/10 cursor-pointer overflow-hidden transition-all duration-300 hover:scale-[1.01]"
@@ -562,15 +553,14 @@ export default function TeacherDashboard() {
 
               <div className="flex justify-between items-start">
                 <span className="bg-white/20 backdrop-blur-md border border-white/20 text-white text-xs px-3.5 py-1 rounded-full font-bold">
-                  ⏰ Weekend Clinic
+                  ⏰ Clinic
                 </span>
                 <span className="text-3xl text-purple-200 group-hover:text-white group-hover:translate-x-1 transition-all">→</span>
               </div>
 
               <div className="mt-8 space-y-1">
-                <h2 className="text-xl sm:text-2xl font-black text-white">주말 클리닉 관리</h2>
+                <h2 className="text-xl sm:text-2xl font-black text-white">클리닉 시간 관리</h2>
                 <p className="text-xs text-purple-100 font-normal leading-relaxed">
-                  2시간 클리닉 일정 개설 및 학생별 예약 시간표를 관리합니다.
                   클리닉 일정 개설 및 학생별 예약 시간표를 관리합니다.
                 </p>
               </div>

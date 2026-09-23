@@ -421,14 +421,6 @@ export default function TeacherDashboard() {
               </button>
             )}
 
-            <button
-              onClick={() => setShowClinicModal(true)}
-              className="text-xs bg-purple-600 hover:bg-purple-700 text-white font-black px-3.5 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0"
-              title="주말 클리닉 일정 개설 및 시간표 관리"
-            >
-              <span>⏰</span>
-              <span>주말 클리닉 관리</span>
-            </button>
 
             <button
               onClick={handleShareKakaoLink}

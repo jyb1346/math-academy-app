@@ -95,6 +95,7 @@ export default function TeacherEvalPage() {
   const [batchStudents, setBatchStudents] = useState([]);
   const [batchSubmitting, setBatchSubmitting] = useState(false);
   const [batchProgressText, setBatchProgressText] = useState('');
+  const [commonCustomTestType, setCommonCustomTestType] = useState('');
 
   // 판서수업: 학생별 커스텀 평가 항목 추가 입력 상태 (studentId -> 값)
   const [batchShowAddCustomMap, setBatchShowAddCustomMap] = useState({});
@@ -841,6 +842,23 @@ export default function TeacherEvalPage() {
     showToast('🔄 모든 학생의 점수가 직전 피드백 점수로 일괄 복원되었습니다.');
   };
 
+  const handleSetAllStudentsTestType = (type, customName = '') => {
+    const trimmed = customName.trim();
+    if (type === '기타' && !trimmed) {
+      alert('기타 시험명을 입력해 주세요.');
+      return;
+    }
+    setBatchStudents((prev) =>
+      prev.map((s) => ({
+        ...s,
+        testType: type,
+        customTestType: type === '기타' ? trimmed : s.customTestType,
+      }))
+    );
+    const label = type === '기타' ? `기타 (${trimmed})` : type;
+    showToast(`📝 모든 학생의 시험 종류가 '${label}'(으)로 일괄 변경되었습니다.`);
+  };
+
   const handleToggleSelectAllStudents = () => {
     const allIncluded = batchStudents.every((s) => s.included);
     setBatchStudents((prev) => prev.map((s) => ({ ...s, included: !allIncluded })));
@@ -1554,6 +1572,77 @@ export default function TeacherEvalPage() {
                     </button>
                   </div>
                 </div>
+
+                {/* ⚡ 시험 종류 전체 일괄 적용 툴바 */}
+                {batchStudents.length > 0 && (
+                  <div className="p-3 bg-indigo-50/70 rounded-2xl border border-indigo-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-2xs">
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-xs font-black text-indigo-950 flex items-center gap-1">
+                        <span>📝</span>
+                        <span>시험 종류 전체 일괄 적용:</span>
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => handleSetAllStudentsTestType('단원평가')}
+                        className="text-xs font-bold bg-white hover:bg-indigo-600 hover:text-white text-indigo-900 px-2.5 py-1.5 rounded-xl border border-indigo-200 shadow-2xs transition active:scale-95 flex items-center gap-1"
+                      >
+                        <span>📘</span>
+                        <span>단원평가</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSetAllStudentsTestType('일일테스트')}
+                        className="text-xs font-bold bg-white hover:bg-indigo-600 hover:text-white text-indigo-900 px-2.5 py-1.5 rounded-xl border border-indigo-200 shadow-2xs transition active:scale-95 flex items-center gap-1"
+                      >
+                        <span>⚡</span>
+                        <span>일일테스트</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSetAllStudentsTestType('주간테스트')}
+                        className="text-xs font-bold bg-white hover:bg-indigo-600 hover:text-white text-indigo-900 px-2.5 py-1.5 rounded-xl border border-indigo-200 shadow-2xs transition active:scale-95 flex items-center gap-1"
+                      >
+                        <span>📝</span>
+                        <span>주간테스트</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSetAllStudentsTestType('모의고사')}
+                        className="text-xs font-bold bg-white hover:bg-indigo-600 hover:text-white text-indigo-900 px-2.5 py-1.5 rounded-xl border border-indigo-200 shadow-2xs transition active:scale-95 flex items-center gap-1"
+                      >
+                        <span>🎯</span>
+                        <span>모의고사</span>
+                      </button>
+
+                      {/* 기타 직접입력 일괄 적용 */}
+                      <div className="flex items-center gap-1 bg-white p-0.5 pl-2 rounded-xl border border-indigo-200 shadow-2xs">
+                        <span className="text-xs font-bold text-slate-700">✍️ 기타:</span>
+                        <input
+                          type="text"
+                          value={commonCustomTestType}
+                          onChange={(e) => setCommonCustomTestType(e.target.value)}
+                          placeholder="시험명 입력"
+                          className="w-24 sm:w-28 p-1 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-indigo-400"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleSetAllStudentsTestType('기타', commonCustomTestType);
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleSetAllStudentsTestType('기타', commonCustomTestType)}
+                          className="text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1 rounded-lg transition shrink-0 shadow-2xs active:scale-95"
+                        >
+                          적용
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* 학생 카드 리스트 */}
                 {batchStudents.length === 0 ? (

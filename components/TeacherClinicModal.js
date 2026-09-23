@@ -1367,6 +1367,7 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                   <label className="text-xs font-black text-slate-700">⏰ 시작 시간</label>
                   <input
                     type="time"
+                    style={{ colorScheme: 'light' }}
                     value={newStartTime}
                     onChange={(e) => setNewStartTime(e.target.value)}
                     className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-800 focus:outline-indigo-500"
@@ -1377,6 +1378,7 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                   <label className="text-xs font-black text-slate-700">⏰ 종료 시간</label>
                   <input
                     type="time"
+                    style={{ colorScheme: 'light' }}
                     value={newEndTime}
                     onChange={(e) => setNewEndTime(e.target.value)}
                     className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-800 focus:outline-indigo-500"

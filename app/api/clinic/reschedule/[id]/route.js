@@ -27,10 +27,10 @@ export async function PATCH(req, { params }) {
 
     const db = getSupabaseAdmin(req);
 
-    // 1. 해당 변경 요청 조회
+    // 1. 해당 변경 요청 조회 (FK 의존 없이 분리 조회)
     const { data: requestRow, error: reqErr } = await db
       .from('clinic_reschedule_requests')
-      .select('*, clinic_schedules(*)')
+      .select('*')
       .eq('id', requestId)
       .single();
 
@@ -42,7 +42,13 @@ export async function PATCH(req, { params }) {
       return NextResponse.json({ error: `이미 ${requestRow.status === 'APPROVED' ? '승인' : '처리'}된 요청입니다.` }, { status: 400 });
     }
 
-    const schedule = requestRow.clinic_schedules;
+    // 1-B. 관련 클리닉 일정 별도 조회
+    const { data: schedule } = await db
+      .from('clinic_schedules')
+      .select('*')
+      .eq('id', requestRow.schedule_id)
+      .single();
+
     const studentId = requestRow.student_id;
     const scheduleId = requestRow.schedule_id;
 

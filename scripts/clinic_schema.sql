@@ -4,7 +4,7 @@
 -- 1. 클리닉 개설 일정 테이블
 CREATE TABLE IF NOT EXISTS public.clinic_schedules (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    teacher_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    teacher_id TEXT REFERENCES public.users(id) ON DELETE SET NULL,
     date DATE NOT NULL,
     title TEXT NOT NULL DEFAULT '주말 클리닉',
     start_time VARCHAR(10) NOT NULL DEFAULT '10:00',
@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS public.clinic_schedules (
     slot_interval_minutes INT NOT NULL DEFAULT 30,
     duration_minutes INT NOT NULL DEFAULT 120,
     max_capacity INT DEFAULT NULL, -- NULL 또는 0: 인원 제한 없음 (무제한)
-    target_class_id UUID REFERENCES public.classes(id) ON DELETE SET NULL,
+    target_class_id TEXT REFERENCES public.classes(id) ON DELETE SET NULL,
     notice TEXT DEFAULT NULL,
     is_active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS public.clinic_schedules (
 CREATE TABLE IF NOT EXISTS public.clinic_bookings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     schedule_id UUID NOT NULL REFERENCES public.clinic_schedules(id) ON DELETE CASCADE,
-    student_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    student_id TEXT NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
     start_time VARCHAR(10) NOT NULL,
     end_time VARCHAR(10) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'BOOKED', -- 'BOOKED', 'ATTENDED', 'ABSENT', 'CANCELLED'

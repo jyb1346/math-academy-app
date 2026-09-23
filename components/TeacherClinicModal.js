@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { timeToMinutes, minutesToTime, generateCandidateSlots } from '@/lib/clinicUtils';
+import { timeToMinutes, minutesToTime, generateTimePoints, formatDurationLabel } from '@/lib/clinicUtils';
 
 export default function TeacherClinicModal({ user, students = [], classes = [], onClose }) {
   const [activeTab, setActiveTab] = useState('TIMETABLE'); // 'TIMETABLE' | 'CREATE'
@@ -36,6 +36,7 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
   const [proxyStudentId, setProxyStudentId] = useState('');
   const [proxyStartTime, setProxyStartTime] = useState('10:00');
+  const [proxyEndTime, setProxyEndTime] = useState('12:00');
   const [proxySubject, setProxySubject] = useState('');
 
   // 일정 목록 및 예약 데이터 불러오기
@@ -213,6 +214,7 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
           scheduleId: currentSchedule.id,
           studentId: proxyStudentId,
           startTime: proxyStartTime,
+          endTime: proxyEndTime,
           subject: proxySubject,
         }),
       });
@@ -260,16 +262,23 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
     });
   };
 
-  // 대리 등록 시 선택 가능한 시간 슬롯들
-  const proxySlots = useMemo(() => {
+  // 대리 등록 시 선택 가능한 시간들
+  const proxyStartTimes = useMemo(() => {
     if (!currentSchedule) return [];
-    return generateCandidateSlots(
-      currentSchedule.start_time,
-      currentSchedule.end_time,
-      currentSchedule.slot_interval_minutes || 30,
-      currentSchedule.duration_minutes || 120
-    );
+    const points = generateTimePoints(currentSchedule.start_time, currentSchedule.end_time, 30);
+    return points.slice(0, points.length - 1);
   }, [currentSchedule]);
+
+  const proxyEndTimes = useMemo(() => {
+    if (!currentSchedule || !proxyStartTime) return [];
+    const startMins = timeToMinutes(proxyStartTime);
+    const schedEndMins = timeToMinutes(currentSchedule.end_time);
+    const endPoints = [];
+    for (let s = startMins + 30; s <= schedEndMins; s += 30) {
+      endPoints.push(minutesToTime(s));
+    }
+    return endPoints;
+  }, [currentSchedule, proxyStartTime]);
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
@@ -285,7 +294,7 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
               <h2 className="text-lg sm:text-xl font-black text-white flex items-center gap-2">
                 <span>주말 클리닉 시간표 및 예약 관리</span>
                 <span className="text-xs bg-indigo-500 text-white px-2 py-0.5 rounded-full font-bold">
-                  2시간제
+                  30분 단위 자유 선택제
                 </span>
               </h2>
               <p className="text-xs text-indigo-200 mt-0.5">
@@ -812,20 +821,50 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                 </select>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-black text-slate-700">시작 시간 (2시간 수업)</label>
-                <select
-                  value={proxyStartTime}
-                  onChange={(e) => setProxyStartTime(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
-                  required
-                >
-                  {proxySlots.map((slot) => (
-                    <option key={slot.startTime} value={slot.startTime}>
-                      {slot.startTime} ~ {slot.endTime} (2시간)
-                    </option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-black text-slate-700">시작 시간</label>
+                  <select
+                    value={proxyStartTime}
+                    onChange={(e) => {
+                      const newStart = e.target.value;
+                      setProxyStartTime(newStart);
+                      const startMins = timeToMinutes(newStart);
+                      const endMins = timeToMinutes(proxyEndTime);
+                      if (endMins <= startMins) {
+                        const schedEndMins = timeToMinutes(currentSchedule?.end_time || '18:00');
+                        setProxyEndTime(minutesToTime(Math.min(startMins + 120, schedEndMins)));
+                      }
+                    }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
+                    required
+                  >
+                    {proxyStartTimes.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-black text-slate-700">종료 시간</label>
+                  <select
+                    value={proxyEndTime}
+                    onChange={(e) => setProxyEndTime(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
+                    required
+                  >
+                    {proxyEndTimes.map((t) => {
+                      const dur = timeToMinutes(t) - timeToMinutes(proxyStartTime);
+                      return (
+                        <option key={t} value={t}>
+                          {t} ({formatDurationLabel(dur)})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
               </div>
 
               <div className="space-y-1.5">
@@ -863,3 +902,4 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
     </div>
   );
 }
+

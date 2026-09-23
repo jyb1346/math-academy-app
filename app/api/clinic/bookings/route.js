@@ -36,11 +36,15 @@ export async function POST(req) {
       return NextResponse.json({ error: '현재 마감되었거나 비활성화된 클리닉 일정입니다.' }, { status: 400 });
     }
 
-    // 2. 시간 범위 계산 (기본 2시간)
+    // 2. 시간 범위 계산 (30분 단위 자유 선택 지원)
     const duration = schedule.duration_minutes || 120;
     const startMins = timeToMinutes(startTime);
     const endMins = endTime ? timeToMinutes(endTime) : startMins + duration;
     const calcEndTime = minutesToTime(endMins);
+
+    if (endMins <= startMins) {
+      return NextResponse.json({ error: '종료 시간은 시작 시간보다 늦어야 합니다.' }, { status: 400 });
+    }
 
     const schedStartMins = timeToMinutes(schedule.start_time);
     const schedEndMins = timeToMinutes(schedule.end_time);
@@ -164,3 +168,4 @@ export async function POST(req) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+

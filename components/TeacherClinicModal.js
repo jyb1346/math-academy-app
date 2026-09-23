@@ -432,6 +432,58 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
     }
   };
 
+  // 🎯 학생 시간 변경 승인 핸들러
+  const handleApproveReschedule = async (reqItem) => {
+    const studentName = students.find((s) => s.id === reqItem.student_id)?.name || reqItem.user?.name || '학생';
+    const reqSummary = formatRangesSummary(reqItem.requested_ranges);
+    if (!confirm(`[${studentName}] 학생의 시간 변경 요청을 승인하시겠습니까?\n\n변경 시간: ${reqSummary}\n사유: ${reqItem.reason}`)) {
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const res = await fetch(`/api/clinic/reschedule/${reqItem.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'APPROVE' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '승인 실패');
+
+      alert(`🎉 [${studentName}] 학생의 클리닉 시간 변경이 승인되어 적용되었습니다!`);
+      await fetchClinicData();
+    } catch (err) {
+      alert(`승인 실패: ${err.message}`);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // 🎯 학생 시간 변경 반려 핸들러
+  const handleRejectReschedule = async (reqItem) => {
+    const studentName = students.find((s) => s.id === reqItem.student_id)?.name || reqItem.user?.name || '학생';
+    const rejectReason = prompt(`[${studentName}] 학생의 시간 변경 요청을 반려하시겠습니까?\n반려 사유를 입력해 주세요 (학생에게 알림 전송):`, '학원 일정 및 정원 사유로 시간 변경이 어렵습니다.');
+    if (rejectReason === null) return; // 취소
+
+    try {
+      setSubmitting(true);
+      const res = await fetch(`/api/clinic/reschedule/${reqItem.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'REJECT', rejectReason }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '반려 실패');
+
+      alert(`⚠️ [${studentName}] 학생의 시간 변경 요청이 반려되었습니다.`);
+      await fetchClinicData();
+    } catch (err) {
+      alert(`반려 실패: ${err.message}`);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   // 카카오톡/단톡방 공유용 텍스트 복사 (학생별 그룹핑 및 통합 시간 출력)
   const handleCopyKakaoSummary = () => {
     if (!currentSchedule) return;
@@ -738,6 +790,98 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                           </button>
                         </div>
                       </div>
+
+                      {/* 📩 학생 시간 변경 승인 대기 목록 패널 */}
+                      {currentSchedule.rescheduleRequests && currentSchedule.rescheduleRequests.length > 0 && (
+                        <div className="bg-purple-50/90 border-2 border-purple-300 rounded-2xl p-4 space-y-3 shadow-xs animate-in fade-in">
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-base">📩</span>
+                              <h4 className="text-xs sm:text-sm font-black text-purple-950">
+                                학생 시간 변경 승인 요청 ({currentSchedule.rescheduleRequests.length}건 대기 중)
+                              </h4>
+                            </div>
+                            <span className="text-[11px] bg-purple-200 text-purple-900 font-bold px-2.5 py-0.5 rounded-full">
+                              승인 시 예약 시간 자동 변경
+                            </span>
+                          </div>
+
+                          <div className="space-y-2.5">
+                            {currentSchedule.rescheduleRequests.map((req) => {
+                              const student = students.find((s) => s.id === req.student_id) || req.user || { name: '학생' };
+                              const curSummary = formatRangesSummary(req.current_ranges);
+                              const reqSummary = formatRangesSummary(req.requested_ranges);
+
+                              return (
+                                <div
+                                  key={req.id}
+                                  className="bg-white p-3.5 sm:p-4 rounded-2xl border border-purple-200 shadow-2xs space-y-2.5"
+                                >
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="text-xs sm:text-sm font-black text-slate-900">
+                                        👤 {student.name}
+                                      </span>
+                                      {student.class_name && (
+                                        <span className="text-[10.5px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-bold">
+                                          {student.class_name}
+                                        </span>
+                                      )}
+                                      <span className="text-[11px] text-slate-400 font-normal">
+                                        {student.parent_phone || ''}
+                                      </span>
+                                    </div>
+
+                                    {/* 승인 / 반려 버튼 */}
+                                    <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                                      <button
+                                        type="button"
+                                        disabled={submitting}
+                                        onClick={() => handleApproveReschedule(req)}
+                                        className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-black px-3 py-1.5 rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1 disabled:opacity-50"
+                                      >
+                                        <span>✅</span>
+                                        <span>승인 (시간 변경)</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={submitting}
+                                        onClick={() => handleRejectReschedule(req)}
+                                        className="text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold px-2.5 py-1.5 rounded-xl transition active:scale-95 disabled:opacity-50"
+                                      >
+                                        <span>❌</span>
+                                        <span>반려</span>
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* 시간 비교 */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1 border-t border-slate-100">
+                                    <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                                      <span className="text-[10.5px] font-bold text-slate-500 block mb-0.5">기존 예약 시간:</span>
+                                      <span className="font-mono font-bold text-slate-600 line-through">
+                                        {curSummary || '없음'}
+                                      </span>
+                                    </div>
+                                    <div className="bg-indigo-50/70 p-2.5 rounded-xl border border-indigo-200">
+                                      <span className="text-[10.5px] font-bold text-indigo-700 block mb-0.5">변경 희망 시간:</span>
+                                      <span className="font-mono font-black text-indigo-900">
+                                        {reqSummary}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* 학생 작성 변경 사유 */}
+                                  <div className="bg-amber-50/80 p-2.5 rounded-xl border border-amber-200 text-xs">
+                                    <span className="font-bold text-amber-900 mr-1.5">📝 학생 변경 사유:</span>
+                                    <span className="text-slate-800 font-semibold">{req.reason}</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
 
                       {/* ⏳ 미신청 학생 명단 패널 (접힘 기본) */}
                       <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-3.5 sm:p-4 space-y-3">

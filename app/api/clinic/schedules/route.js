@@ -154,6 +154,24 @@ export async function GET(req) {
       users: userMap[b.student_id] || { id: b.student_id, name: '학생' },
     }));
 
+    // 2-B. 시간 변경 승인 요청 데이터 조회 (안전 처리)
+    let rescheduleRequests = [];
+    try {
+      let rQuery = db
+        .from('clinic_reschedule_requests')
+        .select('*')
+        .in('schedule_id', scheduleIds)
+        .eq('status', 'PENDING');
+
+      if (isStudent) {
+        rQuery = rQuery.eq('student_id', user.id);
+      }
+      const { data: rData } = await rQuery;
+      rescheduleRequests = rData || [];
+    } catch {
+      rescheduleRequests = [];
+    }
+
     // 3. 학생 뷰 가공
     if (isStudent) {
       const enrichedSchedules = scheduleList.map((sched) => {
@@ -162,6 +180,7 @@ export async function GET(req) {
           (b) => b.student_id === user.id && b.status !== 'CANCELLED'
         );
         const myBooking = myBookings[0] || null;
+        const pendingReschedule = rescheduleRequests.find((r) => r.schedule_id === sched.id) || null;
 
         const intervals = generateIntervalsWithAvailability(
           sched.start_time,
@@ -175,6 +194,7 @@ export async function GET(req) {
           ...sched,
           myBooking,
           myBookings,
+          pendingReschedule,
           intervals,
           totalBookingsCount: schedBookings.filter((b) => b.status !== 'CANCELLED').length,
         };
@@ -189,6 +209,8 @@ export async function GET(req) {
     // 4. 교사 / 관리자 뷰 가공
     const enrichedSchedules = scheduleList.map((sched) => {
       const schedBookings = bookingList.filter((b) => b.schedule_id === sched.id);
+      const schedReschedules = rescheduleRequests.filter((r) => r.schedule_id === sched.id);
+
       const timetableGrid = generateTeacherTimetableGrid(
         sched.start_time,
         sched.end_time,
@@ -201,6 +223,7 @@ export async function GET(req) {
       return {
         ...sched,
         bookings: schedBookings,
+        rescheduleRequests: schedReschedules,
         timetableGrid,
         stats: {
           total: uniqueStudentIds.size,
@@ -217,6 +240,7 @@ export async function GET(req) {
     return NextResponse.json({
       schedules: enrichedSchedules,
       bookings: bookingList,
+      rescheduleRequests,
     });
   } catch (err) {
     console.error('clinic schedules GET error:', err);

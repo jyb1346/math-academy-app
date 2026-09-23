@@ -44,3 +44,4 @@ BEGIN
 
     RAISE NOTICE '✅ 기존 모든 게시글에 대한 학생 확인 완료(post_confirmations) 백필이 완료되었습니다.';
 END $$;
+

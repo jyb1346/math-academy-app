@@ -552,28 +552,6 @@ function BoardMain() {
     return (allStudents || []).filter((st) => enrolledStudentIds.includes(String(st.id)));
   };
 
-  // 📲 미확인 학생들에게 '확인 요청' 푸시 알림 수동 발송 (선생님 전용)
-  const handleSendUnconfirmedReminder = async (post) => {
-    const { unconfirmedList } = getPostConfirmStats(post);
-    if (unconfirmedList.length === 0) {
-      return alert('모든 대상 학생이 이미 확인을 완료했습니다.');
-    }
-
-    if (!confirm(`[${post.title}]\n아직 확인하지 않은 학생 ${unconfirmedList.length}명에게 '확인 요청' 푸시 알림을 발송하시겠습니까?`)) {
-      return;
-    }
-
-    try {
-      const res = await fetch(`/api/board/${post.id}/remind`, { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '발송 실패');
-
-      alert(`📢 미확인 학생 ${data.sentCount || unconfirmedList.length}명에게 확인 요청 푸시 알림을 발송했습니다!`);
-    } catch (err) {
-      alert(`알림 발송 실패: ${err.message}`);
-    }
-  };
-
   // ⏰ 숙제 마감 임박 알림 수동 발송 (선생님 전용)
   const handleSendManualReminder = async (post) => {
     if (!confirm(`[${post.title}] 숙제 마감 알림을 해당 반 학생들에게 지금 즉시 발송하시겠습니까?`)) return;
@@ -1248,35 +1226,23 @@ function BoardMain() {
 
                   {/* 미확인 학생 목록 */}
                   <div className="bg-rose-50/70 p-4 rounded-2xl border border-rose-200/80 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-black text-rose-900 flex items-center gap-1.5">
-                        <span>⏳ 아직 확인하지 않은 학생</span>
-                        <span className="bg-rose-200 text-rose-900 px-2 py-0.5 rounded-full text-[10px]">
-                          {unconfirmedList.length}명
-                        </span>
-                      </h4>
-                    </div>
+                    <h4 className="text-xs font-black text-rose-900 flex items-center justify-between">
+                      <span>⏳ 아직 확인하지 않은 학생</span>
+                      <span className="bg-rose-200 text-rose-900 px-2 py-0.5 rounded-full text-[10px]">
+                        {unconfirmedList.length}명
+                      </span>
+                    </h4>
                     {unconfirmedList.length === 0 ? (
                       <p className="text-xs text-emerald-700 py-2 text-center font-bold">🎉 모든 대상 학생이 확인했습니다!</p>
                     ) : (
-                      <>
-                        <div className="grid grid-cols-2 gap-2 pt-1 max-h-36 overflow-y-auto">
-                          {unconfirmedList.map((st) => (
-                            <div key={st.id} className="bg-white p-2 rounded-xl border border-rose-100 text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                              <span className="text-rose-500">⚪</span>
-                              <span>{st.name}</span>
-                            </div>
-                          ))}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleSendUnconfirmedReminder(activeConfirmModalPost)}
-                          className="w-full mt-2 bg-gradient-to-r from-rose-500 to-indigo-600 hover:from-rose-600 hover:to-indigo-700 text-white font-black py-2.5 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5 active:scale-95"
-                        >
-                          <span>📲</span>
-                          <span>미확인 학생({unconfirmedList.length}명)에게 확인 요청 알림 보내기</span>
-                        </button>
-                      </>
+                      <div className="grid grid-cols-2 gap-2 pt-1 max-h-36 overflow-y-auto">
+                        {unconfirmedList.map((st) => (
+                          <div key={st.id} className="bg-white p-2 rounded-xl border border-rose-100 text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                            <span className="text-rose-500">⚪</span>
+                            <span>{st.name}</span>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 </div>

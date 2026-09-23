@@ -1,7 +1,16 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { timeToMinutes, minutesToTime, generateTimePoints, formatDurationLabel } from '@/lib/clinicUtils';
+import {
+  timeToMinutes,
+  minutesToTime,
+  generateTimePoints,
+  formatDurationLabel,
+  generateIntervalsWithAvailability,
+  blocksToRanges,
+  formatRangesSummary,
+  checkMultipleRangesCapacity,
+} from '@/lib/clinicUtils';
 
 export default function TeacherClinicModal({ user, students = [], classes = [], onClose }) {
   const [activeTab, setActiveTab] = useState('TIMETABLE'); // 'TIMETABLE' | 'CREATE'
@@ -37,13 +46,12 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
   const [targetClassIds, setTargetClassIds] = useState([]);
   const [targetStudentIds, setTargetStudentIds] = useState([]);
   const [studentSearchKeyword, setStudentSearchKeyword] = useState('');
-  const [showUnbookedList, setShowUnbookedList] = useState(true);
+  const [showUnbookedList, setShowUnbookedList] = useState(false);
 
-  // 학생 대리 등록 모달 상태
+  // 학생 대리 등록 모달 상태 (30분 단위 다중/분리 블록 선택 지원)
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
   const [proxyStudentId, setProxyStudentId] = useState('');
-  const [proxyStartTime, setProxyStartTime] = useState('10:00');
-  const [proxyEndTime, setProxyEndTime] = useState('12:00');
+  const [proxySelectedBlocks, setProxySelectedBlocks] = useState([]);
   const [proxySubject, setProxySubject] = useState('');
 
   // 대상 학생 검색 필터링 목록
@@ -276,11 +284,103 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
     }
   };
 
-  // 선생님 대리 학생 등록
+  // 🎯 학생 대리 등록 모달 열기 핸들러 (선택 학생의 기존 예약 불러오기 또는 기본 2시간)
+  const handleOpenProxyModal = (studentId = '') => {
+    const sId = studentId || (unbookedStudents[0]?.id || students[0]?.id || '');
+    setProxyStudentId(sId);
+    setProxySubject('');
+
+    const existing = (currentSchedule?.bookings || []).filter(
+      (b) => b.student_id === sId && b.status !== 'CANCELLED'
+    );
+    if (existing.length > 0) {
+      const blocks = [];
+      let exSub = '';
+      existing.forEach((b) => {
+        const startM = timeToMinutes(b.start_time);
+        const endM = timeToMinutes(b.end_time);
+        for (let m = startM; m < endM; m += 30) {
+          blocks.push(minutesToTime(m));
+        }
+        if (b.subject && !exSub) exSub = b.subject;
+      });
+      setProxySelectedBlocks([...new Set(blocks)]);
+      if (exSub) setProxySubject(exSub);
+    } else {
+      const initStartM = timeToMinutes(currentSchedule?.start_time || '10:00');
+      const schedEndM = timeToMinutes(currentSchedule?.end_time || '18:00');
+      const blocks = [];
+      for (let m = initStartM; m < Math.min(initStartM + 120, schedEndM); m += 30) {
+        blocks.push(minutesToTime(m));
+      }
+      setProxySelectedBlocks(blocks.length > 0 ? blocks : [currentSchedule?.start_time || '10:00']);
+    }
+    setShowAddStudentModal(true);
+  };
+
+  const handleProxyStudentChange = (sId) => {
+    setProxyStudentId(sId);
+    const existing = (currentSchedule?.bookings || []).filter(
+      (b) => b.student_id === sId && b.status !== 'CANCELLED'
+    );
+    if (existing.length > 0) {
+      const blocks = [];
+      let exSub = '';
+      existing.forEach((b) => {
+        const startM = timeToMinutes(b.start_time);
+        const endM = timeToMinutes(b.end_time);
+        for (let m = startM; m < endM; m += 30) {
+          blocks.push(minutesToTime(m));
+        }
+        if (b.subject && !exSub) exSub = b.subject;
+      });
+      setProxySelectedBlocks([...new Set(blocks)]);
+      if (exSub) setProxySubject(exSub);
+    }
+  };
+
+  // 대리 등록 시 30분 단위 블록 및 현황
+  const proxyIntervals = useMemo(() => {
+    if (!currentSchedule) return [];
+    return generateIntervalsWithAvailability(
+      currentSchedule.start_time,
+      currentSchedule.end_time,
+      currentSchedule.bookings || [],
+      currentSchedule.max_capacity,
+      proxyStudentId || user.id
+    );
+  }, [currentSchedule, proxyStudentId, user.id]);
+
+  const proxyRanges = useMemo(() => {
+    return blocksToRanges(proxySelectedBlocks);
+  }, [proxySelectedBlocks]);
+
+  const proxyTotalMinutes = useMemo(() => {
+    return proxyRanges.reduce((acc, r) => acc + (r.durationMinutes || 0), 0);
+  }, [proxyRanges]);
+
+  const proxySummaryText = useMemo(() => {
+    return formatRangesSummary(proxyRanges);
+  }, [proxyRanges]);
+
+  const handleToggleProxyBlock = (blockStartTime) => {
+    setProxySelectedBlocks((prev) => {
+      if (prev.includes(blockStartTime)) {
+        return prev.filter((t) => t !== blockStartTime);
+      } else {
+        return [...prev, blockStartTime];
+      }
+    });
+  };
+
+  // 선생님 대리 학생 등록 submit
   const handleProxyAddStudent = async (e) => {
     e.preventDefault();
     if (!proxyStudentId) return alert('배정할 학생을 선택해 주세요.');
     if (!currentSchedule) return;
+    if (proxyRanges.length === 0 || proxyTotalMinutes <= 0) {
+      return alert('배정할 시간 블록을 1개 이상 선택해 주세요.');
+    }
 
     try {
       setSubmitting(true);
@@ -290,8 +390,8 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
         body: JSON.stringify({
           scheduleId: currentSchedule.id,
           studentId: proxyStudentId,
-          startTime: proxyStartTime,
-          endTime: proxyEndTime,
+          ranges: proxyRanges,
+          selectedBlocks: proxySelectedBlocks,
           subject: proxySubject,
         }),
       });
@@ -303,11 +403,32 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
       setShowAddStudentModal(false);
       setProxyStudentId('');
       setProxySubject('');
+      setProxySelectedBlocks([]);
       await fetchClinicData();
     } catch (err) {
       alert(`배정 실패: ${err.message}`);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // 📲 미신청 학생들에게 클리닉 신청 안내 푸시 알림 발송 (선생님 전용)
+  const handleSendUnbookedClinicReminder = async () => {
+    if (!currentSchedule || unbookedStudents.length === 0) {
+      return alert('미신청 학생이 없습니다.');
+    }
+    if (!confirm(`[${currentSchedule.date} ${currentSchedule.title}]\n아직 클리닉을 신청하지 않은 학생 ${unbookedStudents.length}명에게 신청 안내 푸시 알림을 발송하시겠습니까?`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/clinic/schedules/${currentSchedule.id}/remind`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '발송 실패');
+      alert(`📢 미신청 학생 ${data.sentCount || unbookedStudents.length}명에게 클리닉 신청 안내 푸시 알림을 발송했습니다!`);
+    } catch (err) {
+      alert(`알림 발송 실패: ${err.message}`);
     }
   };
 
@@ -381,49 +502,31 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
     });
   };
 
-  // 대리 등록 시 선택 가능한 시간들
-  const proxyStartTimes = useMemo(() => {
-    if (!currentSchedule) return [];
-    const points = generateTimePoints(currentSchedule.start_time, currentSchedule.end_time, 30);
-    return points.slice(0, points.length - 1);
-  }, [currentSchedule]);
-
-  const proxyEndTimes = useMemo(() => {
-    if (!currentSchedule || !proxyStartTime) return [];
-    const startMins = timeToMinutes(proxyStartTime);
-    const schedEndMins = timeToMinutes(currentSchedule.end_time);
-    const endPoints = [];
-    for (let s = startMins + 30; s <= schedEndMins; s += 30) {
-      endPoints.push(minutesToTime(s));
-    }
-    return endPoints;
-  }, [currentSchedule, proxyStartTime]);
-
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
       <div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-auto flex flex-col max-h-[92vh]">
         
-        {/* 상단 헤더 */}
-        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-5 sm:p-6 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-xl">
+        {/* 상단 헤더 (모바일 컴팩트) */}
+        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-4 sm:p-5 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-lg sm:text-xl">
               ⏰
             </div>
             <div>
-              <h2 className="text-lg sm:text-xl font-black text-white flex items-center gap-2">
+              <h2 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
                 <span>클리닉 시간표 및 예약 관리</span>
-                <span className="text-xs bg-indigo-500 text-white px-2 py-0.5 rounded-full font-bold">
+                <span className="text-[11px] bg-indigo-500 text-white px-2 py-0.5 rounded-full font-bold hidden sm:inline-block">
                   30분 단위 자유 선택제
                 </span>
               </h2>
-              <p className="text-xs text-indigo-200 mt-0.5">
+              <p className="text-[11px] sm:text-xs text-indigo-200 mt-0.5">
                 클리닉 일정을 개설하고 학생들의 실시간 예약 현황 및 출결을 관리합니다.
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-white/10 transition text-lg"
+            className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition text-lg"
           >
             ✕
           </button>
@@ -575,14 +678,14 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                         {/* 액션 버튼 그룹 */}
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <button
-                            onClick={() => setShowAddStudentModal(true)}
-                            className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-black px-3 py-1.5 rounded-xl shadow-xs transition"
+                            onClick={() => handleOpenProxyModal()}
+                            className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-black px-3 py-1.5 rounded-xl shadow-xs transition active:scale-95"
                           >
-                            + 학생 직접 추가
+                            + 학생 직접 배정
                           </button>
                           <button
                             onClick={handleCopyKakaoSummary}
-                            className="text-xs bg-amber-300 hover:bg-amber-400 text-amber-950 font-black px-3 py-1.5 rounded-xl shadow-xs transition"
+                            className="text-xs bg-amber-300 hover:bg-amber-400 text-amber-950 font-black px-3 py-1.5 rounded-xl shadow-xs transition active:scale-95"
                             title="단톡방 공지 텍스트 복사"
                           >
                             📋 명단 복사
@@ -605,7 +708,7 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
 
                       {/* 현황 요약 및 뷰 모드 토글 바 */}
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white p-3 rounded-2xl border border-slate-200">
-                        <div className="flex items-center gap-3 text-xs font-black">
+                        <div className="flex items-center gap-2 text-xs font-black">
                           <span className="flex items-center gap-1.5 bg-indigo-50 text-indigo-900 border border-indigo-200 px-3 py-1 rounded-xl">
                             <span>👥 예약 완료:</span>
                             <span className="text-indigo-600 font-black text-sm">{bookedStudentIdSet.size}명</span>
@@ -636,8 +739,8 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                         </div>
                       </div>
 
-                      {/* ⏳ 미신청 학생 명단 패널 */}
-                      <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-4 space-y-3">
+                      {/* ⏳ 미신청 학생 명단 패널 (접힘 기본) */}
+                      <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-3.5 sm:p-4 space-y-3">
                         <div className="flex items-center justify-between flex-wrap gap-2">
                           <div className="flex items-center gap-2">
                             <span className="text-base">⏳</span>
@@ -645,17 +748,28 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                               클리닉 미신청 학생 ({unbookedStudents.length}명)
                             </span>
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             {unbookedStudents.length > 0 && (
-                              <button
-                                type="button"
-                                onClick={handleCopyUnbookedKakao}
-                                className="text-xs bg-amber-200 hover:bg-amber-300 text-amber-950 font-black px-3 py-1.5 rounded-xl transition shadow-2xs flex items-center gap-1"
-                                title="카카오톡 전송용 미신청 학생 명단 복사"
-                              >
-                                <span>📋</span>
-                                <span>미신청 명단 복사</span>
-                              </button>
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={handleSendUnbookedClinicReminder}
+                                  className="text-xs bg-gradient-to-r from-rose-500 to-indigo-600 hover:from-rose-600 hover:to-indigo-700 text-white font-black px-3 py-1.5 rounded-xl transition shadow-xs flex items-center gap-1 active:scale-95"
+                                  title="미신청 학생들에게 푸시 알림 발송"
+                                >
+                                  <span>📲</span>
+                                  <span>미신청 알림 발송</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleCopyUnbookedKakao}
+                                  className="text-xs bg-amber-200 hover:bg-amber-300 text-amber-950 font-black px-2.5 py-1.5 rounded-xl transition shadow-2xs flex items-center gap-1"
+                                  title="카카오톡 전송용 미신청 학생 명단 복사"
+                                >
+                                  <span>📋</span>
+                                  <span>명단 복사</span>
+                                </button>
+                              </>
                             )}
                             <button
                               type="button"
@@ -692,11 +806,8 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                                     </div>
                                     <button
                                       type="button"
-                                      onClick={() => {
-                                        setProxyStudentId(s.id);
-                                        setShowAddStudentModal(true);
-                                      }}
-                                      className="text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold px-2 py-1 rounded-lg border border-indigo-200 transition shrink-0"
+                                      onClick={() => handleOpenProxyModal(s.id)}
+                                      className="text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold px-2 py-1 rounded-lg border border-indigo-200 transition shrink-0 active:scale-95"
                                       title="선생님이 대신 일정 배정하기"
                                     >
                                       + 대리 배정
@@ -1203,112 +1314,141 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
         </div>
       </div>
 
-      {/* 👤 학생 직접 추가 팝업 모달 */}
+      {/* 👤 학생 직접 추가/대리 배정 팝업 모달 */}
       {showAddStudentModal && (
-        <div className="fixed inset-0 z-60 bg-slate-900/50 backdrop-blur-2xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-5 sm:p-6 w-full max-w-md shadow-2xl border border-slate-200 space-y-4 animate-in fade-in">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in">
+          <div className="bg-white rounded-3xl p-5 sm:p-6 w-full max-w-lg shadow-2xl border border-slate-200 space-y-4 my-auto max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3 shrink-0">
               <h4 className="text-base font-black text-slate-900 flex items-center gap-1.5">
                 <span>👤</span>
-                <span>학생 직접 클리닉 배정</span>
+                <span>학생 클리닉 대리 배정</span>
               </h4>
               <button
                 onClick={() => setShowAddStudentModal(false)}
-                className="text-slate-400 hover:text-slate-700 font-bold"
+                className="text-slate-400 hover:text-slate-700 font-bold p-1"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleProxyAddStudent} className="space-y-4">
+            <form onSubmit={handleProxyAddStudent} className="space-y-4 overflow-y-auto flex-1 pr-1">
+              {/* 학생 선택 */}
               <div className="space-y-1.5">
-                <label className="text-xs font-black text-slate-700">학생 선택</label>
+                <label className="text-xs font-black text-slate-700">배정 대상 학생</label>
                 <select
                   value={proxyStudentId}
-                  onChange={(e) => setProxyStudentId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
+                  onChange={(e) => handleProxyStudentChange(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 focus:outline-indigo-500"
                   required
                 >
                   <option value="">학생을 선택하세요</option>
                   {students.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name} ({s.parent_phone || '번호 없음'})
+                      {s.name} {s.class_name ? `[${s.class_name}]` : ''} ({s.parent_phone || '번호 없음'})
                     </option>
                   ))}
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-black text-slate-700">시작 시간</label>
-                  <select
-                    value={proxyStartTime}
-                    onChange={(e) => {
-                      const newStart = e.target.value;
-                      setProxyStartTime(newStart);
-                      const startMins = timeToMinutes(newStart);
-                      const endMins = timeToMinutes(proxyEndTime);
-                      if (endMins <= startMins) {
-                        const schedEndMins = timeToMinutes(currentSchedule?.end_time || '18:00');
-                        setProxyEndTime(minutesToTime(Math.min(startMins + 120, schedEndMins)));
-                      }
-                    }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
-                    required
-                  >
-                    {proxyStartTimes.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
+              {/* 30분 단위 블록 선택 (건너뛰기/다중 선택 가능) */}
+              <div className="space-y-2 bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-slate-800 flex items-center gap-1">
+                    <span>⏱️</span>
+                    <span>시간 블록 선택 (자유 다중/분리 선택)</span>
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const initStartM = timeToMinutes(currentSchedule?.start_time || '10:00');
+                        const schedEndM = timeToMinutes(currentSchedule?.end_time || '18:00');
+                        const blocks = [];
+                        for (let m = initStartM; m < Math.min(initStartM + 120, schedEndM); m += 30) {
+                          blocks.push(minutesToTime(m));
+                        }
+                        setProxySelectedBlocks(blocks);
+                      }}
+                      className="text-[10.5px] bg-white border border-slate-200 text-indigo-700 font-bold px-2 py-0.5 rounded-md hover:bg-indigo-50 transition"
+                    >
+                      기본 2시간
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setProxySelectedBlocks([])}
+                      className="text-[10.5px] bg-white border border-slate-200 text-rose-600 font-bold px-2 py-0.5 rounded-md hover:bg-rose-50 transition"
+                    >
+                      전체 해제
+                    </button>
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-500 font-medium">
+                  원하는 30분 블록을 터치하여 자유롭게 추가/제외하세요. (중간에 비는 시간도 건너뛰어 배정 가능)
+                </p>
+
+                {/* 블록 그리드 */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 pt-1 max-h-48 overflow-y-auto p-0.5">
+                  {proxyIntervals.map((intv) => {
+                    const isSelected = proxySelectedBlocks.includes(intv.startTime);
+                    return (
+                      <button
+                        key={intv.startTime}
+                        type="button"
+                        onClick={() => handleToggleProxyBlock(intv.startTime)}
+                        className={`p-2 rounded-xl text-left border transition flex flex-col justify-between gap-1 text-xs cursor-pointer ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs font-black ring-2 ring-indigo-400'
+                            : 'bg-white text-slate-700 border-slate-200 hover:border-indigo-300 font-semibold'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono text-[11px]">{intv.label}</span>
+                          {isSelected && <span className="text-[10px]">✓</span>}
+                        </div>
+                        <div className="text-[10px] opacity-80">
+                          {intv.isUnlimited ? '재실 ' + intv.currentCount + '명' : '잔여 ' + intv.remaining + '석'}
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-black text-slate-700">종료 시간</label>
-                  <select
-                    value={proxyEndTime}
-                    onChange={(e) => setProxyEndTime(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
-                    required
-                  >
-                    {proxyEndTimes.map((t) => {
-                      const dur = timeToMinutes(t) - timeToMinutes(proxyStartTime);
-                      return (
-                        <option key={t} value={t}>
-                          {t} ({formatDurationLabel(dur)})
-                        </option>
-                      );
-                    })}
-                  </select>
+                {/* 선택 요약 */}
+                <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-600">선택된 시간:</span>
+                  <span className="font-black text-indigo-700 text-right">
+                    {proxySummaryText || '선택된 시간 없음'}
+                  </span>
                 </div>
               </div>
 
+              {/* 질문 / 학습 교재 */}
               <div className="space-y-1.5">
-                <label className="text-xs font-black text-slate-700">질문/학습 교재 (선택)</label>
+                <label className="text-xs font-black text-slate-700">질문 / 학습 교재 (선택)</label>
                 <input
                   type="text"
                   value={proxySubject}
                   onChange={(e) => setProxySubject(e.target.value)}
                   placeholder="예: 수2 적분 오답노트"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-indigo-500"
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              {/* 버튼 그룹 */}
+              <div className="flex justify-end gap-2 pt-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => setShowAddStudentModal(false)}
-                  className="px-4 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl text-xs"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-xs transition"
                 >
                   취소
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-xs shadow-xs"
+                  disabled={submitting || proxySelectedBlocks.length === 0}
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-xs shadow-md shadow-indigo-600/20 transition disabled:opacity-50 active:scale-95"
                 >
-                  {submitting ? '배정 중...' : '배정 완료'}
+                  {submitting ? '배정 중...' : `배정 완료 (${proxyTotalMinutes > 0 ? formatDurationLabel(proxyTotalMinutes) : '0분'})`}
                 </button>
               </div>
             </form>

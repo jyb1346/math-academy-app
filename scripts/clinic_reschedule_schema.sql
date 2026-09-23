@@ -24,3 +24,4 @@ CREATE INDEX IF NOT EXISTS idx_clinic_reschedule_status ON public.clinic_resched
 -- RLS 권한 설정
 ALTER TABLE public.clinic_reschedule_requests ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow public select clinic_reschedule_requests" ON public.clinic_reschedule_requests FOR ALL USING (true);
+

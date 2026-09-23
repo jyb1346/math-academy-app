@@ -292,27 +292,6 @@ export default function StudentClinicModal({ user, initialScheduleId = null, onC
     }
   };
 
-  // 예약 취소 핸들러
-  const handleCancelBooking = async () => {
-    if (!currentSchedule || myExistingBookings.length === 0) return;
-    if (!confirm(`현재 예약된 [${currentSchedule.date}] 클리닉 일정을 모두 취소하시겠습니까?`)) return;
-
-    try {
-      setSubmitting(true);
-      for (const b of myExistingBookings) {
-        await fetch(`/api/clinic/bookings/${b.id}`, { method: 'DELETE' });
-      }
-
-      alert('클리닉 예약이 모두 취소되었습니다.');
-      await fetchSchedules();
-      if (onBookingUpdated) onBookingUpdated();
-    } catch (err) {
-      alert(`취소 실패: ${err.message}`);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
       <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-auto flex flex-col max-h-[92vh]">
@@ -478,18 +457,8 @@ export default function StudentClinicModal({ user, initialScheduleId = null, onC
                         </p>
                       )}
 
-                      <div className="flex items-center justify-between pt-1 text-xs">
-                        <span className="text-emerald-700 text-[10.5px] font-medium">
-                          다른 시간으로 변경을 원하시면 아래 블록을 선택 후 변경 사유를 입력하세요.
-                        </span>
-                        <button
-                          type="button"
-                          onClick={handleCancelBooking}
-                          disabled={submitting}
-                          className="bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 font-bold px-2.5 py-1 rounded-lg transition shadow-2xs text-[11px]"
-                        >
-                          예약 취소
-                        </button>
+                      <div className="pt-1 text-[11px] text-emerald-800 font-medium">
+                        💡 다른 시간대로 변경을 원하시면 아래 블록을 선택 후 사유를 입력하여 변경 요청을 제출하세요.
                       </div>
                     </div>
                   )}

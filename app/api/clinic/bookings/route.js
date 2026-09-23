@@ -114,7 +114,7 @@ export async function POST(req) {
           updated_at: new Date().toISOString(),
         })
         .eq('id', myExistingBooking.id)
-        .select('*, users!clinic_bookings_student_id_fkey(id, name, email, parent_phone)')
+        .select('*')
         .single();
 
       if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
@@ -132,7 +132,7 @@ export async function POST(req) {
           subject: subject ? subject.trim() : null,
           memo: memo ? memo.trim() : null,
         }])
-        .select('*, users!clinic_bookings_student_id_fkey(id, name, email, parent_phone)')
+        .select('*')
         .single();
 
       if (insertErr) return NextResponse.json({ error: insertErr.message }, { status: 500 });

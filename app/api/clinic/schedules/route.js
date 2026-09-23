@@ -20,7 +20,7 @@ export async function GET(req) {
     // 1. 활성 클리닉 일정 조회 (최근 및 향후 일정 중심)
     let query = db
       .from('clinic_schedules')
-      .select('*, users!clinic_schedules_teacher_id_fkey(name)')
+      .select('*')
       .order('date', { ascending: false })
       .order('start_time', { ascending: true });
 
@@ -55,9 +55,9 @@ export async function GET(req) {
     }
 
     // 2. 예약 데이터 조회
-    const { data: bookings, error: bookErr } = await db
+    const { data: rawBookings, error: bookErr } = await db
       .from('clinic_bookings')
-      .select('*, users!clinic_bookings_student_id_fkey(id, name, email, parent_phone)')
+      .select('*')
       .in('schedule_id', scheduleIds)
       .order('start_time', { ascending: true });
 
@@ -65,7 +65,24 @@ export async function GET(req) {
       return NextResponse.json({ error: bookErr.message }, { status: 500 });
     }
 
-    const bookingList = bookings || [];
+    const initialBookings = rawBookings || [];
+    const studentIds = [...new Set(initialBookings.map((b) => b.student_id).filter(Boolean))];
+
+    let userMap = {};
+    if (studentIds.length > 0) {
+      const { data: userData } = await db
+        .from('users')
+        .select('id, name, email, parent_phone')
+        .in('id', studentIds);
+      (userData || []).forEach((u) => {
+        userMap[u.id] = u;
+      });
+    }
+
+    const bookingList = initialBookings.map((b) => ({
+      ...b,
+      users: userMap[b.student_id] || { id: b.student_id, name: '학생' },
+    }));
 
     // 3. 학생 뷰 가공
     if (isStudent) {
@@ -178,7 +195,7 @@ export async function POST(req) {
     const { data: inserted, error: insertErr } = await db
       .from('clinic_schedules')
       .insert([scheduleData])
-      .select('*, users!clinic_schedules_teacher_id_fkey(name)')
+      .select('*')
       .single();
 
     if (insertErr) {

@@ -47,7 +47,7 @@ export async function PATCH(req, { params }) {
       .from('clinic_bookings')
       .update(updateData)
       .eq('id', id)
-      .select('*, users!clinic_bookings_student_id_fkey(id, name, email, parent_phone)')
+      .select('*')
       .single();
 
     if (updateErr) {

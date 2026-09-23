@@ -8,19 +8,12 @@ import StudentHomeworkTable from '@/components/StudentHomeworkTable';
 import StudentBugDexModal from '@/components/StudentBugDexModal';
 import StudentClinicModal from '@/components/StudentClinicModal';
 import { logout } from '@/lib/useSession';
-import {
-  formatBookingsCompact,
-  formatRangesSummary,
-  formatDurationLabel,
-  timeToMinutes,
-} from '@/lib/clinicUtils';
 
 export default function StudentDashboard() {
   const [user, setUser] = useState(null);
   const [evaluations, setEvaluations] = useState([]);
   const [qnaStats, setQnaStats] = useState({ pending: 0, answered: 0, resolved: 0, total: 0 });
-  const [clinicSchedules, setClinicSchedules] = useState([]);
-  const [selectedClinicScheduleId, setSelectedClinicScheduleId] = useState(null);
+  const [clinicInfo, setClinicInfo] = useState({ hasActive: false, activeDate: '', myBooking: null });
   const [loadingEvals, setLoadingEvals] = useState(true);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showDexModal, setShowDexModal] = useState(false);
@@ -60,7 +53,16 @@ export default function StudentDashboard() {
         .then((res) => res.json())
         .then((data) => {
           const activeSchedules = (data.schedules || []).filter((s) => s.is_active);
-          setClinicSchedules(activeSchedules);
+          if (activeSchedules.length > 0) {
+            const firstActive = activeSchedules[0];
+            setClinicInfo({
+              hasActive: true,
+              activeDate: firstActive.date,
+              myBooking: firstActive.myBooking || null,
+            });
+          } else {
+            setClinicInfo({ hasActive: false, activeDate: '', myBooking: null });
+          }
         })
         .catch(() => {});
 
@@ -165,7 +167,7 @@ export default function StudentDashboard() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 mt-6 space-y-6 pb-28 sm:pb-32">
+      <main className="max-w-4xl mx-auto px-4 mt-6 space-y-6">
         <PushNotificationManager user={user} />
 
         {/* 📑 1. 최상단: 내 최근 진도 & 교재별 과제표 위젯 */}
@@ -181,144 +183,39 @@ export default function StudentDashboard() {
           )}
         </div>
 
-        {/* ⏰ 클리닉 시간 선택 배너 */}
-        {clinicSchedules.length === 1 && (() => {
-          const s = clinicSchedules[0];
-          const myB = s.myBookings && s.myBookings.length > 0 ? s.myBookings : (s.myBooking ? [s.myBooking] : []);
-          const hasBooking = myB.length > 0;
-          const totalDur = myB.reduce((acc, b) => acc + (timeToMinutes(b.end_time) - timeToMinutes(b.start_time)), 0);
-          const isPending = !!s.pendingReschedule;
-
-          return (
-            <div
-              onClick={() => {
-                setSelectedClinicScheduleId(s.id);
-                setShowClinicModal(true);
-              }}
-              className="group relative bg-gradient-to-r from-purple-700 via-indigo-700 to-indigo-900 text-white p-5 sm:p-6 rounded-3xl shadow-md cursor-pointer overflow-hidden transition-all duration-300 hover:scale-[1.01] hover:shadow-lg border border-purple-500/30"
-            >
-              <div className="flex justify-between items-start gap-2">
-                {isPending ? (
-                  <span className="bg-amber-400 text-slate-950 text-[11px] px-3.5 py-1 rounded-full font-black flex items-center gap-1.5 shadow-md animate-pulse">
-                    <span>⏳ {s.date} 시간 변경 승인 대기 중</span>
-                  </span>
-                ) : hasBooking ? (
-                  <span className="bg-emerald-400 text-slate-950 text-[11px] px-3.5 py-1 rounded-full font-black flex items-center gap-1.5 shadow-md">
-                    <span>⭐ {s.date} 예약 확정 (총 {formatDurationLabel(totalDur)})</span>
-                  </span>
-                ) : (
-                  <span className="bg-amber-300 text-slate-950 text-[11px] px-3.5 py-1 rounded-full font-black flex items-center gap-1.5 shadow-xs animate-pulse">
-                    <span>⏰ 클리닉 시간 선택 오픈!</span>
-                  </span>
-                )}
-                <span className="text-2xl text-white/70 group-hover:text-white group-hover:translate-x-1 transition-all">→</span>
-              </div>
-              <div className="mt-4">
-                <h3 className="text-lg sm:text-xl font-extrabold text-white">
-                  {isPending ? '클리닉 시간 변경 승인 대기 중' : hasBooking ? '클리닉 예약 확인 및 시간 변경' : '클리닉 시간 선택하기'}
-                </h3>
-                <p className="text-xs text-purple-100 mt-1 leading-relaxed">
-                  {isPending
-                    ? `변경 요청 시간: ${formatRangesSummary(s.pendingReschedule.requested_ranges)} (선생님 승인 대기 중)`
-                    : hasBooking
-                    ? `신청 완료: ${formatBookingsCompact(myB)} (터치하여 시간 변경 요청 또는 취소)`
-                    : `${s.date} 원하는 시간대를 골라 맞춤 클리닉을 예약하세요.`}
-                </p>
-              </div>
+        {/* ⏰ 주말 클리닉 시간 선택 배너 */}
+        {clinicInfo.hasActive && (
+          <div
+            onClick={() => setShowClinicModal(true)}
+            className="group relative bg-gradient-to-r from-purple-700 via-indigo-700 to-indigo-900 text-white p-6 rounded-3xl shadow-md cursor-pointer overflow-hidden transition-all duration-300 hover:scale-[1.01] hover:shadow-lg border border-purple-500/30"
+          >
+            <div className="flex justify-between items-start">
+              {clinicInfo.myBooking ? (
+                <span className="bg-emerald-400 text-slate-950 text-[11px] px-3.5 py-1 rounded-full font-black flex items-center gap-1.5 shadow-md">
+                  <span>⭐ {clinicInfo.activeDate} ({clinicInfo.myBooking.start_time}~{clinicInfo.myBooking.end_time}) 예약 확정</span>
+                </span>
+              ) : (
+                <span className="bg-amber-300 text-slate-950 text-[11px] px-3.5 py-1 rounded-full font-black flex items-center gap-1.5 shadow-xs animate-pulse">
+                  <span>⏰ 2시간 클리닉 시간 선택 오픈!</span>
+                  <span>⏰ 클리닉 시간 선택 오픈!</span>
+                </span>
+              )}
+              <span className="text-2xl text-white/70 group-hover:text-white group-hover:translate-x-1 transition-all">→</span>
             </div>
-          );
-        })()}
-
-        {clinicSchedules.length > 1 && (() => {
-          const unbookedCount = clinicSchedules.filter(
-            (s) => !s.myBooking && (!s.myBookings || s.myBookings.length === 0)
-          ).length;
-
-          return (
-            <div className="bg-gradient-to-r from-purple-800 via-indigo-800 to-indigo-950 text-white p-5 sm:p-6 rounded-3xl shadow-md border border-purple-500/30 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="text-lg sm:text-xl font-black text-white flex items-center gap-1.5">
-                      <span>⏰</span>
-                      <span>클리닉 일정 및 예약 현황</span>
-                    </h3>
-                    {unbookedCount > 0 ? (
-                      <span className="bg-amber-300 text-amber-950 text-[11px] px-3 py-0.5 rounded-full font-black shadow-xs animate-pulse">
-                        🚨 미신청 {unbookedCount}건 (총 {clinicSchedules.length}개 일정)
-                      </span>
-                    ) : (
-                      <span className="bg-emerald-400 text-slate-950 text-[11px] px-3 py-0.5 rounded-full font-black shadow-xs">
-                        ✅ 모든 클리닉({clinicSchedules.length}개) 예약 완료
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-purple-200 mt-0.5">
-                    원하시는 날짜를 터치하여 30분 단위 시간대를 자유롭게 예약하거나 변경할 수 있습니다.
-                  </p>
-                </div>
-              </div>
-
-              {/* 일정별 선택 카드 목록 */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {clinicSchedules.map((sched) => {
-                  const myB = sched.myBookings && sched.myBookings.length > 0 ? sched.myBookings : (sched.myBooking ? [sched.myBooking] : []);
-                  const hasBooking = myB.length > 0;
-                  const isPending = !!sched.pendingReschedule;
-
-                  return (
-                    <div
-                      key={sched.id}
-                      onClick={() => {
-                        setSelectedClinicScheduleId(sched.id);
-                        setShowClinicModal(true);
-                      }}
-                      className={`p-4 rounded-2xl border cursor-pointer transition-all duration-200 hover:scale-[1.01] flex flex-col justify-between gap-3 ${
-                        isPending
-                          ? 'bg-amber-500/20 border-amber-400/60 ring-1 ring-amber-400/40'
-                          : hasBooking
-                          ? 'bg-white/10 border-emerald-400/40 hover:bg-white/15'
-                          : 'bg-amber-400/15 border-amber-300/60 hover:bg-amber-400/25 ring-1 ring-amber-300/30'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="text-sm font-black text-white flex items-center gap-1.5">
-                            <span>📅</span>
-                            <span>{sched.date}</span>
-                            <span className="text-xs text-purple-200 font-semibold">({sched.title})</span>
-                          </div>
-                          <p className="text-[11px] text-purple-200 mt-0.5">
-                            운영시간: {sched.start_time} ~ {sched.end_time}
-                          </p>
-                        </div>
-                        <span className="text-lg text-white/60">→</span>
-                      </div>
-
-                      <div className="pt-1">
-                        {isPending ? (
-                          <div className="inline-flex items-center gap-1.5 bg-amber-400 text-slate-950 text-xs font-black px-2.5 py-1 rounded-xl shadow-xs animate-pulse">
-                            <span>⏳ 변경 대기:</span>
-                            <span>{formatBookingsCompact(sched.pendingReschedule.requested_ranges)}</span>
-                          </div>
-                        ) : hasBooking ? (
-                          <div className="inline-flex items-center gap-1.5 bg-emerald-400 text-slate-950 text-xs font-black px-2.5 py-1 rounded-xl shadow-xs">
-                            <span>✅ 예약 확정:</span>
-                            <span>{formatBookingsCompact(myB)}</span>
-                          </div>
-                        ) : (
-                          <div className="inline-flex items-center gap-1.5 bg-amber-300 text-amber-950 text-xs font-black px-2.5 py-1 rounded-xl shadow-xs animate-pulse">
-                            <span>🚨 미신청 (지금 신청하기)</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+            <div className="mt-4">
+              <h3 className="text-xl font-extrabold text-white">
+                {clinicInfo.myBooking ? '주말 클리닉 예약 확인 및 시간 변경' : '주말 클리닉 시간 선택하기 (2시간)'}
+                {clinicInfo.myBooking ? '주말 클리닉 예약 확인 및 시간 변경' : '주말 클리닉 시간 선택하기'}
+              </h3>
+              <p className="text-xs text-purple-100 mt-1 leading-relaxed">
+                {clinicInfo.myBooking
+                  ? `신청 완료: ${clinicInfo.activeDate} ${clinicInfo.myBooking.start_time} ~ ${clinicInfo.myBooking.end_time} (터치하여 시간 변경 또는 취소)`
+                  : `${clinicInfo.activeDate} 원하는 시작 시간을 골라 2시간 개별 클리닉을 예약하세요.`}
+                  : `${clinicInfo.activeDate} 원하는 시간대를 골라 개별 맞춤 클리닉을 예약하세요.`}
+              </p>
             </div>
-          );
-        })()}
+          </div>
+        )}
 
         {/* 🎓 2. 학생 전용 2대 핵심 바로가기 메뉴 */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -379,11 +276,10 @@ export default function StudentDashboard() {
 
       </main>
 
-      {/* ⏰ 클리닉 예약 모달 */}
+      {/* ⏰ 주말 클리닉 예약 모달 */}
       {showClinicModal && user && (
         <StudentClinicModal
           user={user}
-          initialScheduleId={selectedClinicScheduleId}
           onClose={() => setShowClinicModal(false)}
           onBookingUpdated={() => fetchStudentData(user.id)}
         />

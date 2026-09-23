@@ -68,6 +68,274 @@ function cleanContentForDisplay(text) {
   return cleaned;
 }
 
+// 🔍 숙제 게시글 내용 파싱 헬퍼 (교재별 목록, 대상 학생, 메모 분리)
+function parseHomeworkPostContent(rawContent) {
+  if (!rawContent) return { books: [], memo: '', hasBooks: false };
+
+  const lines = rawContent.split('\n');
+  const books = [];
+  const otherLines = [];
+  let isParsingMemo = false;
+  const memoLines = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // 첨부파일 및 구글 폼 링크 라인은 건너뜀
+    if (line.match(/^📎 첨부파일/)) continue;
+    if (line.match(/^📋 구글 폼 링크:/)) continue;
+
+    if (line.startsWith('📝 메모:')) {
+      isParsingMemo = true;
+      continue;
+    }
+
+    if (isParsingMemo) {
+      memoLines.push(line);
+      continue;
+    }
+
+    if (line.startsWith('📘 [')) {
+      const match = line.match(/^📘 \[(.*?)\] (.*?)(?: \(대상: (.*?)\))?$/);
+      if (match) {
+        const bookTitle = match[1]?.trim() || '';
+        const range = match[2]?.trim() || '';
+        const targetStr = match[3]?.trim() || '';
+        const targetStudentNames = targetStr ? targetStr.split(',').map((s) => s.trim()).filter(Boolean) : [];
+        books.push({
+          bookTitle,
+          range,
+          targetType: targetStudentNames.length > 0 ? 'SELECTED' : 'ALL',
+          targetStudentNames,
+        });
+        continue;
+      }
+    }
+
+    if (line.trim()) {
+      otherLines.push(line);
+    }
+  }
+
+  const memo = [...otherLines, ...memoLines].join('\n').trim();
+  return {
+    books,
+    memo,
+    hasBooks: books.length > 0,
+  };
+}
+
+// 🎨 스마트 숙제 본문 렌더러 컴포넌트
+function HomeworkContentRenderer({ post, user, isExpanded, onToggleExpand }) {
+  const rawContent = post.content || '';
+  const parsed = parseHomeworkPostContent(rawContent);
+
+  // 교재 목록 파싱이 안 된 일반 텍스트인 경우
+  if (!parsed.hasBooks) {
+    const displayContent = cleanContentForDisplay(rawContent);
+    if (!displayContent) return null;
+    return (
+      <div className="text-base sm:text-lg text-slate-800 leading-relaxed sm:leading-loose whitespace-pre-wrap bg-slate-50/90 p-5 sm:p-6 rounded-2xl border border-slate-200 font-semibold">
+        {displayContent}
+      </div>
+    );
+  }
+
+  const isStudent = user?.role === 'STUDENT';
+  const studentName = user?.name || '';
+
+  // 1️⃣ 학생 시점: [내 숙제 맞춤 섹션] + [다른 친구들 숙제 접기/펼치기]
+  if (isStudent) {
+    const myBooks = parsed.books.filter(
+      (b) => b.targetType === 'ALL' || b.targetStudentNames.includes(studentName)
+    );
+    const otherBooks = parsed.books.filter(
+      (b) => b.targetType === 'SELECTED' && !b.targetStudentNames.includes(studentName)
+    );
+
+    return (
+      <div className="space-y-3.5">
+        {/* ⭐ 내 숙제 섹션 */}
+        <div className="bg-gradient-to-br from-indigo-50/90 via-indigo-50/50 to-purple-50/40 p-4 sm:p-5 rounded-2xl border border-indigo-200/90 shadow-2xs space-y-3">
+          <div className="flex items-center justify-between border-b border-indigo-200/80 pb-2.5">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">⭐</span>
+              <span className="text-sm sm:text-base font-black text-indigo-950">
+                [{studentName}] 학생의 과제 목록
+              </span>
+              <span className="bg-indigo-600 text-white text-[11px] font-extrabold px-2.5 py-0.5 rounded-full shadow-2xs">
+                {myBooks.length}개
+              </span>
+            </div>
+            <span className="text-[11px] font-extrabold text-indigo-700 bg-white px-2.5 py-1 rounded-xl border border-indigo-200 shadow-2xs">
+              내 맞춤 숙제
+            </span>
+          </div>
+
+          {myBooks.length === 0 ? (
+            <div className="p-4 text-center text-xs text-indigo-900/80 font-bold bg-white/90 rounded-xl border border-indigo-100">
+              🎉 이번 과제에는 [{studentName}] 학생에게 배정된 별도 개별 과제가 없습니다.
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {myBooks.map((b, idx) => (
+                <div
+                  key={idx}
+                  className="bg-white p-4 rounded-xl border border-indigo-200/90 shadow-xs space-y-2 hover:border-indigo-400 transition"
+                >
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="text-xs sm:text-sm font-black text-indigo-950 bg-indigo-100/80 border border-indigo-300 px-3 py-1 rounded-lg">
+                      📘 {b.bookTitle}
+                    </span>
+                    <span
+                      className={`text-[10.5px] sm:text-xs font-black px-2.5 py-0.5 rounded-md ${
+                        b.targetType === 'ALL'
+                          ? 'bg-slate-100 text-slate-700 border border-slate-200'
+                          : 'bg-amber-100 text-amber-950 border border-amber-300'
+                      }`}
+                    >
+                      {b.targetType === 'ALL' ? '👥 반 전체 공통' : '⭐ 내 맞춤 과제'}
+                    </span>
+                  </div>
+                  <p className="text-base sm:text-lg font-black text-slate-900 leading-snug pl-1">
+                    {b.range}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 📂 다른 친구들 과제 (기본 접힘) */}
+        {otherBooks.length > 0 && (
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={onToggleExpand}
+              className="w-full text-xs font-bold bg-slate-100/90 hover:bg-slate-200/80 text-slate-700 px-4 py-2.5 rounded-xl border border-slate-200 transition flex items-center justify-between shadow-2xs"
+            >
+              <span className="flex items-center gap-1.5">
+                <span>📂</span>
+                <span>다른 친구들 과제 ({otherBooks.length}개)</span>
+              </span>
+              <span className="text-[11px] font-black text-indigo-600 bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                {isExpanded ? '▲ 접기' : '▼ 펼쳐서 확인'}
+              </span>
+            </button>
+
+            {isExpanded && (
+              <div className="p-3.5 bg-slate-100/70 rounded-2xl border border-slate-200 space-y-2 animate-in fade-in">
+                {otherBooks.map((b, idx) => (
+                  <div key={idx} className="bg-white p-3 rounded-xl border border-slate-200 space-y-1.5 text-xs shadow-2xs">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="font-extrabold text-slate-800 bg-slate-100 px-2.5 py-0.5 rounded-lg border border-slate-200">
+                        📘 {b.bookTitle}
+                      </span>
+                      <span className="text-[10.5px] font-bold text-slate-500 bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
+                        대상: {b.targetStudentNames.join(', ')}
+                      </span>
+                    </div>
+                    <p className="text-xs sm:text-sm font-semibold text-slate-700 pl-1 leading-relaxed">
+                      {b.range}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 📝 선생님 메모 */}
+        {parsed.memo && (
+          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-1.5">
+            <span className="text-xs font-black text-slate-700 flex items-center gap-1">
+              <span>📝</span>
+              <span>선생님 전달 메모</span>
+            </span>
+            <p className="text-sm sm:text-base text-slate-800 whitespace-pre-wrap font-semibold leading-relaxed pl-1">
+              {parsed.memo}
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // 2️⃣ 선생님 / 원장님 시점: 교재/학교별 정돈된 카드 및 학생 칩 UI
+  return (
+    <div className="space-y-3.5">
+      <div className="bg-slate-50/90 p-4 sm:p-5 rounded-2xl border border-slate-200 space-y-3">
+        <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
+          <span className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
+            <span>📚</span>
+            <span>교재 및 학교별 숙제 목록</span>
+            <span className="text-xs bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-full">
+              총 {parsed.books.length}건
+            </span>
+          </span>
+        </div>
+
+        <div className="space-y-2.5">
+          {parsed.books.map((b, idx) => (
+            <div
+              key={idx}
+              className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-2 hover:border-indigo-300 transition"
+            >
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs sm:text-sm font-black text-indigo-950 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-lg">
+                  📘 {b.bookTitle}
+                </span>
+                <span
+                  className={`text-[10.5px] font-extrabold px-2.5 py-0.5 rounded-md ${
+                    b.targetType === 'ALL'
+                      ? 'bg-blue-50 text-blue-800 border border-blue-200'
+                      : 'bg-indigo-50 text-indigo-800 border border-indigo-200'
+                  }`}
+                >
+                  {b.targetType === 'ALL' ? '👥 반 전체 대상' : `👤 특정 대상 (${b.targetStudentNames.length}명)`}
+                </span>
+              </div>
+
+              <p className="text-sm sm:text-base font-black text-slate-900 pl-1 leading-snug">
+                {b.range}
+              </p>
+
+              {b.targetStudentNames && b.targetStudentNames.length > 0 && (
+                <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5 flex-wrap text-xs">
+                  <span className="text-[11px] font-bold text-slate-500 shrink-0">대상 학생:</span>
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {b.targetStudentNames.map((name) => (
+                      <span
+                        key={name}
+                        className="text-[11px] font-black bg-indigo-100/80 text-indigo-900 px-2 py-0.5 rounded-md border border-indigo-200"
+                      >
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 📝 선생님 메모 */}
+      {parsed.memo && (
+        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-1.5">
+          <span className="text-xs font-black text-slate-700 flex items-center gap-1">
+            <span>📝</span>
+            <span>메모</span>
+          </span>
+          <p className="text-sm sm:text-base text-slate-800 whitespace-pre-wrap font-semibold leading-relaxed pl-1">
+            {parsed.memo}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BoardMain() {
   const [classes, setClasses] = useState([]);
   const [myClasses, setMyClasses] = useState([]);
@@ -92,6 +360,7 @@ function BoardMain() {
   const [confirmations, setConfirmations] = useState({}); // post_id -> Set of student_id
   const [confirmationDates, setConfirmationDates] = useState({}); // post_id -> { student_id: created_at }
   const [activeConfirmModalPost, setActiveConfirmModalPost] = useState(null); // 모달로 열린 게시글
+  const [expandedOtherHomeworkPosts, setExpandedOtherHomeworkPosts] = useState({}); // post_id -> boolean (다른 친구들 숙제 펼침 여부)
 
   // 수정 모달 상태
   const [editingPost, setEditingPost] = useState(null);
@@ -803,11 +1072,25 @@ function BoardMain() {
                     </div>
                   )}
 
-                  {/* 🎯 빈 메모 및 링크가 깔끔하게 정리된 본문 */}
-                  {cleanContentForDisplay(rawContent) && (
-                    <div className="text-base sm:text-lg text-slate-800 leading-relaxed sm:leading-loose whitespace-pre-wrap bg-slate-50/90 p-5 sm:p-6 rounded-2xl border border-slate-200 font-semibold">
-                      {cleanContentForDisplay(rawContent)}
-                    </div>
+                  {/* 🎯 게시글 본문 (숙제 공지는 맞춤 카드 렌더러, 일반 공지는 기본 본문) */}
+                  {post.category === 'HOMEWORK' ? (
+                    <HomeworkContentRenderer
+                      post={post}
+                      user={user}
+                      isExpanded={!!expandedOtherHomeworkPosts[post.id]}
+                      onToggleExpand={() =>
+                        setExpandedOtherHomeworkPosts((prev) => ({
+                          ...prev,
+                          [post.id]: !prev[post.id],
+                        }))
+                      }
+                    />
+                  ) : (
+                    cleanContentForDisplay(rawContent) && (
+                      <div className="text-base sm:text-lg text-slate-800 leading-relaxed sm:leading-loose whitespace-pre-wrap bg-slate-50/90 p-5 sm:p-6 rounded-2xl border border-slate-200 font-semibold">
+                        {cleanContentForDisplay(rawContent)}
+                      </div>
+                    )
                   )}
 
                   {/* 🎬 유튜브 영상 자동 임베드 */}

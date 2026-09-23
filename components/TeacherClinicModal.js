@@ -1362,28 +1362,57 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
               </div>
 
               {/* 운영 시간대 (시작 ~ 종료) */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-black text-slate-700">⏰ 시작 시간</label>
-                  <input
-                    type="time"
-                    style={{ colorScheme: 'light' }}
-                    value={newStartTime}
-                    onChange={(e) => setNewStartTime(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-800 focus:outline-indigo-500"
-                    required
-                  />
+                  <div className="flex gap-2">
+                    <select
+                      value={(newStartTime || '14:00').split(':')[0]}
+                      onChange={(e) => setNewStartTime(`${e.target.value}:${(newStartTime || '14:00').split(':')[1]}`)}
+                      className="w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-2 py-2.5 text-sm font-bold text-slate-800 focus:outline-indigo-500"
+                    >
+                      {Array.from({ length: 24 }).map((_, i) => {
+                        const h = i.toString().padStart(2, '0');
+                        const label = i < 12 ? `오전 ${i === 0 ? 12 : i}시` : `오후 ${i === 12 ? 12 : i - 12}시`;
+                        return <option key={h} value={h}>{label}</option>;
+                      })}
+                    </select>
+                    <select
+                      value={(newStartTime || '14:00').split(':')[1]}
+                      onChange={(e) => setNewStartTime(`${(newStartTime || '14:00').split(':')[0]}:${e.target.value}`)}
+                      className="w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-2 py-2.5 text-sm font-bold text-slate-800 focus:outline-indigo-500"
+                    >
+                      {['00', '10', '20', '30', '40', '50'].map(m => (
+                        <option key={m} value={m}>{m}분</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
+                
                 <div className="space-y-1.5">
                   <label className="text-xs font-black text-slate-700">⏰ 종료 시간</label>
-                  <input
-                    type="time"
-                    style={{ colorScheme: 'light' }}
-                    value={newEndTime}
-                    onChange={(e) => setNewEndTime(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-800 focus:outline-indigo-500"
-                    required
-                  />
+                  <div className="flex gap-2">
+                    <select
+                      value={(newEndTime || '16:00').split(':')[0]}
+                      onChange={(e) => setNewEndTime(`${e.target.value}:${(newEndTime || '16:00').split(':')[1]}`)}
+                      className="w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-2 py-2.5 text-sm font-bold text-slate-800 focus:outline-indigo-500"
+                    >
+                      {Array.from({ length: 24 }).map((_, i) => {
+                        const h = i.toString().padStart(2, '0');
+                        const label = i < 12 ? `오전 ${i === 0 ? 12 : i}시` : `오후 ${i === 12 ? 12 : i - 12}시`;
+                        return <option key={h} value={h}>{label}</option>;
+                      })}
+                    </select>
+                    <select
+                      value={(newEndTime || '16:00').split(':')[1]}
+                      onChange={(e) => setNewEndTime(`${(newEndTime || '16:00').split(':')[0]}:${e.target.value}`)}
+                      className="w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-2 py-2.5 text-sm font-bold text-slate-800 focus:outline-indigo-500"
+                    >
+                      {['00', '10', '20', '30', '40', '50'].map(m => (
+                        <option key={m} value={m}>{m}분</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
 

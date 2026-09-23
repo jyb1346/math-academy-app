@@ -741,16 +741,6 @@ export default function QnaPage() {
                         <span className="text-xs font-black bg-amber-50 text-amber-900 border border-amber-200 px-2.5 py-0.5 rounded-full shrink-0">
                           👨‍🏫 {teacherName}
                         </span>
-                        {item.is_public && (
-                          <span className="text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-0.5 rounded-full shrink-0 flex items-center gap-1">
-                            <span>🌐</span> 반 전체 공개
-                          </span>
-                        )}
-                        {!isTeacher && item.student_id !== user?.id && item.is_public && (
-                          <span className="text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200 px-2 py-0.5 rounded-md shrink-0">
-                            다른 친구의 질문
-                          </span>
-                        )}
                         <span className="text-[11px] text-slate-400 font-medium whitespace-nowrap">
                           • {new Date(item.created_at).toLocaleString()}
                         </span>
@@ -787,35 +777,9 @@ export default function QnaPage() {
                       </div>
                     )}
 
-                    {/* 👨‍🏫 강사/원장님 전용: 전체 공개 토글 & 질문 삭제 버튼 */}
+                    {/* 👨‍🏫 강사/원장님 전용: 질문 삭제 버튼 */}
                     {isTeacher && (item.teacher_id === user?.id || user?.role === 'HEAD_TEACHER') && (
                       <div className="flex items-center gap-1.5 shrink-0 whitespace-nowrap pt-0.5 ml-2">
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            if (!confirm(`이 질문을 반 전체 학생에게 ${item.is_public ? '비공개' : '공개'} 처리하시겠습니까?`)) return;
-                            try {
-                              const res = await fetch(`/api/qna/${item.id}/public`, {
-                                method: 'PATCH',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ is_public: !item.is_public })
-                              });
-                              if (!res.ok) throw new Error('상태 변경 실패');
-                              fetchQuestions(user);
-                            } catch (err) {
-                              alert('상태 변경 중 오류가 발생했습니다.');
-                            }
-                          }}
-                          className={`text-[11px] font-bold px-2.5 py-1 rounded-xl transition border shadow-2xs whitespace-nowrap shrink-0 flex items-center gap-1 cursor-pointer ${
-                            item.is_public 
-                              ? 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200' 
-                              : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                          }`}
-                          title="다른 학생들도 이 질문과 답변을 볼 수 있게 됩니다."
-                        >
-                          <span>{item.is_public ? '🔒' : '🌐'}</span>
-                          <span>{item.is_public ? '비공개 전환' : '전체 공개'}</span>
-                        </button>
                         <button
                           type="button"
                           onClick={() => handleDeleteQuestion(item.id, item.title)}
@@ -823,7 +787,7 @@ export default function QnaPage() {
                           title="질문 및 답변 스레드 전체 삭제"
                         >
                           <span>🗑️</span>
-                          <span>삭제</span>
+                          <span>질문 삭제</span>
                         </button>
                       </div>
                     )}
@@ -1139,8 +1103,8 @@ export default function QnaPage() {
                   {/* ────────────────── 3.5. 이해 완료 확인 & 상태 안내 박스 ────────────────── */}
                   {item.answer && !qState.isEditing && (
                     <div className="space-y-2 pt-1">
-                      {/* 💡 학생 전용: 본인 질문일 때만 이해 완료 버튼 */}
-                      {!isTeacher && item.student_id === user?.id && item.computedStatus === 'ANSWERED' && (
+                      {/* 💡 학생 전용: 이해 완료 버튼 */}
+                      {!isTeacher && item.computedStatus === 'ANSWERED' && (
                         <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border border-emerald-200/90 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs animate-in fade-in">
                           <div className="flex items-center gap-2.5">
                             <span className="text-2xl">💡</span>
@@ -1161,7 +1125,7 @@ export default function QnaPage() {
                       )}
 
                       {/* 💡 학생 전용: 이해 완료 안내 */}
-                      {!isTeacher && item.student_id === user?.id && item.computedStatus === 'RESOLVED' && (
+                      {!isTeacher && item.computedStatus === 'RESOLVED' && (
                         <div className="bg-emerald-50/80 border border-emerald-200/80 p-3.5 rounded-2xl flex items-center gap-2.5 text-emerald-900 shadow-2xs">
                           <span className="text-xl">🎉</span>
                           <div>
@@ -1171,8 +1135,8 @@ export default function QnaPage() {
                         </div>
                       )}
 
-                      {/* 💡 선생님 (또는 남의 질문을 보는 학생): 이해 완료 안내 */}
-                      {(isTeacher || (!isTeacher && item.student_id !== user?.id)) && item.computedStatus === 'RESOLVED' && (
+                      {/* 💡 선생님 전용: 이해 완료 안내 */}
+                      {isTeacher && item.computedStatus === 'RESOLVED' && (
                         <div className="bg-emerald-50/80 border border-emerald-200/80 p-3.5 rounded-2xl flex items-center gap-2.5 text-emerald-900 shadow-2xs">
                           <span className="text-xl">💡</span>
                           <div>
@@ -1182,18 +1146,18 @@ export default function QnaPage() {
                         </div>
                       )}
 
-                      {/* 💡 선생님 (또는 남의 질문을 보는 학생): 학생 확인 중 안내 */}
-                      {(isTeacher || (!isTeacher && item.student_id !== user?.id)) && item.computedStatus === 'ANSWERED' && (
+                      {/* 💡 선생님 전용: 학생 확인 중 안내 */}
+                      {isTeacher && item.computedStatus === 'ANSWERED' && (
                         <div className="bg-amber-50/80 border border-amber-200/80 p-3 rounded-2xl flex items-center gap-2 text-amber-900 shadow-2xs">
                           <span className="text-base">💬</span>
-                          <span className="text-xs font-bold">선생님 답변 완료 (질문한 학생이 확인하고 이해 여부를 체크 중입니다)</span>
+                          <span className="text-xs font-bold">선생님 답변 완료 (학생이 확인하고 이해 여부를 체크 중입니다)</span>
                         </div>
                       )}
                     </div>
                   )}
 
-                  {/* ────────────────── 4. 추가 질문 / 추가 답변 작성창 (본인 질문이거나 선생님일 때만 표시) ────────────────── */}
-                  {item.answer && !qState.isEditing && (isTeacher || item.student_id === user?.id) && (
+                  {/* ────────────────── 4. 추가 질문 / 추가 답변 작성창 ────────────────── */}
+                  {item.answer && !qState.isEditing && (
                     <div className="pt-2">
                       {!currentFollowUp.isOpen ? (
                         <button

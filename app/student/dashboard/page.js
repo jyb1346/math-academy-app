@@ -203,7 +203,7 @@ export default function StudentDashboard() {
             </div>
             <div className="mt-4">
               <h3 className="text-xl font-extrabold text-white">
-                {clinicInfo.myBooking ? '주말 클리닉 예약 확인 및 시간 변경' : '주말 클리닉 시간 선택하기 (2시간)'}
+                {clinicInfo.myBooking ? '클리닉 예약 확인 및 시간 변경' : '클리닉 시간 선택하기 (2시간)'}
               </h3>
               <p className="text-xs text-purple-100 mt-1 leading-relaxed">
                 {clinicInfo.myBooking

@@ -8,7 +8,6 @@ import StudentHomeworkTable from '@/components/StudentHomeworkTable';
 import StudentBugDexModal from '@/components/StudentBugDexModal';
 import StudentClinicModal from '@/components/StudentClinicModal';
 import { logout } from '@/lib/useSession';
-import { getClientCache, setClientCache } from '@/lib/clientCache';
 
 export default function StudentDashboard() {
   const [user, setUser] = useState(null);
@@ -22,97 +21,7 @@ export default function StudentDashboard() {
   const [isJangStudent, setIsJangStudent] = useState(false);
   const router = useRouter();
 
-  const applyCachedStudentData = (cached) => {
-    if (cached.evaluations) setEvaluations(cached.evaluations);
-    if (cached.clinicInfo) setClinicInfo(cached.clinicInfo);
-    if (cached.qnaStats) setQnaStats(cached.qnaStats);
-    if (typeof cached.isJangStudent === 'boolean') setIsJangStudent(cached.isJangStudent);
-  };
-
-  const fetchStudentData = async (studentId, showLoading = false) => {
-    if (showLoading) setLoadingEvals(true);
-    try {
-      const evRes = await fetch(`/api/eval?studentId=${encodeURIComponent(studentId)}`);
-      const evJson = await evRes.json();
-      const evList = evRes.ok ? (evJson.evaluations || []) : [];
-      setEvaluations(evList);
-
-      // ⏰ 클리닉 일정 및 내 예약 상태 조회
-      let cInfo = { hasActive: false, activeDate: '', myBooking: null };
-      try {
-        const cRes = await fetch('/api/clinic/schedules');
-        const cData = await cRes.json();
-        const activeSchedules = (cData.schedules || []).filter((s) => s.is_active);
-        if (activeSchedules.length > 0) {
-          const firstActive = activeSchedules[0];
-          cInfo = {
-            hasActive: true,
-            activeDate: firstActive.date,
-            myBooking: firstActive.myBooking || null,
-          };
-        }
-        setClinicInfo(cInfo);
-      } catch (e) {}
-
-      // 1:1 Q&A 질문 상태 조회
-      let qStats = { pending: 0, answered: 0, resolved: 0, total: 0 };
-      try {
-        const qRes = await fetch('/api/qna');
-        const qJson = await qRes.json();
-        const qData = qJson.questions || [];
-
-        const parsedQna = (qData || []).map((q) => {
-          let replies = [];
-          if (Array.isArray(q.replies)) replies = q.replies;
-          else if (typeof q.replies === 'string') {
-            try { replies = JSON.parse(q.replies) || []; } catch { replies = []; }
-          }
-          const lastReply = replies.length > 0 ? replies[replies.length - 1] : null;
-          let computedStatus = q.status;
-          if (q.status === 'ANSWERED' && lastReply?.type === 'RESOLVED') {
-            computedStatus = 'RESOLVED';
-          }
-          return { ...q, computedStatus };
-        });
-
-        const pending = parsedQna.filter((q) => q.computedStatus === 'PENDING').length;
-        const answered = parsedQna.filter((q) => q.computedStatus === 'ANSWERED').length;
-        const resolved = parsedQna.filter((q) => q.computedStatus === 'RESOLVED').length;
-        qStats = { pending, answered, resolved, total: parsedQna.length };
-        setQnaStats(qStats);
-      } catch (e) {}
-
-      let jangEligible = false;
-      try {
-        const bugRes = await fetch('/api/lucky-bug/check');
-        const bugData = await bugRes.json();
-        jangEligible = Boolean(bugData.isEligible);
-        setIsJangStudent(jangEligible);
-      } catch (e) {}
-
-      // 캐시 저장
-      setClientCache(`student_dashboard_${studentId}`, {
-        evaluations: evList,
-        clinicInfo: cInfo,
-        qnaStats: qStats,
-        isJangStudent: jangEligible,
-      });
-    } catch (err) {
-      console.error('fetchStudentData error:', err);
-    } finally {
-      setLoadingEvals(false);
-    }
-  };
-
   useEffect(() => {
-    // ⚡ 전방위 사전 로드(Universal Prefetch)로 화면 이동 딜레이 0초 달성
-    try {
-      router.prefetch('/board?category=NOTICE_HOMEWORK');
-      router.prefetch('/board');
-      router.prefetch('/qna');
-      router.prefetch('/student/eval');
-    } catch (e) {}
-
     const userData = localStorage.getItem('user');
     if (!userData) {
       router.push('/login');
@@ -121,20 +30,76 @@ export default function StudentDashboard() {
     try {
       const parsedUser = JSON.parse(userData);
       setUser(parsedUser);
-
-      // ⚡ 1. 캐시가 있으면 0초 만에 대시보드 즉시 복원
-      const cached = getClientCache(`student_dashboard_${parsedUser.id}`);
-      if (cached) {
-        applyCachedStudentData(cached);
-        setLoadingEvals(false);
-        fetchStudentData(parsedUser.id, false);
-      } else {
-        fetchStudentData(parsedUser.id, true);
-      }
+      fetchStudentData(parsedUser.id);
+      fetch('/api/lucky-bug/check')
+        .then((res) => res.json())
+        .then((data) => setIsJangStudent(Boolean(data.isEligible)))
+        .catch(() => setIsJangStudent(false));
     } catch (e) {
       router.push('/login');
     }
   }, []);
+
+  const fetchStudentData = async (studentId) => {
+    try {
+      const evRes = await fetch(`/api/eval?studentId=${encodeURIComponent(studentId)}`);
+      const evJson = await evRes.json();
+      if (evRes.ok) {
+        setEvaluations(evJson.evaluations || []);
+      }
+
+      // ⏰ 클리닉 일정 및 내 예약 상태 조회
+      fetch('/api/clinic/schedules')
+        .then((res) => res.json())
+        .then((data) => {
+          const activeSchedules = (data.schedules || []).filter((s) => s.is_active);
+          if (activeSchedules.length > 0) {
+            const firstActive = activeSchedules[0];
+            setClinicInfo({
+              hasActive: true,
+              activeDate: firstActive.date,
+              myBooking: firstActive.myBooking || null,
+            });
+          } else {
+            setClinicInfo({ hasActive: false, activeDate: '', myBooking: null });
+          }
+        })
+        .catch(() => {});
+
+      const qRes = await fetch('/api/qna');
+      const qJson = await qRes.json();
+      const qData = qJson.questions || [];
+
+      const parsedQna = (qData || []).map((q) => {
+        let replies = [];
+        if (Array.isArray(q.replies)) replies = q.replies;
+        else if (typeof q.replies === 'string') {
+          try { replies = JSON.parse(q.replies) || []; } catch { replies = []; }
+        }
+        const lastReply = replies.length > 0 ? replies[replies.length - 1] : null;
+        let computedStatus = q.status;
+        if (q.status === 'ANSWERED' && lastReply?.type === 'RESOLVED') {
+          computedStatus = 'RESOLVED';
+        }
+        return { ...q, computedStatus };
+      });
+
+      const pending = parsedQna.filter((q) => q.computedStatus === 'PENDING').length;
+      const answered = parsedQna.filter((q) => q.computedStatus === 'ANSWERED').length;
+      const resolved = parsedQna.filter((q) => q.computedStatus === 'RESOLVED').length;
+
+      setQnaStats({
+        pending,
+        answered,
+        resolved,
+        total: parsedQna.length,
+      });
+    } catch (err) {
+      console.error('fetchStudentData error:', err);
+    } finally {
+      setLoadingEvals(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-100/70 pb-32 font-sans text-slate-800">
@@ -231,6 +196,7 @@ export default function StudentDashboard() {
                 </span>
               ) : (
                 <span className="bg-amber-300 text-slate-950 text-[11px] px-3.5 py-1 rounded-full font-black flex items-center gap-1.5 shadow-xs animate-pulse">
+                  <span>⏰ 2시간 클리닉 시간 선택 오픈!</span>
                   <span>⏰ 클리닉 시간 선택 오픈!</span>
                 </span>
               )}

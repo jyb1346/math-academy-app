@@ -24,12 +24,16 @@ export async function GET(req) {
   const db = getSupabaseAdmin(req);
   const isStudent = user.role === 'STUDENT';
 
-  // 서로 의존관계가 없는 조회는 병렬로 실행해 왕복 지연을 줄인다
+  // 서로 의존관계가 없는 조회는 병렬로 실행하고 필요한 컬럼만 한정하여 지연을 대폭 단축
   const [classesRes, csRes, postsRes, confirmRes, studentsRes] = await Promise.all([
-    db.from('classes').select('*'),
-    db.from('class_students').select('*'),
-    db.from('posts').select('*, users!posts_author_id_fkey(name), classes(name, teacher_id)').order('created_at', { ascending: false }),
-    db.from('post_confirmations').select('*'),
+    db.from('classes').select('id, name, teacher_id'),
+    db.from('class_students').select('class_id, student_id'),
+    db
+      .from('posts')
+      .select('id, title, content, category, author_id, class_id, due_date, created_at, users!posts_author_id_fkey(name), classes(name, teacher_id)')
+      .order('created_at', { ascending: false })
+      .limit(80),
+    db.from('post_confirmations').select('post_id, student_id, created_at'),
     isStudent ? Promise.resolve({ data: [] }) : db.from('users').select('id, name, email').eq('role', 'STUDENT'),
   ]);
 

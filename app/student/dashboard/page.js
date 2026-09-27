@@ -22,6 +22,13 @@ export default function StudentDashboard() {
   const router = useRouter();
 
   useEffect(() => {
+    // ⚡ 게시판 및 1:1 Q&A 페이지 사전 로드(Prefetch)로 탭 클릭 시 0초 즉시 전환
+    try {
+      router.prefetch('/board?category=NOTICE_HOMEWORK');
+      router.prefetch('/board');
+      router.prefetch('/qna');
+    } catch (e) {}
+
     const userData = localStorage.getItem('user');
     if (!userData) {
       router.push('/login');

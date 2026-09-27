@@ -11,6 +11,7 @@ import {
   formatRangesButtonLabel,
   checkMultipleRangesCapacity,
 } from '@/lib/clinicUtils';
+import { getClientCache, setClientCache } from '@/lib/clientCache';
 
 export default function StudentClinicModal({ user, initialScheduleId = null, onClose, onBookingUpdated }) {
   const [schedules, setSchedules] = useState([]);
@@ -26,15 +27,16 @@ export default function StudentClinicModal({ user, initialScheduleId = null, onC
   const [cancellingRequest, setCancellingRequest] = useState(false);
 
   // 클리닉 일정 조회
-  const fetchSchedules = async () => {
+  const fetchSchedules = async (showLoading = false) => {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const res = await fetch('/api/clinic/schedules');
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '조회 실패');
 
       const activeList = (data.schedules || []).filter((s) => s.is_active);
       setSchedules(activeList);
+      setClientCache('clinic_schedules_student', activeList);
 
       if (activeList.length > 0) {
         let initial = null;
@@ -90,7 +92,18 @@ export default function StudentClinicModal({ user, initialScheduleId = null, onC
   };
 
   useEffect(() => {
-    fetchSchedules();
+    // ⚡ 캐시가 있다면 모달을 열자마자 0초 만에 이전 일정 표시!
+    const cached = getClientCache('clinic_schedules_student');
+    if (cached && Array.isArray(cached) && cached.length > 0) {
+      setSchedules(cached);
+      setSelectedScheduleId(cached[0].id);
+      applyScheduleSelection(cached[0]);
+      setLoading(false);
+      // 백그라운드 최신 동기화
+      fetchSchedules(false);
+    } else {
+      fetchSchedules(true);
+    }
   }, []);
 
   // 현재 선택된 일정

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 
 import MathText from '@/components/MathText';
 import MathToolbar from '@/components/MathToolbar';
+import { getClientCache, setClientCache } from '@/lib/clientCache';
 
 export default function QnaPage() {
   const [user, setUser] = useState(null);
@@ -45,7 +46,48 @@ export default function QnaPage() {
 
   const router = useRouter();
 
+  const applyQnaData = (data, currentUser) => {
+    setUsersMap(data.usersMap || {});
+    setTeachersList(data.teachersList || []);
+    setQuestions(data.questions || []);
+
+    if (currentUser?.role === 'STUDENT') {
+      const targets = data.availableTargets || [];
+      setAvailableTargets(targets);
+      if (targets.length > 0) {
+        setSelectedTargetKey((prev) => {
+          const exists = targets.some((t) => t.key === prev);
+          return exists ? prev : targets[0].key;
+        });
+      }
+    }
+  };
+
+  const fetchQuestions = async (currentUser, showLoading = false) => {
+    try {
+      if (showLoading) setLoading(true);
+
+      const res = await fetch('/api/qna');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '조회 실패');
+
+      setClientCache('qna_data', data);
+      applyQnaData(data, currentUser);
+    } catch (err) {
+      console.error('QnA fetch error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
+    // ⚡ 대시보드 및 게시판 사전 로드(Prefetch)
+    try {
+      router.prefetch('/student/dashboard');
+      router.prefetch('/teacher/dashboard');
+      router.prefetch('/board');
+    } catch (e) {}
+
     const userData = localStorage.getItem('user');
     if (!userData) {
       router.push('/login');
@@ -58,44 +100,21 @@ export default function QnaPage() {
       if (parsedUser.role === 'HEAD_TEACHER') {
         setTeacherFilter(parsedUser.id);
       }
-      fetchQuestions(parsedUser);
+
+      // ⚡ 1. 캐시가 있다면 0초 만에 이전 질문 목록 즉각 복원
+      const cached = getClientCache('qna_data');
+      if (cached) {
+        applyQnaData(cached, parsedUser);
+        setLoading(false);
+        fetchQuestions(parsedUser, false);
+      } else {
+        fetchQuestions(parsedUser, true);
+      }
     } catch (e) {
       console.error(e);
       router.push('/login');
     }
   }, []);
-
-  // 🎯 학생 및 선생님 정보 매핑을 위한 맵
-  const [usersMap, setUsersMap] = useState({});
-
-  const fetchQuestions = async (currentUser) => {
-    try {
-      setLoading(true);
-
-      const res = await fetch('/api/qna');
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '조회 실패');
-
-      setUsersMap(data.usersMap || {});
-      setTeachersList(data.teachersList || []);
-      setQuestions(data.questions || []);
-
-      if (currentUser.role === 'STUDENT') {
-        const targets = data.availableTargets || [];
-        setAvailableTargets(targets);
-        if (targets.length > 0) {
-          setSelectedTargetKey((prev) => {
-            const exists = targets.some((t) => t.key === prev);
-            return exists ? prev : targets[0].key;
-          });
-        }
-      }
-    } catch (err) {
-      console.error('QnA fetch error:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // 학생: 최초 질문 파일 선택 시 미리보기 생성
   const handleFileChange = (e) => {
@@ -427,8 +446,6 @@ export default function QnaPage() {
     return true;
   });
 
-  if (loading) return <div className="p-10 text-center font-bold text-slate-500">1:1 질의응답 로딩 중...</div>;
-
   return (
     <div className="min-h-screen bg-slate-100/70 pb-32 font-sans text-slate-800">
       
@@ -689,7 +706,26 @@ export default function QnaPage() {
 
         {/* 질문 목록 */}
         <div className="space-y-6">
-          {filteredQuestions.length === 0 ? (
+          {loading && questions.length === 0 ? (
+            <div className="space-y-4 animate-pulse">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs space-y-4">
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <div className="w-20 h-6 bg-slate-200 rounded-full" />
+                      <div className="w-28 h-6 bg-slate-100 rounded-full" />
+                    </div>
+                    <div className="w-20 h-4 bg-slate-100 rounded" />
+                  </div>
+                  <div className="w-2/3 h-6 bg-slate-200 rounded-lg" />
+                  <div className="space-y-2 pt-1">
+                    <div className="w-full h-4 bg-slate-100 rounded" />
+                    <div className="w-4/5 h-4 bg-slate-100 rounded" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : filteredQuestions.length === 0 ? (
             <div className="bg-white p-12 rounded-3xl text-center border border-slate-200/80 space-y-2">
               <span className="text-3xl">💡</span>
               <p className="text-sm font-bold text-slate-700">해당 조건의 1:1 질문이 없습니다.</p>

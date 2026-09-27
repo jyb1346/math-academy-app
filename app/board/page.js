@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import CategoryTabs from './components/CategoryTabs';
 import PostCreateForm from './components/PostCreateForm';
 import PostEditModal from './components/PostEditModal';
+import { getClientCache, setClientCache } from '@/lib/clientCache';
 
 function getYouTubeId(url) {
   if (!url) return null;
@@ -336,30 +337,13 @@ function HomeworkContentRenderer({ post, user, isExpanded, onToggleExpand }) {
   );
 }
 
-// ⚡ 초고속 렌더링을 위한 인메모리 & 세션 캐시 (0초 즉시 화면 표시용)
-let memoryBoardCache = null;
-
+// ⚡ 초고속 렌더링을 위한 전역 캐시 (0초 즉시 화면 표시용)
 function getCachedBoardData() {
-  if (memoryBoardCache) return memoryBoardCache;
-  if (typeof window !== 'undefined') {
-    try {
-      const stored = sessionStorage.getItem('pum_board_cache');
-      if (stored) {
-        memoryBoardCache = JSON.parse(stored);
-        return memoryBoardCache;
-      }
-    } catch (e) {}
-  }
-  return null;
+  return getClientCache('board_data');
 }
 
 function setCachedBoardData(data) {
-  memoryBoardCache = data;
-  if (typeof window !== 'undefined') {
-    try {
-      sessionStorage.setItem('pum_board_cache', JSON.stringify(data));
-    } catch (e) {}
-  }
+  setClientCache('board_data', data);
 }
 
 // 🎨 깜빡임 없는 스켈레톤(뼈대) 로딩 컴포넌트

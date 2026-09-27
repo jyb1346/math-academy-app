@@ -14,7 +14,7 @@ import {
 } from '@/lib/clinicUtils';
 import { getClientCache, setClientCache } from '@/lib/clientCache';
 
-export default function TeacherClinicModal({ user, students = [], classes = [], onClose }) {
+export default function TeacherClinicModal({ user, students = [], classes = [], classStudents = [], onClose }) {
   const [activeTab, setActiveTab] = useState('TIMETABLE'); // 'TIMETABLE' | 'CREATE'
   const [schedules, setSchedules] = useState([]);
   const [selectedScheduleId, setSelectedScheduleId] = useState(null);
@@ -147,11 +147,21 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
         classIds.push(currentSchedule.target_class_id);
       }
       if (classIds.length === 0) return students;
+
+      if (classStudents && classStudents.length > 0) {
+        const studentIdsInClasses = new Set(
+          classStudents
+            .filter((cs) => classIds.some((cid) => String(cid) === String(cs.class_id)))
+            .map((cs) => cs.student_id)
+        );
+        return students.filter((s) => studentIdsInClasses.has(s.id) || classIds.includes(s.class_id));
+      }
+
       return students.filter((s) => classIds.includes(s.class_id));
     }
 
     return students;
-  }, [currentSchedule, students]);
+  }, [currentSchedule, students, classStudents]);
 
   // 🎯 현재 유효 예약이 있는 고유 학생 ID Set
   const bookedStudentIdSet = useMemo(() => {

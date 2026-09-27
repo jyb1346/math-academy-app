@@ -1057,6 +1057,7 @@ export default function TeacherDashboard() {
           user={user}
           students={students}
           classes={classes}
+          classStudents={classStudents}
           onClose={() => setShowClinicModal(false)}
         />
       )}

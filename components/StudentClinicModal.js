@@ -96,8 +96,18 @@ export default function StudentClinicModal({ user, initialScheduleId = null, onC
     const cached = getClientCache('clinic_schedules_student');
     if (cached && Array.isArray(cached) && cached.length > 0) {
       setSchedules(cached);
-      setSelectedScheduleId(cached[0].id);
-      applyScheduleSelection(cached[0]);
+      let targetSched = null;
+      if (initialScheduleId) {
+        targetSched = cached.find((s) => s.id === initialScheduleId);
+      }
+      if (!targetSched) {
+        const unbooked = cached.find(
+          (s) => !s.myBooking && (!s.myBookings || s.myBookings.length === 0)
+        );
+        targetSched = unbooked || cached[0];
+      }
+      setSelectedScheduleId(targetSched.id);
+      applyScheduleSelection(targetSched);
       setLoading(false);
       // 백그라운드 최신 동기화
       fetchSchedules(false);
@@ -298,6 +308,7 @@ export default function StudentClinicModal({ user, initialScheduleId = null, onC
 
       alert('시간 변경 요청이 취소되었습니다.');
       await fetchSchedules();
+      if (onBookingUpdated) onBookingUpdated();
     } catch (err) {
       alert(`취소 실패: ${err.message}`);
     } finally {

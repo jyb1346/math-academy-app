@@ -10,6 +10,7 @@ import {
   blocksToRanges,
   formatRangesSummary,
   checkMultipleRangesCapacity,
+  generateTeacherTimetableGrid,
 } from '@/lib/clinicUtils';
 import { getClientCache, setClientCache } from '@/lib/clientCache';
 
@@ -218,8 +219,39 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
     }
   };
 
-  // 학생 출석 상태 변경 핸들러
+  // ⚡ 0초 즉시 시간표 및 예약 상태를 갱신하는 헬퍼 함수
+  const applyOptimisticScheduleUpdate = (updater) => {
+    setSchedules((prevSchedules) => {
+      const nextSchedules = prevSchedules.map((sched) => {
+        const updatedBookings = updater(sched.bookings || []);
+        const newGrid = generateTeacherTimetableGrid(
+          sched.start_time,
+          sched.end_time,
+          updatedBookings
+        );
+        return {
+          ...sched,
+          bookings: updatedBookings,
+          timetableGrid: newGrid,
+        };
+      });
+      // 캐시도 동시 동기화
+      setClientCache('clinic_schedules_teacher', { schedules: nextSchedules });
+      return nextSchedules;
+    });
+  };
+
+  // 학생 출석 상태 변경 핸들러 (⚡ 낙관적 업데이트: 클릭 즉시 0초 반응)
   const handleUpdateBookingStatus = async (bookingId, nextStatus) => {
+    // 1. 실패 시 롤백을 위해 이전 상태 보관
+    const prevSchedules = schedules;
+
+    // 2. ⚡ 화면 상태를 0.00초 만에 즉시 변경 (버튼 즉시 초록색 전환!)
+    applyOptimisticScheduleUpdate((bookings) =>
+      bookings.map((b) => (b.id === bookingId ? { ...b, status: nextStatus } : b))
+    );
+
+    // 3. 백그라운드 서버 통신
     try {
       const res = await fetch(`/api/clinic/bookings/${bookingId}`, {
         method: 'PATCH',
@@ -228,16 +260,23 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '상태 변경 실패');
-
-      await fetchClinicData();
     } catch (err) {
+      // 실패 시 원래 상태로 복원
+      setSchedules(prevSchedules);
       alert(`상태 변경 실패: ${err.message}`);
     }
   };
 
-  // 예약 취소 핸들러
+  // 예약 취소 핸들러 (⚡ 0초 즉시 화면에서 제거)
   const handleDeleteBooking = async (bookingId, studentName) => {
     if (!confirm(`[${studentName}] 학생의 클리닉 예약을 취소하시겠습니까?`)) return;
+
+    const prevSchedules = schedules;
+
+    // ⚡ 0초 만에 화면에서 즉시 제거
+    applyOptimisticScheduleUpdate((bookings) =>
+      bookings.filter((b) => b.id !== bookingId)
+    );
 
     try {
       const res = await fetch(`/api/clinic/bookings/${bookingId}`, {
@@ -245,10 +284,8 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '취소 실패');
-
-      alert('예약이 취소되었습니다.');
-      await fetchClinicData();
     } catch (err) {
+      setSchedules(prevSchedules);
       alert(`취소 실패: ${err.message}`);
     }
   };

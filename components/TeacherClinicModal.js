@@ -11,6 +11,7 @@ import {
   formatRangesSummary,
   checkMultipleRangesCapacity,
 } from '@/lib/clinicUtils';
+import { getClientCache, setClientCache } from '@/lib/clientCache';
 
 export default function TeacherClinicModal({ user, students = [], classes = [], onClose }) {
   const [activeTab, setActiveTab] = useState('TIMETABLE'); // 'TIMETABLE' | 'CREATE'
@@ -67,9 +68,9 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
   }, [students, studentSearchKeyword]);
 
   // 일정 목록 및 예약 데이터 불러오기
-  const fetchClinicData = async () => {
+  const fetchClinicData = async (showLoading = false) => {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const res = await fetch('/api/clinic/schedules');
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '조회 실패');
@@ -82,6 +83,7 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
 
       setTableNotCreated(false);
       setSchedules(data.schedules || []);
+      setClientCache('clinic_schedules_teacher', data);
 
       if (data.schedules && data.schedules.length > 0) {
         if (!selectedScheduleId || !data.schedules.some((s) => s.id === selectedScheduleId)) {
@@ -99,7 +101,17 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
   };
 
   useEffect(() => {
-    fetchClinicData();
+    // ⚡ 캐시가 있다면 모달을 열자마자 0초 만에 이전 시간표를 즉시 표시!
+    const cached = getClientCache('clinic_schedules_teacher');
+    if (cached && Array.isArray(cached.schedules) && cached.schedules.length > 0) {
+      setSchedules(cached.schedules);
+      setSelectedScheduleId(cached.schedules[0].id);
+      setLoading(false);
+      // 백그라운드 최신 동기화
+      fetchClinicData(false);
+    } else {
+      fetchClinicData(true);
+    }
   }, []);
 
   // 현재 선택된 일정

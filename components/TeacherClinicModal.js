@@ -967,76 +967,194 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                       {/* 1. 타임라인(시간표) 뷰 */}
                       {viewMode === 'TIMELINE' && (
                         <div className="space-y-2 bg-white p-4 rounded-2xl border border-slate-200">
-                          {currentSchedule.timetableGrid?.map((interval, idx) => (
-                            <div
-                              key={idx}
-                              className={`p-3 rounded-xl border transition flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 ${
-                                interval.count > 0
-                                  ? 'bg-indigo-50/40 border-indigo-200/80'
-                                  : 'bg-slate-50/50 border-slate-200/60'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2.5 shrink-0">
-                                <span className="font-mono text-xs font-black text-slate-800 bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs">
-                                  ⏱️ {interval.label}
-                                </span>
-                                <span className={`text-[11px] font-extrabold px-2 py-0.5 rounded-md ${
-                                  interval.count > 0
-                                    ? 'bg-indigo-100 text-indigo-800'
-                                    : 'bg-slate-100 text-slate-400'
-                                }`}>
-                                  재실: {interval.count}명
-                                </span>
-                              </div>
+                          {currentSchedule.timetableGrid?.map((interval, idx) => {
+                            // ⏰ LIVE 현재 시간대 판별 (오늘 일정이고 현재 시각이 해당 구간에 속하는지)
+                            const now = new Date();
+                            const curYear = now.getFullYear();
+                            const curMonth = String(now.getMonth() + 1).padStart(2, '0');
+                            const curDay = String(now.getDate()).padStart(2, '0');
+                            const todayStr = `${curYear}-${curMonth}-${curDay}`;
+                            const curMins = now.getHours() * 60 + now.getMinutes();
+                            const isTodaySchedule = currentSchedule.date === todayStr;
+                            const isCurrentSlot = isTodaySchedule && curMins >= interval.startMins && curMins < interval.endMins;
 
-                              {/* 해당 30분 구간에 머무는 학생들 칩 */}
-                              <div className="flex items-center gap-1.5 flex-wrap flex-1 justify-start sm:justify-end">
-                                {interval.bookings?.length === 0 ? (
-                                  <span className="text-xs text-slate-400 font-medium italic">
-                                    비어 있음
+                            // 📊 이번 구간 등원(시작) 및 귀가(종료) 인원 카운트
+                            const startingBookings = (interval.bookings || []).filter((b) => {
+                              const bStart = timeToMinutes(b.start_time);
+                              return bStart >= interval.startMins && bStart < interval.endMins;
+                            });
+                            const endingBookings = (interval.bookings || []).filter((b) => {
+                              const bEnd = timeToMinutes(b.end_time);
+                              return bEnd > interval.startMins && bEnd <= interval.endMins;
+                            });
+
+                            // 🎯 학생 카드 정렬: 이번 타임 등원(시작) 학생 우선 -> 재실 학습 중 학생 -> 귀가(종료) 학생 순
+                            const sortedBookings = [...(interval.bookings || [])].sort((a, b) => {
+                              const aStart = timeToMinutes(a.start_time);
+                              const aEnd = timeToMinutes(a.end_time);
+                              const bStart = timeToMinutes(b.start_time);
+                              const bEnd = timeToMinutes(b.end_time);
+                              const aIsStart = aStart >= interval.startMins && aStart < interval.endMins;
+                              const aIsEnd = aEnd > interval.startMins && aEnd <= interval.endMins;
+                              const bIsStart = bStart >= interval.startMins && bStart < interval.endMins;
+                              const bIsEnd = bEnd > interval.startMins && bEnd <= interval.endMins;
+
+                              const aPriority = aIsStart ? 0 : aIsEnd ? 2 : 1;
+                              const bPriority = bIsStart ? 0 : bIsEnd ? 2 : 1;
+                              if (aPriority !== bPriority) return aPriority - bPriority;
+                              return (a.users?.name || '').localeCompare(b.users?.name || '');
+                            });
+
+                            return (
+                              <div
+                                key={idx}
+                                className={`p-3 rounded-xl border transition flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 ${
+                                  isCurrentSlot
+                                    ? 'bg-indigo-50/90 border-indigo-400 ring-2 ring-indigo-500 shadow-md'
+                                    : interval.count > 0
+                                    ? 'bg-indigo-50/30 border-indigo-200/80'
+                                    : 'bg-slate-50/50 border-slate-200/60'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                                  <span
+                                    className={`font-mono text-xs font-black px-2.5 py-1 rounded-lg border shadow-2xs ${
+                                      isCurrentSlot
+                                        ? 'bg-indigo-600 text-white border-indigo-700'
+                                        : 'bg-white text-slate-800 border-slate-200'
+                                    }`}
+                                  >
+                                    ⏱️ {interval.label}
                                   </span>
-                                ) : (
-                                  interval.bookings.map((b) => (
-                                    <div
-                                      key={b.id}
-                                      className={`text-xs px-2.5 py-1 rounded-xl font-bold border flex items-center gap-1.5 shadow-2xs ${
-                                        b.status === 'ATTENDED'
-                                          ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
-                                          : b.status === 'ABSENT'
-                                          ? 'bg-rose-50 text-rose-900 border-rose-300'
-                                          : 'bg-white text-indigo-950 border-indigo-200'
-                                      }`}
-                                    >
-                                      <span>👤 {b.users?.name || '학생'}</span>
-                                      <span className="text-[10px] text-slate-400">
-                                        ({b.start_time}~{b.end_time})
-                                      </span>
-                                      
-                                      {/* 간편 상태 토글 */}
-                                      <button
-                                        onClick={() => handleUpdateBookingStatus(b.id, b.status === 'ATTENDED' ? 'BOOKED' : 'ATTENDED')}
-                                        className={`text-[10px] px-1.5 py-0.5 rounded font-black transition ${
-                                          b.status === 'ATTENDED'
-                                            ? 'bg-emerald-600 text-white'
-                                            : 'bg-slate-100 hover:bg-emerald-100 text-slate-600 hover:text-emerald-800'
-                                        }`}
-                                        title="출석 완료 체크"
-                                      >
-                                        {b.status === 'ATTENDED' ? '✓ 출석' : '출석'}
-                                      </button>
-                                      <button
-                                        onClick={() => handleDeleteBooking(b.id, b.users?.name)}
-                                        className="text-slate-400 hover:text-rose-600 text-xs px-1 font-bold"
-                                        title="예약 취소"
-                                      >
-                                        ✕
-                                      </button>
-                                    </div>
-                                  ))
-                                )}
+
+                                  {/* 🔴 LIVE 현재 시간 뱃지 */}
+                                  {isCurrentSlot && (
+                                    <span className="bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse flex items-center gap-1 shadow-xs">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                                      <span>LIVE 현재</span>
+                                    </span>
+                                  )}
+
+                                  <span
+                                    className={`text-[11px] font-extrabold px-2 py-0.5 rounded-md ${
+                                      interval.count > 0
+                                        ? 'bg-indigo-100 text-indigo-800'
+                                        : 'bg-slate-100 text-slate-400'
+                                    }`}
+                                  >
+                                    재실: {interval.count}명
+                                  </span>
+
+                                  {/* 요약 흐름 뱃지 (+등원 / -귀가) */}
+                                  {startingBookings.length > 0 && (
+                                    <span className="text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-200 px-1.5 py-0.5 rounded font-black flex items-center gap-0.5">
+                                      <span>🟢</span>
+                                      <span>+{startingBookings.length} 등원</span>
+                                    </span>
+                                  )}
+                                  {endingBookings.length > 0 && (
+                                    <span className="text-[10px] bg-rose-100 text-rose-800 border border-rose-200 px-1.5 py-0.5 rounded font-black flex items-center gap-0.5">
+                                      <span>🔴</span>
+                                      <span>-{endingBookings.length} 귀가</span>
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* 해당 30분 구간에 머무는 학생들 칩 */}
+                                <div className="flex items-center gap-1.5 flex-wrap flex-1 justify-start sm:justify-end">
+                                  {interval.bookings?.length === 0 ? (
+                                    <span className="text-xs text-slate-400 font-medium italic">
+                                      비어 있음
+                                    </span>
+                                  ) : (
+                                    sortedBookings.map((b) => {
+                                      const bStart = timeToMinutes(b.start_time);
+                                      const bEnd = timeToMinutes(b.end_time);
+                                      const isStarting = bStart >= interval.startMins && bStart < interval.endMins;
+                                      const isEnding = bEnd > interval.startMins && bEnd <= interval.endMins;
+
+                                      let cardStyle = 'bg-white text-slate-800 border-slate-200';
+                                      if (b.status === 'ATTENDED') {
+                                        cardStyle = 'bg-emerald-50/70 text-emerald-950 border-emerald-300';
+                                      } else if (b.status === 'ABSENT') {
+                                        cardStyle = 'bg-slate-100 text-slate-400 border-slate-300 opacity-60';
+                                      } else if (isStarting && isEnding) {
+                                        cardStyle = 'bg-amber-50/80 text-amber-950 border-amber-300 ring-1 ring-amber-400/40';
+                                      } else if (isStarting) {
+                                        cardStyle = 'bg-emerald-50/80 text-emerald-950 border-emerald-300 ring-1 ring-emerald-400/40';
+                                      } else if (isEnding) {
+                                        cardStyle = 'bg-rose-50/80 text-rose-950 border-rose-300 ring-1 ring-rose-400/40';
+                                      }
+
+                                      return (
+                                        <div
+                                          key={b.id}
+                                          className={`text-xs px-2.5 py-1.5 rounded-xl font-bold border flex items-center gap-1.5 shadow-2xs transition ${cardStyle}`}
+                                        >
+                                          {/* 상태 뱃지 (등원 / 귀가 / 등원·귀가 / 재실) */}
+                                          {isStarting && isEnding ? (
+                                            <span className="bg-amber-500 text-white text-[9px] px-1.5 py-0.2 rounded font-black shrink-0">
+                                              등원·귀가
+                                            </span>
+                                          ) : isStarting ? (
+                                            <span className="bg-emerald-600 text-white text-[9px] px-1.5 py-0.2 rounded font-black shrink-0 flex items-center gap-0.5">
+                                              <span>🟢</span>
+                                              <span>등원</span>
+                                            </span>
+                                          ) : isEnding ? (
+                                            <span className="bg-rose-500 text-white text-[9px] px-1.5 py-0.2 rounded font-black shrink-0 flex items-center gap-0.5">
+                                              <span>🔴</span>
+                                              <span>귀가</span>
+                                            </span>
+                                          ) : (
+                                            <span className="bg-slate-100 text-slate-500 text-[9px] px-1.5 py-0.2 rounded font-medium shrink-0">
+                                              재실
+                                            </span>
+                                          )}
+
+                                          <span className="font-extrabold flex items-center gap-0.5">
+                                            👤 {b.users?.name || '학생'}
+                                          </span>
+                                          <span className="text-[10px] text-slate-400 font-normal">
+                                            ({b.start_time}~{b.end_time})
+                                          </span>
+
+                                          {/* 간편 출석 체크 버튼 */}
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              handleUpdateBookingStatus(
+                                                b.id,
+                                                b.status === 'ATTENDED' ? 'BOOKED' : 'ATTENDED'
+                                              )
+                                            }
+                                            className={`text-[10px] px-1.5 py-0.5 rounded font-black transition ${
+                                              b.status === 'ATTENDED'
+                                                ? 'bg-emerald-600 text-white shadow-2xs'
+                                                : 'bg-white hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 border border-slate-200'
+                                            }`}
+                                            title="출석 완료 체크"
+                                          >
+                                            {b.status === 'ATTENDED' ? '✓ 출석' : '출석'}
+                                          </button>
+
+                                          {/* 예약 취소 버튼 */}
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDeleteBooking(b.id, b.users?.name)}
+                                            className="text-slate-400 hover:text-rose-600 text-xs px-1 font-bold"
+                                            title="예약 취소"
+                                          >
+                                            ✕
+                                          </button>
+                                        </div>
+                                      );
+                                    })
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
 

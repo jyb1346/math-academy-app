@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import EvaluationBarChart from '@/components/EvaluationBarChart';
 import { parseEvaluationRecord } from '@/lib/evalUtils';
+import { getClientCache, setClientCache } from '@/lib/clientCache';
 
 export default function StudentEvalPage() {
   const [user, setUser] = useState(null);
@@ -27,11 +28,24 @@ export default function StudentEvalPage() {
   }, []);
 
   const fetchStudentEvaluations = async (studentId) => {
+    // ⚡ 1. SWR 캐시가 있으면 즉시 0초 렌더링 (대시보드 캐시 또는 평가 캐시)
+    const cachedEval =
+      getClientCache(`student_eval_${studentId}`) ||
+      getClientCache(`student_dashboard_${studentId}`)?.evaluations;
+
+    if (cachedEval && Array.isArray(cachedEval) && cachedEval.length > 0) {
+      setEvaluations(cachedEval);
+      setLoading(false);
+    }
+
+    // ⚡ 2. 네트워크 최신 데이터 백그라운드 갱신
     try {
       const res = await fetch(`/api/eval?studentId=${encodeURIComponent(studentId)}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '조회 실패');
-      setEvaluations(data.evaluations || []);
+      const list = data.evaluations || [];
+      setClientCache(`student_eval_${studentId}`, list);
+      setEvaluations(list);
     } catch (err) {
       console.error(err);
     } finally {

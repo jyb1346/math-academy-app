@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import EvaluationBarChart from '@/components/EvaluationBarChart';
 import { parseEvaluationRecord, markAlimtalkSentInComment } from '@/lib/evalUtils';
+import { getClientCache, setClientCache } from '@/lib/clientCache';
 
 function HexagonRadarChart({ scores, twoWeekAvgScores }) {
   const { concept = 8, calc = 8, app = 8, attitude = 8, homework = 8, perseverance = 8 } = scores;
@@ -147,11 +148,23 @@ export default function EvalHistoryPage() {
   }, []);
 
   const fetchData = async (currentUser) => {
+    // ⚡ 1. SWR 캐시가 있으면 즉시 0초 렌더링
+    const cached = getClientCache(`teacher_eval_history_${currentUser?.id}`);
+    if (cached) {
+      setStudents(cached.students || []);
+      setClasses(cached.classes || []);
+      setClassStudents(cached.classStudents || []);
+      setEvaluations(cached.evaluations || []);
+      setLoading(false);
+    }
+
+    // ⚡ 2. 네트워크 최신 데이터 백그라운드 갱신
     try {
       const res = await fetch('/api/eval/history');
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '조회 실패');
 
+      setClientCache(`teacher_eval_history_${currentUser?.id}`, data);
       setStudents(data.students || []);
       setClasses(data.classes || []);
       setClassStudents(data.classStudents || []);

@@ -7,7 +7,6 @@ import { useRouter } from 'next/navigation';
 import PushNotificationManager from '@/components/PushNotificationManager';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import { logout } from '@/lib/useSession';
-import { getClientCache, setClientCache } from '@/lib/clientCache';
 
 export default function TeacherDashboard() {
   const [user, setUser] = useState(null);
@@ -88,63 +87,12 @@ export default function TeacherDashboard() {
 
   const router = useRouter();
 
-  const applyTeacherData = (data) => {
-    setClasses(data.classes || []);
-    setStudents(data.students || []);
-    setTeachers(data.teachers || []);
-    setClassStudents(data.classStudents || []);
-
-    const parsedQna = (data.qna || []).map((q) => {
-      let replies = [];
-      if (Array.isArray(q.replies)) replies = q.replies;
-      else if (typeof q.replies === 'string') {
-        try { replies = JSON.parse(q.replies) || []; } catch { replies = []; }
-      }
-      const lastReply = replies.length > 0 ? replies[replies.length - 1] : null;
-      let computedStatus = q.status;
-      if (q.status === 'ANSWERED' && lastReply?.type === 'RESOLVED') {
-        computedStatus = 'RESOLVED';
-      }
-      return { ...q, computedStatus };
-    });
-
-    const pending = parsedQna.filter((q) => q.computedStatus === 'PENDING').length;
-    const inProgress = parsedQna.filter((q) => q.computedStatus === 'ANSWERED').length;
-    const resolved = parsedQna.filter((q) => q.computedStatus === 'RESOLVED').length;
-
-    setQnaStats({
-      pending,
-      inProgress,
-      resolved,
-      total: parsedQna.length,
-    });
-  };
-
-  const fetchTeacherData = async (teacherId, isInitial = false) => {
-    if (isInitial) setLoading(true);
-    try {
-      const res = await fetch('/api/teacher/data');
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '조회 실패');
-
-      setClientCache(`teacher_data_${teacherId}`, data);
-      applyTeacherData(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    // ⚡ 전방위 사전 로드(Universal Prefetch)로 어떤 버튼을 눌러도 0초 즉시 전환
+    // ⚡ 게시판 및 1:1 Q&A 페이지 사전 로드(Prefetch)로 탭 클릭 시 0초 즉시 전환
     try {
       router.prefetch('/board');
       router.prefetch('/board?category=NOTICE_HOMEWORK');
       router.prefetch('/qna');
-      router.prefetch('/admin/dashboard');
-      router.prefetch('/teacher/eval');
-      router.prefetch('/teacher/eval/history');
     } catch (e) {}
 
     const userData = localStorage.getItem('user');
@@ -155,22 +103,55 @@ export default function TeacherDashboard() {
     try {
       const parsedUser = JSON.parse(userData);
       setUser(parsedUser);
-
-      // ⚡ 1. 캐시가 있다면 0초 만에 대시보드 화면 즉시 복원 (뒤로가기 등)
-      const cached = getClientCache(`teacher_data_${parsedUser.id}`);
-      if (cached) {
-        applyTeacherData(cached);
-        setLoading(false);
-        // 백그라운드 최신 동기화
-        fetchTeacherData(parsedUser.id, false);
-      } else {
-        fetchTeacherData(parsedUser.id, true);
-      }
+      fetchTeacherData(parsedUser.id);
     } catch (e) {
       console.error(e);
       router.push('/login');
     }
   }, []);
+
+  const fetchTeacherData = async (teacherId) => {
+    try {
+      const res = await fetch('/api/teacher/data');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '조회 실패');
+
+      setClasses(data.classes || []);
+      setStudents(data.students || []);
+      setTeachers(data.teachers || []);
+      setClassStudents(data.classStudents || []);
+
+      const parsedQna = (data.qna || []).map((q) => {
+        let replies = [];
+        if (Array.isArray(q.replies)) replies = q.replies;
+        else if (typeof q.replies === 'string') {
+          try { replies = JSON.parse(q.replies) || []; } catch { replies = []; }
+        }
+        const lastReply = replies.length > 0 ? replies[replies.length - 1] : null;
+        let computedStatus = q.status;
+        if (q.status === 'ANSWERED' && lastReply?.type === 'RESOLVED') {
+          computedStatus = 'RESOLVED';
+        }
+        return { ...q, computedStatus };
+      });
+
+      const pending = parsedQna.filter((q) => q.computedStatus === 'PENDING').length;
+      const inProgress = parsedQna.filter((q) => q.computedStatus === 'ANSWERED').length;
+      const resolved = parsedQna.filter((q) => q.computedStatus === 'RESOLVED').length;
+
+      setQnaStats({
+        pending,
+        inProgress,
+        resolved,
+        total: parsedQna.length,
+      });
+
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleCreateClass = async (e) => {
     e.preventDefault();

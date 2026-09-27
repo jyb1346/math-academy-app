@@ -336,60 +336,6 @@ function HomeworkContentRenderer({ post, user, isExpanded, onToggleExpand }) {
   );
 }
 
-// ⚡ 초고속 렌더링을 위한 인메모리 & 세션 캐시 (0초 즉시 화면 표시용)
-let memoryBoardCache = null;
-
-function getCachedBoardData() {
-  if (memoryBoardCache) return memoryBoardCache;
-  if (typeof window !== 'undefined') {
-    try {
-      const stored = sessionStorage.getItem('pum_board_cache');
-      if (stored) {
-        memoryBoardCache = JSON.parse(stored);
-        return memoryBoardCache;
-      }
-    } catch (e) {}
-  }
-  return null;
-}
-
-function setCachedBoardData(data) {
-  memoryBoardCache = data;
-  if (typeof window !== 'undefined') {
-    try {
-      sessionStorage.setItem('pum_board_cache', JSON.stringify(data));
-    } catch (e) {}
-  }
-}
-
-// 🎨 깜빡임 없는 스켈레톤(뼈대) 로딩 컴포넌트
-function BoardSkeleton() {
-  return (
-    <div className="space-y-4 animate-pulse">
-      {[1, 2, 3].map((i) => (
-        <div key={i} className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs space-y-4">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <div className="w-28 h-6 bg-slate-200 rounded-full" />
-              <div className="w-20 h-6 bg-slate-100 rounded-full" />
-            </div>
-            <div className="w-20 h-4 bg-slate-100 rounded" />
-          </div>
-          <div className="w-3/5 h-6 bg-slate-200 rounded-lg" />
-          <div className="space-y-2 pt-1">
-            <div className="w-full h-4 bg-slate-100 rounded" />
-            <div className="w-4/5 h-4 bg-slate-100 rounded" />
-          </div>
-          <div className="pt-3 border-t border-slate-100 flex justify-between items-center">
-            <div className="w-20 h-7 bg-slate-100 rounded-xl" />
-            <div className="w-28 h-7 bg-slate-100 rounded-xl" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function BoardMain() {
   const [classes, setClasses] = useState([]);
   const [myClasses, setMyClasses] = useState([]);
@@ -430,15 +376,7 @@ function BoardMain() {
   const [editNewFile, setEditNewFile] = useState(null);
   const [editUploading, setEditUploading] = useState(false);
 
-  const [user, setUser] = useState(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const u = localStorage.getItem('user');
-        return u ? JSON.parse(u) : null;
-      } catch (e) {}
-    }
-    return null;
-  });
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const router = useRouter();
@@ -458,67 +396,6 @@ function BoardMain() {
     }
   }, [searchParams]);
 
-  const applyBoardData = (data, currentUser) => {
-    setClasses(data.classes || []);
-    setClassStudents(data.classStudents || []);
-    setAllStudents(data.allStudents || []);
-
-    const myC = data.myClasses || [];
-    setMyClasses(myC);
-
-    if (currentUser.role !== 'STUDENT') {
-      if (myC.length > 0) {
-        setSelectedClassId((prev) => (prev && prev !== 'PUBLIC' ? prev : String(myC[0].id)));
-        setTargetClassId((prev) => (prev && prev !== 'ALL_STUDENTS' ? prev : String(myC[0].id)));
-      } else {
-        setSelectedClassId('PUBLIC');
-        setTargetClassId('ALL_STUDENTS');
-      }
-    } else {
-      setMyClassIds(data.myClassIds || []);
-      setSelectedClassId((prev) => (prev && prev !== 'PUBLIC' ? prev : (myC.length > 0 ? String(myC[0].id) : 'PUBLIC')));
-    }
-
-    const filtered = (data.posts || []).filter((p) => {
-      try {
-        const m = JSON.parse(p.content || '{}');
-        return !m.isLuckyEvent;
-      } catch {
-        return true;
-      }
-    });
-    setPosts(filtered);
-
-    const confirmMap = {};
-    const dateMap = {};
-    (data.confirmations || []).forEach((item) => {
-      if (!confirmMap[item.post_id]) {
-        confirmMap[item.post_id] = new Set();
-        dateMap[item.post_id] = {};
-      }
-      confirmMap[item.post_id].add(item.student_id);
-      dateMap[item.post_id][item.student_id] = item.created_at;
-    });
-    setConfirmations(confirmMap);
-    setConfirmationDates(dateMap);
-  };
-
-  const loadBoardData = async (currentUser, showSpinner = false) => {
-    if (showSpinner) setLoading(true);
-    try {
-      const res = await fetch('/api/board');
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '조회 실패');
-
-      setCachedBoardData(data);
-      applyBoardData(data, currentUser);
-    } catch (err) {
-      console.error('loadBoardData error:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
     setDueDate(new Date().toISOString().split('T')[0]);
 
@@ -531,23 +408,67 @@ function BoardMain() {
     try {
       const parsedUser = JSON.parse(userData);
       setUser(parsedUser);
-
-      // ⚡ 1. 캐시가 있다면 화면을 0초 만에 즉시 표시 (인스타/카톡 스타일)
-      const cached = getCachedBoardData();
-      if (cached) {
-        applyBoardData(cached, parsedUser);
-        setLoading(false);
-        // 백그라운드에서 최신 변경 사항 조용히 갱신
-        loadBoardData(parsedUser, false);
-      } else {
-        // 캐시가 없는 첫 진입 시 스켈레톤 UI를 띄우며 로드
-        loadBoardData(parsedUser, true);
-      }
+      loadBoardData(parsedUser);
     } catch (e) {
       console.error(e);
       router.push('/login');
     }
   }, []);
+
+  const loadBoardData = async (currentUser) => {
+    try {
+      const res = await fetch('/api/board');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '조회 실패');
+
+      setClasses(data.classes || []);
+      setClassStudents(data.classStudents || []);
+      setAllStudents(data.allStudents || []);
+
+      const myC = data.myClasses || [];
+      setMyClasses(myC);
+
+      if (currentUser.role !== 'STUDENT') {
+        if (myC.length > 0) {
+          setSelectedClassId(String(myC[0].id));
+          setTargetClassId(String(myC[0].id));
+        } else {
+          setSelectedClassId('PUBLIC');
+          setTargetClassId('ALL_STUDENTS');
+        }
+      } else {
+        setMyClassIds(data.myClassIds || []);
+        setSelectedClassId(myC.length > 0 ? String(myC[0].id) : 'PUBLIC');
+      }
+
+      const filtered = (data.posts || []).filter((p) => {
+        try {
+          const m = JSON.parse(p.content || '{}');
+          return !m.isLuckyEvent;
+        } catch {
+          return true;
+        }
+      });
+      setPosts(filtered);
+
+      const confirmMap = {};
+      const dateMap = {};
+      (data.confirmations || []).forEach((item) => {
+        if (!confirmMap[item.post_id]) {
+          confirmMap[item.post_id] = new Set();
+          dateMap[item.post_id] = {};
+        }
+        confirmMap[item.post_id].add(item.student_id);
+        dateMap[item.post_id][item.student_id] = item.created_at;
+      });
+      setConfirmations(confirmMap);
+      setConfirmationDates(dateMap);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // 🎯 학생: 게시글 [확인했습니다] 토글
   const handleToggleConfirm = async (postId) => {
@@ -971,6 +892,8 @@ function BoardMain() {
     return { targetStudents, confirmedList, unconfirmedList };
   };
 
+  if (loading) return <div className="p-8 text-center font-bold text-slate-500">게시판 로딩 중...</div>;
+
   return (
     <div className="min-h-screen bg-gray-50 pb-32 font-sans text-slate-800">
       
@@ -1066,9 +989,7 @@ function BoardMain() {
 
         {/* 게시글 목록 */}
         <div className="space-y-4">
-          {loading && posts.length === 0 ? (
-            <BoardSkeleton />
-          ) : visiblePosts.length === 0 ? (
+          {visiblePosts.length === 0 ? (
             <div className="bg-white p-12 rounded-2xl text-center border border-slate-200 shadow-xs space-y-2">
               <span className="text-3xl">📭</span>
               <p className="text-sm font-bold text-slate-700">해당 조건의 게시글이 없습니다.</p>

@@ -11,6 +11,7 @@ import { getClientCache, setClientCache } from '@/lib/clientCache';
 export default function QnaPage() {
   const [user, setUser] = useState(null);
   const [questions, setQuestions] = useState([]);
+  const [usersMap, setUsersMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('ALL'); // 'ALL' | 'PENDING' | 'ANSWERED'
 
@@ -94,13 +95,20 @@ export default function QnaPage() {
       return;
     }
 
+    let parsedUser = null;
     try {
-      const parsedUser = JSON.parse(userData);
+      parsedUser = JSON.parse(userData);
       setUser(parsedUser);
       if (parsedUser.role === 'HEAD_TEACHER') {
         setTeacherFilter(parsedUser.id);
       }
+    } catch (e) {
+      console.error('Invalid user in localStorage:', e);
+      router.push('/login');
+      return;
+    }
 
+    try {
       // ⚡ 1. 캐시가 있다면 0초 만에 이전 질문 목록 즉각 복원
       const cached = getClientCache('qna_data');
       if (cached) {
@@ -111,8 +119,8 @@ export default function QnaPage() {
         fetchQuestions(parsedUser, true);
       }
     } catch (e) {
-      console.error(e);
-      router.push('/login');
+      console.error('QnA data loading error:', e);
+      fetchQuestions(parsedUser, true);
     }
   }, []);
 

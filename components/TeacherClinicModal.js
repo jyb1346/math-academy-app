@@ -1124,15 +1124,16 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
 
                                       let cardStyle = 'bg-white text-slate-800 border-slate-200';
                                       if (b.status === 'ATTENDED') {
-                                        cardStyle = 'bg-emerald-50/70 text-emerald-950 border-emerald-300';
+                                        // 🟢 출석 완료 학생만 초록색 배경/테두리로 명확히 구분
+                                        cardStyle = 'bg-emerald-50/80 text-emerald-950 border-emerald-300 ring-1 ring-emerald-400/30';
                                       } else if (b.status === 'ABSENT') {
                                         cardStyle = 'bg-slate-100 text-slate-400 border-slate-300 opacity-60';
-                                      } else if (isStarting && isEnding) {
-                                        cardStyle = 'bg-amber-50/80 text-amber-950 border-amber-300 ring-1 ring-amber-400/40';
-                                      } else if (isStarting) {
-                                        cardStyle = 'bg-emerald-50/80 text-emerald-950 border-emerald-300 ring-1 ring-emerald-400/40';
                                       } else if (isEnding) {
-                                        cardStyle = 'bg-rose-50/80 text-rose-950 border-rose-300 ring-1 ring-rose-400/40';
+                                        // 미출석 상태에서 귀가 시간대인 경우 은은한 로즈 테두리
+                                        cardStyle = 'bg-white text-slate-800 border-rose-200';
+                                      } else {
+                                        // 등원 시작 및 일반 재실 학생은 깨끗한 흰색 바탕 유지 (등원 뱃지로 구분)
+                                        cardStyle = 'bg-white text-slate-800 border-slate-200';
                                       }
 
                                       return (

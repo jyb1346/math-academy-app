@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import StudentHomeworkTable from '@/components/StudentHomeworkTable';
+import { getClientCache, setClientCache, invalidateClientCache } from '@/lib/clientCache';
 import {
   DEFAULT_EVAL_KEYS,
   HOMEWORK_STATUS_OPTIONS,
@@ -888,21 +889,119 @@ export default function TeacherEvalPage() {
     );
   };
 
-  // 초기 반 및 학생 데이터 로드
+  // 헬퍼: 특정 반 학생 데이터 및 일괄 상태 생성
+  const applyClassStudentsData = (resData, classId, targetDate = evalDate) => {
+    const stList = resData.students || [];
+    setStudents(stList);
+    if (stList.length > 0) setSelectedStudentId((prev) => prev || stList[0].id);
+    else setSelectedStudentId('');
+
+    if (stList.length === 0) {
+      setBatchStudents([]);
+      setCommonClassUsedBooks([]);
+      return;
+    }
+
+    const allEvals = resData.evaluations || [];
+    setClassAllEvals(allEvals);
+
+    // 1) 반 전체 학생들이 사용했던 고유 교재명 추출 (칩 생성용)
+    const uniqueBooks = extractAllUniqueBookNamesFromEvaluations(allEvals);
+    setCommonClassUsedBooks(uniqueBooks);
+
+    // 2) 학생별 일괄 상태 객체 생성 (기존 작성 데이터가 있다면 100% 자동 복원)
+    const initialBatchList = stList.map((st) => {
+      const studentRecentEvals = allEvals.filter((e) => e.student_id === st.id);
+      const todayEval = studentRecentEvals.find((e) => e.eval_date === targetDate);
+      const prev = studentRecentEvals.find((e) => e.eval_date < targetDate) || (studentRecentEvals.length > 0 ? studentRecentEvals[0] : null);
+      const parsedToday = todayEval ? parseEvaluationRecord(todayEval) : null;
+      const parsedPrev = prev ? parseEvaluationRecord(prev) : null;
+
+      const scores = {
+        concept: 8,
+        calc: 8,
+        app: 8,
+        attitude: 8,
+        homework: 8,
+        perseverance: 8,
+      };
+
+      const activeKeys = [];
+      const targetEvalSource = todayEval || prev;
+      if (targetEvalSource) {
+        DEFAULT_EVAL_KEYS.forEach((def) => {
+          const val = targetEvalSource[def.dbCol];
+          if (val !== null && val !== undefined) {
+            scores[def.key] = Number(val);
+            activeKeys.push(def.key);
+          }
+        });
+      }
+
+      const finalActiveKeys = activeKeys.length > 0
+        ? activeKeys
+        : ['concept', 'calc', 'app', 'attitude', 'homework', 'perseverance'];
+
+      let customItemsList = [];
+      const parsedSource = parsedToday || parsedPrev;
+      if (parsedSource?.customItems && parsedSource.customItems.length > 0) {
+        customItemsList = parsedSource.customItems.map((c, idx) => ({
+          id: `custom_${st.id}_${idx}`,
+          name: c.name,
+          score: Number(c.score) || 8,
+        }));
+      }
+
+      // 시험 종류 및 커스텀 시험명 판별
+      let effectiveTestType = parsedToday?.testType || '단원평가';
+      let customTestTypeValue = '';
+      const standardTypes = ['단원평가', '일일테스트', '주간테스트', '모의고사'];
+      if (parsedToday?.testType && !standardTypes.includes(parsedToday.testType)) {
+        effectiveTestType = '기타';
+        customTestTypeValue = parsedToday.testType;
+      }
+
+      return {
+        student_id: st.id,
+        name: st.name,
+        email: st.email,
+        parent_phone: st.parent_phone,
+        included: true,
+        attendanceStatus: todayEval?.attendance_status || 'ATTEND',
+        latenessMinutes: todayEval?.lateness_minutes || 5,
+        activeKeys: finalActiveKeys,
+        scores: { ...scores },
+        initialScores: { ...scores },
+        customItems: customItemsList,
+        testType: effectiveTestType,
+        customTestType: customTestTypeValue,
+        testScore: parsedToday?.testScore || '',
+        comment: parsedToday?.comment || '',
+        showScoreEditor: false,
+        prevEvalSummary: prev ? `${prev.eval_date} 피드백` : '첫 피드백',
+        isSaved: !!todayEval,
+        alimtalkSentAt: parsedToday?.alimtalkSentAt || null,
+      };
+    });
+
+    setBatchStudents(initialBatchList);
+  };
+
+  // 초기 반 및 학생 데이터 로드 (SWR 캐시로 0초 렌더링)
   const fetchData = async (currentUser) => {
     try {
-      const res = await fetch('/api/eval/classes');
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '조회 실패');
+      // ⚡ 1. SWR 캐시 즉시 복원 (반 목록 캐시 또는 대시보드 교사 데이터 캐시)
+      const cachedClassesData =
+        getClientCache(`teacher_eval_classes_${currentUser?.id}`) ||
+        getClientCache(`teacher_data_${currentUser?.id}`);
 
-      const classList = data.classes || [];
-      setClasses(classList);
-
-      if (classList.length > 0) {
-        const initialClassId = String(classList[0].id);
+      let initialClassId = '';
+      if (cachedClassesData?.classes && cachedClassesData.classes.length > 0) {
+        const classList = cachedClassesData.classes;
+        setClasses(classList);
+        initialClassId = String(classList[0].id);
         setSelectedClassId(initialClassId);
 
-        // 반 수업 유형 확인
         try {
           const stored = localStorage.getItem('poom_class_types');
           const types = stored ? JSON.parse(stored) : {};
@@ -911,7 +1010,37 @@ export default function TeacherEvalPage() {
           setEvalMode('LECTURE');
         }
 
-        fetchClassStudents(initialClassId);
+        // 캐시된 반 학생 데이터가 있다면 즉시 채우기
+        const cachedClassData = getClientCache(`teacher_eval_class_${initialClassId}`);
+        if (cachedClassData) {
+          applyClassStudentsData(cachedClassData, initialClassId);
+        }
+        setLoading(false);
+      }
+
+      // ⚡ 2. 네트워크 최신 데이터 조회 (백그라운드 동기화)
+      const res = await fetch('/api/eval/classes');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '조회 실패');
+
+      setClientCache(`teacher_eval_classes_${currentUser?.id}`, data);
+
+      const classList = data.classes || [];
+      setClasses(classList);
+
+      if (classList.length > 0) {
+        const nextClassId = initialClassId || String(classList[0].id);
+        if (!initialClassId) {
+          setSelectedClassId(nextClassId);
+          try {
+            const stored = localStorage.getItem('poom_class_types');
+            const types = stored ? JSON.parse(stored) : {};
+            setEvalMode(types[nextClassId] || 'LECTURE');
+          } catch (e) {
+            setEvalMode('LECTURE');
+          }
+        }
+        fetchClassStudents(nextClassId);
       } else {
         const stData = data.directStudents || [];
         setStudents(stData);
@@ -924,107 +1053,21 @@ export default function TeacherEvalPage() {
     }
   };
 
-  // 특정 반의 소속 학생 및 일괄 데이터 불러오기
+  // 특정 반의 소속 학생 및 일괄 데이터 불러오기 (SWR 캐시)
   const fetchClassStudents = async (classId) => {
+    // ⚡ 1. 캐시가 존재하면 0초 즉시 렌더링
+    const cachedData = getClientCache(`teacher_eval_class_${classId}`);
+    if (cachedData) {
+      applyClassStudentsData(cachedData, classId);
+    }
+
     try {
       const res = await fetch(`/api/eval/class/${classId}`);
       const resData = await res.json();
       if (!res.ok) throw new Error(resData.error || '조회 실패');
 
-      const stList = resData.students || [];
-      setStudents(stList);
-      if (stList.length > 0) setSelectedStudentId(stList[0].id);
-      else setSelectedStudentId('');
-
-      if (stList.length === 0) {
-        setBatchStudents([]);
-        setCommonClassUsedBooks([]);
-        return;
-      }
-
-      const allEvals = resData.evaluations || [];
-      setClassAllEvals(allEvals);
-
-      // 1) 반 전체 학생들이 사용했던 고유 교재명 추출 (칩 생성용)
-      const uniqueBooks = extractAllUniqueBookNamesFromEvaluations(allEvals);
-      setCommonClassUsedBooks(uniqueBooks);
-
-      // 2) 학생별 일괄 상태 객체 생성 (기존 작성 데이터가 있다면 100% 자동 복원)
-      const initialBatchList = stList.map((st) => {
-        const studentRecentEvals = allEvals.filter((e) => e.student_id === st.id);
-        const todayEval = studentRecentEvals.find((e) => e.eval_date === evalDate);
-        const prev = studentRecentEvals.find((e) => e.eval_date < evalDate) || (studentRecentEvals.length > 0 ? studentRecentEvals[0] : null);
-        const parsedToday = todayEval ? parseEvaluationRecord(todayEval) : null;
-        const parsedPrev = prev ? parseEvaluationRecord(prev) : null;
-
-        const scores = {
-          concept: 8,
-          calc: 8,
-          app: 8,
-          attitude: 8,
-          homework: 8,
-          perseverance: 8,
-        };
-
-        const activeKeys = [];
-        const targetEvalSource = todayEval || prev;
-        if (targetEvalSource) {
-          DEFAULT_EVAL_KEYS.forEach((def) => {
-            const val = targetEvalSource[def.dbCol];
-            if (val !== null && val !== undefined) {
-              scores[def.key] = Number(val);
-              activeKeys.push(def.key);
-            }
-          });
-        }
-
-        const finalActiveKeys = activeKeys.length > 0
-          ? activeKeys
-          : ['concept', 'calc', 'app', 'attitude', 'homework', 'perseverance'];
-
-        let customItemsList = [];
-        const parsedSource = parsedToday || parsedPrev;
-        if (parsedSource?.customItems && parsedSource.customItems.length > 0) {
-          customItemsList = parsedSource.customItems.map((c, idx) => ({
-            id: `custom_${st.id}_${idx}`,
-            name: c.name,
-            score: Number(c.score) || 8,
-          }));
-        }
-
-        // 시험 종류 및 커스텀 시험명 판별
-        let effectiveTestType = parsedToday?.testType || '단원평가';
-        let customTestTypeValue = '';
-        const standardTypes = ['단원평가', '일일테스트', '주간테스트', '모의고사'];
-        if (parsedToday?.testType && !standardTypes.includes(parsedToday.testType)) {
-          effectiveTestType = '기타';
-          customTestTypeValue = parsedToday.testType;
-        }
-
-        return {
-          student_id: st.id,
-          name: st.name,
-          email: st.email,
-          parent_phone: st.parent_phone,
-          included: true,
-          attendanceStatus: todayEval?.attendance_status || 'ATTEND',
-          latenessMinutes: todayEval?.lateness_minutes || 5,
-          activeKeys: finalActiveKeys,
-          scores: { ...scores },
-          initialScores: { ...scores },
-          customItems: customItemsList,
-          testType: effectiveTestType,
-          customTestType: customTestTypeValue,
-          testScore: parsedToday?.testScore || '',
-          comment: parsedToday?.comment || '',
-          showScoreEditor: false,
-          prevEvalSummary: prev ? `${prev.eval_date} 피드백` : '첫 피드백',
-          isSaved: !!todayEval,
-          alimtalkSentAt: parsedToday?.alimtalkSentAt || null,
-        };
-      });
-
-      setBatchStudents(initialBatchList);
+      setClientCache(`teacher_eval_class_${classId}`, resData);
+      applyClassStudentsData(resData, classId);
     } catch (err) {
       console.error('fetchClassStudents error:', err);
     }
@@ -1127,6 +1170,12 @@ export default function TeacherEvalPage() {
       }
 
       saveRecentBooksToCache(todayHomeworkBooks);
+      if (selectedClassId) {
+        invalidateClientCache(`teacher_eval_class_${selectedClassId}`);
+      }
+      if (user?.id) {
+        invalidateClientCache(`teacher_eval_history_${user.id}`);
+      }
       fetchStudentEvaluationHistory(selectedStudentId, evalDate);
       alert(`🎉 [${studentName}] 학생의 ${evalDate} 일일 피드백 및 과제표 저장이 완료되었습니다!${alimtalkNotice}`);
     } catch (err) {
@@ -1242,6 +1291,12 @@ export default function TeacherEvalPage() {
       }
 
       saveRecentBooksToCache(commonHomeworkBooks);
+      if (selectedClassId) {
+        invalidateClientCache(`teacher_eval_class_${selectedClassId}`);
+      }
+      if (user?.id) {
+        invalidateClientCache(`teacher_eval_history_${user.id}`);
+      }
       
       // 일괄 저장 완료 후 상태 업데이트
       const sentTime = new Date().toISOString();

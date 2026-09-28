@@ -18,6 +18,7 @@ export default function StudentHomeworkTable({
   isEditable = false,
   currentUserId = null,
   userRole = null,
+  usedBooks = [],
   onStatusChange,
   onUpdateEvaluation,
   onDeleteEvaluation,
@@ -135,6 +136,22 @@ export default function StudentHomeworkTable({
     return allBookNames;
   }, [onlyActiveBooks, activeBookNames, allBookNames]);
 
+  // 🏷️ 모달 내 기존 교재 빠른 추가 칩 목록 (학생 과거 교재 + 상위 전달 교재 + 로컬 스토리지)
+  const quickSelectBooks = useMemo(() => {
+    let fromStorage = [];
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('poom_recent_homework_books');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) fromStorage = parsed.filter(Boolean);
+        }
+      } catch (e) {}
+    }
+    const combined = [...new Set([...(usedBooks || []), ...(allBookNames || []), ...fromStorage])];
+    return combined.map((n) => n?.trim()).filter(Boolean);
+  }, [usedBooks, allBookNames]);
+
   const renderStatusBadge = (status) => {
     if (status === '완료') {
       return (
@@ -188,7 +205,28 @@ export default function StudentHomeworkTable({
     setNewBookNameInModal('');
   };
 
-  // 모달 내 교재 추가
+  // 모달 내 기존 교재 칩 클릭 시 즉시 추가
+  const handleAddBookFromChipInModal = (bookName) => {
+    if (!editingRow) return;
+    const trimmed = bookName?.trim();
+    if (!trimmed) return;
+    if (editingRow.books.some((b) => b.name === trimmed)) return;
+
+    setEditingRow((prev) => ({
+      ...prev,
+      books: [
+        ...prev.books,
+        {
+          id: `book_chip_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          name: trimmed,
+          range: '',
+          status: '미체크',
+        },
+      ],
+    }));
+  };
+
+  // 모달 내 교재 직접 추가
   const handleAddBookInModal = () => {
     const trimmed = newBookNameInModal.trim();
     if (!trimmed) return alert('교재명을 입력해 주세요.');
@@ -202,6 +240,19 @@ export default function StudentHomeworkTable({
         { id: `book_${Date.now()}`, name: trimmed, range: '', status: '미체크' },
       ],
     }));
+
+    // 최근 교재 로컬 스토리지에 저장
+    try {
+      const stored = localStorage.getItem('poom_recent_homework_books');
+      const list = stored ? JSON.parse(stored) : [];
+      if (Array.isArray(list)) {
+        localStorage.setItem(
+          'poom_recent_homework_books',
+          JSON.stringify([...new Set([...list, trimmed])])
+        );
+      }
+    } catch (e) {}
+
     setNewBookNameInModal('');
     setShowAddBookInModal(false);
   };
@@ -799,11 +850,42 @@ export default function StudentHomeworkTable({
                 <button
                   type="button"
                   onClick={() => setShowAddBookInModal(!showAddBookInModal)}
-                  className="text-[11px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-lg border border-indigo-200 transition"
+                  className="text-[11px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-200 transition"
                 >
-                  + 교재 추가
+                  {showAddBookInModal ? '✕ 닫기' : '+ 새 교재 직접 입력'}
                 </button>
               </div>
+
+              {/* 🏷️ 기존 사용 교재 빠른 추가 칩 목록 */}
+              {quickSelectBooks.length > 0 && (
+                <div className="p-2.5 bg-indigo-50/70 rounded-xl border border-indigo-100 space-y-1.5">
+                  <span className="text-[11px] font-extrabold text-indigo-900 flex items-center gap-1">
+                    <span>🏷️</span>
+                    <span>기존 사용 교재 빠른 추가 (클릭 시 추가):</span>
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {quickSelectBooks.map((name) => {
+                      const isAlreadyAdded = editingRow.books.some((b) => b.name === name);
+                      return (
+                        <button
+                          key={name}
+                          type="button"
+                          onClick={() => handleAddBookFromChipInModal(name)}
+                          disabled={isAlreadyAdded}
+                          className={`text-xs px-2.5 py-1 rounded-lg font-bold transition flex items-center gap-1 ${
+                            isAlreadyAdded
+                              ? 'bg-indigo-200/50 text-indigo-400 cursor-not-allowed border border-indigo-200/30'
+                              : 'bg-white hover:bg-indigo-600 hover:text-white text-indigo-800 border border-indigo-300 shadow-2xs active:scale-95'
+                          }`}
+                        >
+                          <span>{isAlreadyAdded ? '✓' : '+'}</span>
+                          <span>{name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* 모달 내 새 교재 추가 인라인 폼 */}
               {showAddBookInModal && (
@@ -812,7 +894,7 @@ export default function StudentHomeworkTable({
                     type="text"
                     value={newBookNameInModal}
                     onChange={(e) => setNewBookNameInModal(e.target.value)}
-                    placeholder="새 교재명 입력"
+                    placeholder="새 교재명 직접 입력"
                     className="flex-1 p-1.5 bg-white border border-indigo-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-none"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {

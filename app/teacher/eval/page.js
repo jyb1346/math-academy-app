@@ -2597,6 +2597,7 @@ export default function TeacherEvalPage() {
                 isEditable={true}
                 currentUserId={user?.id}
                 userRole={user?.role}
+                usedBooks={studentUniqueBooks}
                 onStatusChange={handleInlineHomeworkStatusChange}
                 onUpdateEvaluation={handleUpdateEvaluation}
                 onDeleteEvaluation={handleDeleteEvaluation}
@@ -2644,6 +2645,7 @@ export default function TeacherEvalPage() {
                     isEditable={true}
                     currentUserId={user?.id}
                     userRole={user?.role}
+                    usedBooks={extractAllUniqueBookNamesFromEvaluations(classAllEvals.filter((e) => e.student_id === homeworkModalStudent.student_id))}
                     onStatusChange={handleModalHomeworkStatusChange}
                     onUpdateEvaluation={handleModalUpdateEvaluation}
                     onDeleteEvaluation={handleModalDeleteEvaluation}

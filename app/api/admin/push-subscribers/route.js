@@ -13,38 +13,63 @@ export async function GET(req) {
 
     const db = getSupabaseAdmin(req);
 
-    // 1. 모든 학생 정보 가져오기
-    const { data: students, error: studentError } = await db
-      .from('users')
-      .select('id, name, phone, school')
-      .eq('role', 'STUDENT');
+    // 1. 모든 학생 정보 및 선생님 정보 가져오기
+    const [studentsRes, teachersRes, subsRes] = await Promise.all([
+      db
+        .from('users')
+        .select('id, name, email, parent_phone, teacher_id, created_at')
+        .eq('role', 'STUDENT')
+        .order('name'),
+      db
+        .from('users')
+        .select('id, name')
+        .in('role', ['TEACHER', 'HEAD_TEACHER']),
+      db
+        .from('push_subscriptions')
+        .select('user_id, created_at'),
+    ]);
 
-    if (studentError) throw studentError;
+    if (studentsRes.error) throw studentsRes.error;
+    if (teachersRes.error) throw teachersRes.error;
+    if (subsRes.error) throw subsRes.error;
 
-    // 2. 푸시 알림 구독 정보 가져오기
-    const { data: subs, error: subError } = await db
-      .from('push_subscriptions')
-      .select('user_id, created_at');
+    const students = studentsRes.data || [];
+    const subs = subsRes.data || [];
+    const teacherMap = Object.fromEntries((teachersRes.data || []).map((t) => [t.id, t.name]));
 
-    if (subError) throw subError;
+    // 2. 푸시 알림 구독자 ID Set 생성
+    const subUserIds = new Set(subs.map((s) => s.user_id));
 
-    // 3. 학생 정보와 구독 정보 매핑 (중복 user_id 제거)
-    const subUserIds = new Set(subs.map(s => s.user_id));
-    
-    const subscribedStudents = students.filter(s => subUserIds.has(s.id)).map(s => {
-      const userSubs = subs.filter(sub => sub.user_id === s.id);
-      // 가장 최근 구독일시 찾기
-      const latestSub = userSubs.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
-      return {
+    // 3. 알림 켠 학생 목록 (가장 최근 구독 일시 매핑)
+    const subscribedList = students
+      .filter((s) => subUserIds.has(s.id))
+      .map((s) => {
+        const userSubs = subs.filter((sub) => sub.user_id === s.id);
+        const latestSub = userSubs.sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        )[0];
+        return {
+          ...s,
+          teacherName: teacherMap[s.teacher_id] || '미배정',
+          subscribedAt: latestSub?.created_at,
+        };
+      });
+
+    // 4. 알림 아직 안 켠 학생 목록
+    const unsubscribedList = students
+      .filter((s) => !subUserIds.has(s.id))
+      .map((s) => ({
         ...s,
-        subscribedAt: latestSub?.created_at,
-      };
-    });
+        teacherName: teacherMap[s.teacher_id] || '미배정',
+      }));
 
     return NextResponse.json({
       totalStudents: students.length,
-      subscribedCount: subscribedStudents.length,
-      list: subscribedStudents,
+      subscribedCount: subscribedList.length,
+      unsubscribedCount: unsubscribedList.length,
+      subscribedList,
+      unsubscribedList,
+      list: subscribedList, // 기존 호환성 유지
     });
   } catch (err) {
     console.error('Push subscribers fetch error:', err);

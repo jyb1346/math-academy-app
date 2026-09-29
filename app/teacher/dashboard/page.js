@@ -1,5 +1,4 @@
 'use client';
-import TeacherLuckyBugModal from "@/components/TeacherLuckyBugModal";
 import TeacherClinicModal from "@/components/TeacherClinicModal";
 
 import { useState, useEffect } from 'react';
@@ -20,7 +19,6 @@ export default function TeacherDashboard() {
 
   // 모달 상태
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [showLuckyBugModal, setShowLuckyBugModal] = useState(false);
   const [showClinicModal, setShowClinicModal] = useState(false);
 
   // 반 생성 폼 및 수업 유형 (판서수업 LECTURE / 개별수업 INDIVIDUAL)
@@ -436,18 +434,6 @@ export default function TeacherDashboard() {
 
           {/* 2층: 액션 버튼 그룹 (모바일에서 가로로 시원하게 배치) */}
           <div className="flex items-center gap-2 overflow-x-auto pb-0.5 pt-1 md:pt-0 scrollbar-none">
-            {user?.role === 'HEAD_TEACHER' && user?.name === '장영배' && (
-              <button
-                onClick={() => setShowLuckyBugModal(true)}
-                className="text-xs bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 text-amber-950 font-black px-3.5 py-2 rounded-xl transition shadow-sm flex items-center gap-1.5 whitespace-nowrap shrink-0 animate-pulse border border-amber-300"
-                title="학생들 화면에 실시간으로 황금 벌레 출현시키기"
-              >
-                <span>🐛</span>
-                <span>돌발 벌레 소환</span>
-              </button>
-            )}
-
-
             <button
               onClick={handleShareKakaoLink}
               className="text-xs bg-amber-300 hover:bg-amber-400 text-amber-950 font-black px-3.5 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0"
@@ -1018,7 +1004,7 @@ export default function TeacherDashboard() {
                   ))}
                 </select>
                 <p className="text-[10.5px] text-slate-400 mt-1.5 leading-relaxed">
-                  💡 담당 선생님을 변경하면 해당 선생님 교무실로 학생이 인계되며, 1:1 Q&A 질문도 변경된 선생님께 전송됩니다. (과거 작성된 평가/피드백/벌레 도감 데이터는 100% 보존됩니다)
+                  💡 담당 선생님을 변경하면 해당 선생님 교무실로 학생이 인계되며, 1:1 Q&A 질문도 변경된 선생님께 전송됩니다. (과거 작성된 평가/피드백 데이터는 100% 보존됩니다)
                 </p>
               </div>
 
@@ -1040,15 +1026,6 @@ export default function TeacherDashboard() {
             </form>
           </div>
         </div>
-      )}
-
-      {/* 🐛 모달 3: 돌발 황금 벌레 소환 모달 */}
-      {showLuckyBugModal && user && (
-        <TeacherLuckyBugModal
-          user={user}
-          classes={classes}
-          onClose={() => setShowLuckyBugModal(false)}
-        />
       )}
 
       {/* ⏰ 모달 5: 주말 클리닉 시간표 및 예약 관리 모달 */}

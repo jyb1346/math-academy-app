@@ -893,7 +893,7 @@ export default function AdminDashboard() {
                   ))}
                 </select>
                 <p className="text-[10.5px] text-slate-400 mt-1.5 leading-relaxed">
-                  💡 담당 선생님을 변경하면 해당 선생님 교무실 및 1:1 Q&A 질문 수신자로 연동됩니다. (과거 작성된 평가/피드백/벌레 도감 데이터는 100% 보존됩니다)
+                  💡 담당 선생님을 변경하면 해당 선생님 교무실 및 1:1 Q&A 질문 수신자로 연동됩니다. (과거 작성된 평가/피드백 데이터는 100% 보존됩니다)
                 </p>
               </div>
 

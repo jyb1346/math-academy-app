@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import KakaoInAppHandler from "@/components/KakaoInAppHandler";
-import LuckyBugOverlay from "@/components/LuckyBugOverlay";
 import TestServerBanner from "@/components/TestServerBanner";
 
 const geistSans = Geist({
@@ -75,7 +74,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col">
         <TestServerBanner />
         <KakaoInAppHandler />
-        <LuckyBugOverlay />
         {children}
       </body>
     </html>

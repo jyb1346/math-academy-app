@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import PushNotificationManager from '@/components/PushNotificationManager';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import StudentHomeworkTable from '@/components/StudentHomeworkTable';
+import StudentBugDexModal from '@/components/StudentBugDexModal';
 import StudentClinicModal from '@/components/StudentClinicModal';
 import { logout } from '@/lib/useSession';
 import { getClientCache, setClientCache } from '@/lib/clientCache';
@@ -16,13 +17,16 @@ export default function StudentDashboard() {
   const [clinicInfo, setClinicInfo] = useState({ hasActive: false, activeDate: '', myBooking: null });
   const [loadingEvals, setLoadingEvals] = useState(true);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showDexModal, setShowDexModal] = useState(false);
   const [showClinicModal, setShowClinicModal] = useState(false);
+  const [isJangStudent, setIsJangStudent] = useState(false);
   const router = useRouter();
 
   const applyCachedStudentData = (cached) => {
     if (cached.evaluations) setEvaluations(cached.evaluations);
     if (cached.clinicInfo) setClinicInfo(cached.clinicInfo);
     if (cached.qnaStats) setQnaStats(cached.qnaStats);
+    if (typeof cached.isJangStudent === 'boolean') setIsJangStudent(cached.isJangStudent);
   };
 
   const fetchStudentData = async (studentId, showLoading = false) => {
@@ -78,11 +82,20 @@ export default function StudentDashboard() {
         setQnaStats(qStats);
       } catch (e) {}
 
+      let jangEligible = false;
+      try {
+        const bugRes = await fetch('/api/lucky-bug/check');
+        const bugData = await bugRes.json();
+        jangEligible = Boolean(bugData.isEligible);
+        setIsJangStudent(jangEligible);
+      } catch (e) {}
+
       // 캐시 저장
       setClientCache(`student_dashboard_${studentId}`, {
         evaluations: evList,
         clinicInfo: cInfo,
         qnaStats: qStats,
+        isJangStudent: jangEligible,
       });
     } catch (err) {
       console.error('fetchStudentData error:', err);
@@ -158,8 +171,17 @@ export default function StudentDashboard() {
             </button>
           </div>
 
-          {/* 2층: 액션 버튼 그룹 (비밀번호 변경 및 데스크톱 로그아웃) */}
+          {/* 2층: 액션 버튼 그룹 (도감, 비밀번호 변경 및 데스크톱 로그아웃) */}
           <div className="flex items-center gap-2 justify-end pt-1 sm:pt-0">
+            {isJangStudent && (
+              <button
+                onClick={() => setShowDexModal(true)}
+                className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold px-3 py-2 rounded-xl transition border border-indigo-200 flex items-center gap-1.5 whitespace-nowrap shadow-2xs"
+              >
+                <span>📖</span>
+                <span>도감 • 사육장 • 연구실</span>
+              </button>
+            )}
 
             <button
               onClick={() => setShowPasswordModal(true)}
@@ -292,6 +314,14 @@ export default function StudentDashboard() {
           user={user}
           onClose={() => setShowClinicModal(false)}
           onBookingUpdated={() => fetchStudentData(user.id)}
+        />
+      )}
+
+      {/* 📖 20종 벌레 도감 & 랭킹 모달 */}
+      {showDexModal && user && (
+        <StudentBugDexModal
+          user={user}
+          onClose={() => setShowDexModal(false)}
         />
       )}
 

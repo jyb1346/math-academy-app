@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import PushNotificationManager from '@/components/PushNotificationManager';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import StudentHomeworkTable from '@/components/StudentHomeworkTable';
-import StudentBugDexModal from '@/components/StudentBugDexModal';
 import StudentClinicModal from '@/components/StudentClinicModal';
 import { logout } from '@/lib/useSession';
 import { getClientCache, setClientCache } from '@/lib/clientCache';
@@ -17,85 +16,87 @@ export default function StudentDashboard() {
   const [clinicInfo, setClinicInfo] = useState({ hasActive: false, activeDate: '', myBooking: null });
   const [loadingEvals, setLoadingEvals] = useState(true);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [showDexModal, setShowDexModal] = useState(false);
   const [showClinicModal, setShowClinicModal] = useState(false);
-  const [isJangStudent, setIsJangStudent] = useState(false);
   const router = useRouter();
 
   const applyCachedStudentData = (cached) => {
     if (cached.evaluations) setEvaluations(cached.evaluations);
     if (cached.clinicInfo) setClinicInfo(cached.clinicInfo);
     if (cached.qnaStats) setQnaStats(cached.qnaStats);
-    if (typeof cached.isJangStudent === 'boolean') setIsJangStudent(cached.isJangStudent);
   };
 
   const fetchStudentData = async (studentId, showLoading = false) => {
     if (showLoading) setLoadingEvals(true);
     try {
-      const evRes = await fetch(`/api/eval?studentId=${encodeURIComponent(studentId)}`);
-      const evJson = await evRes.json();
-      const evList = evRes.ok ? (evJson.evaluations || []) : [];
-      setEvaluations(evList);
+      // ⚡ 과제표, 클리닉, QnA를 3개 동시 병렬 요청 (직렬 대기 완전 제거)
+      const evalPromise = fetch(`/api/eval?studentId=${encodeURIComponent(studentId)}`)
+        .then(async (res) => {
+          if (!res.ok) return [];
+          const json = await res.json();
+          const list = json.evaluations || [];
+          setEvaluations(list);
+          setLoadingEvals(false); // ⚡ 과제표 데이터 도착 즉시 0.1초 만에 로딩 해제!
+          return list;
+        })
+        .catch(() => []);
 
-      // ⏰ 클리닉 일정 및 내 예약 상태 조회
-      let cInfo = { hasActive: false, activeDate: '', myBooking: null };
-      try {
-        const cRes = await fetch('/api/clinic/schedules');
-        const cData = await cRes.json();
-        const activeSchedules = (cData.schedules || []).filter((s) => s.is_active);
-        if (activeSchedules.length > 0) {
-          const firstActive = activeSchedules[0];
-          cInfo = {
-            hasActive: true,
-            activeDate: firstActive.date,
-            myBooking: firstActive.myBooking || null,
-          };
-        }
-        setClinicInfo(cInfo);
-      } catch (e) {}
-
-      // 1:1 Q&A 질문 상태 조회
-      let qStats = { pending: 0, answered: 0, resolved: 0, total: 0 };
-      try {
-        const qRes = await fetch('/api/qna');
-        const qJson = await qRes.json();
-        const qData = qJson.questions || [];
-
-        const parsedQna = (qData || []).map((q) => {
-          let replies = [];
-          if (Array.isArray(q.replies)) replies = q.replies;
-          else if (typeof q.replies === 'string') {
-            try { replies = JSON.parse(q.replies) || []; } catch { replies = []; }
+      const clinicPromise = fetch('/api/clinic/schedules')
+        .then(async (res) => {
+          if (!res.ok) return { hasActive: false, activeDate: '', myBooking: null };
+          const data = await res.json();
+          const activeSchedules = (data.schedules || []).filter((s) => s.is_active);
+          let cInfo = { hasActive: false, activeDate: '', myBooking: null };
+          if (activeSchedules.length > 0) {
+            const firstActive = activeSchedules[0];
+            cInfo = {
+              hasActive: true,
+              activeDate: firstActive.date,
+              myBooking: firstActive.myBooking || null,
+            };
           }
-          const lastReply = replies.length > 0 ? replies[replies.length - 1] : null;
-          let computedStatus = q.status;
-          if (q.status === 'ANSWERED' && lastReply?.type === 'RESOLVED') {
-            computedStatus = 'RESOLVED';
-          }
-          return { ...q, computedStatus };
-        });
+          setClinicInfo(cInfo);
+          return cInfo;
+        })
+        .catch(() => ({ hasActive: false, activeDate: '', myBooking: null }));
 
-        const pending = parsedQna.filter((q) => q.computedStatus === 'PENDING').length;
-        const answered = parsedQna.filter((q) => q.computedStatus === 'ANSWERED').length;
-        const resolved = parsedQna.filter((q) => q.computedStatus === 'RESOLVED').length;
-        qStats = { pending, answered, resolved, total: parsedQna.length };
-        setQnaStats(qStats);
-      } catch (e) {}
+      const qnaPromise = fetch('/api/qna')
+        .then(async (res) => {
+          if (!res.ok) return { pending: 0, answered: 0, resolved: 0, total: 0 };
+          const qJson = await res.json();
+          const qData = qJson.questions || [];
+          const parsedQna = (qData || []).map((q) => {
+            let replies = [];
+            if (Array.isArray(q.replies)) replies = q.replies;
+            else if (typeof q.replies === 'string') {
+              try {
+                replies = JSON.parse(q.replies) || [];
+              } catch {
+                replies = [];
+              }
+            }
+            const lastReply = replies.length > 0 ? replies[replies.length - 1] : null;
+            let computedStatus = q.status;
+            if (q.status === 'ANSWERED' && lastReply?.type === 'RESOLVED') {
+              computedStatus = 'RESOLVED';
+            }
+            return { ...q, computedStatus };
+          });
+          const pending = parsedQna.filter((q) => q.computedStatus === 'PENDING').length;
+          const answered = parsedQna.filter((q) => q.computedStatus === 'ANSWERED').length;
+          const resolved = parsedQna.filter((q) => q.computedStatus === 'RESOLVED').length;
+          const qStats = { pending, answered, resolved, total: parsedQna.length };
+          setQnaStats(qStats);
+          return qStats;
+        })
+        .catch(() => ({ pending: 0, answered: 0, resolved: 0, total: 0 }));
 
-      let jangEligible = false;
-      try {
-        const bugRes = await fetch('/api/lucky-bug/check');
-        const bugData = await bugRes.json();
-        jangEligible = Boolean(bugData.isEligible);
-        setIsJangStudent(jangEligible);
-      } catch (e) {}
+      const [evList, cInfo, qStats] = await Promise.all([evalPromise, clinicPromise, qnaPromise]);
 
-      // 캐시 저장
+      // 캐시 저장 (새로고침/재방문 시 0.0초 즉시 복원)
       setClientCache(`student_dashboard_${studentId}`, {
         evaluations: evList,
         clinicInfo: cInfo,
         qnaStats: qStats,
-        isJangStudent: jangEligible,
       });
     } catch (err) {
       console.error('fetchStudentData error:', err);
@@ -153,10 +154,13 @@ export default function StudentDashboard() {
                 품
               </div>
               <div>
-                <h1 onClick={() => router.push('/')} className="text-base sm:text-lg font-extrabold text-slate-800 cursor-pointer leading-tight">
-                  품수학 학원 학생 공간
+                <h1 className="text-base sm:text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
+                  <span>품수학 학생 대시보드</span>
+                  <span className="bg-blue-100 text-blue-800 text-[10px] font-black px-2 py-0.5 rounded-full">
+                    Student
+                  </span>
                 </h1>
-                <p className="text-[11px] text-slate-400 font-semibold mt-0.5">
+                <p className="text-[11px] text-slate-500 font-bold mt-0.5">
                   <span className="text-blue-600 font-bold">{user?.name} 학생</span> 환영합니다.
                 </p>
               </div>
@@ -164,36 +168,32 @@ export default function StudentDashboard() {
 
             {/* 모바일 전용 상단 우측 로그아웃 */}
             <button
-              onClick={async () => { await logout(); router.push('/login'); }}
-              className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3 py-1.5 rounded-xl transition sm:hidden"
+              onClick={async () => {
+                await logout();
+                router.push('/login');
+              }}
+              className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3 py-1.5 rounded-xl transition sm:hidden cursor-pointer"
             >
               로그아웃
             </button>
           </div>
 
-          {/* 2층: 액션 버튼 그룹 (도감, 비밀번호 변경 및 데스크톱 로그아웃) */}
+          {/* 2층: 액션 버튼 그룹 (비밀번호 변경 및 데스크톱 로그아웃) */}
           <div className="flex items-center gap-2 justify-end pt-1 sm:pt-0">
-            {isJangStudent && (
-              <button
-                onClick={() => setShowDexModal(true)}
-                className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold px-3 py-2 rounded-xl transition border border-indigo-200 flex items-center gap-1.5 whitespace-nowrap shadow-2xs"
-              >
-                <span>📖</span>
-                <span>도감 • 사육장 • 연구실</span>
-              </button>
-            )}
-
             <button
               onClick={() => setShowPasswordModal(true)}
-              className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3.5 py-2 rounded-xl transition border border-slate-200 whitespace-nowrap"
+              className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3.5 py-2 rounded-xl transition border border-slate-200 whitespace-nowrap cursor-pointer"
             >
               🔒 비밀번호 변경
             </button>
 
             {/* 데스크톱 전용 로그아웃 */}
             <button
-              onClick={async () => { await logout(); router.push('/login'); }}
-              className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3.5 py-2 rounded-xl transition whitespace-nowrap hidden sm:inline-block"
+              onClick={async () => {
+                await logout();
+                router.push('/login');
+              }}
+              className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3.5 py-2 rounded-xl transition whitespace-nowrap hidden sm:inline-block cursor-pointer"
             >
               로그아웃
             </button>
@@ -314,14 +314,6 @@ export default function StudentDashboard() {
           user={user}
           onClose={() => setShowClinicModal(false)}
           onBookingUpdated={() => fetchStudentData(user.id)}
-        />
-      )}
-
-      {/* 📖 20종 벌레 도감 & 랭킹 모달 */}
-      {showDexModal && user && (
-        <StudentBugDexModal
-          user={user}
-          onClose={() => setShowDexModal(false)}
         />
       )}
 

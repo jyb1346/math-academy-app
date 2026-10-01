@@ -47,6 +47,9 @@ export async function GET(req) {
     }
   }
 
+  // 🎯 학생 목록 가나다(이름) 순 정렬
+  allTeacherStudents.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
+
   const tData = teachersRes.data;
   const qnaData = qnaRes.data;
 

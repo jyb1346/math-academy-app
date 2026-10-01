@@ -19,10 +19,14 @@ export async function GET(req) {
   const firstError = teachersRes.error || classesRes.error || studentsRes.error || csRes.error;
   if (firstError) return NextResponse.json({ error: firstError.message }, { status: 500 });
 
+  const teachers = (teachersRes.data || []).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
+  const classes = (classesRes.data || []).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
+  const students = (studentsRes.data || []).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
+
   return NextResponse.json({
-    teachers: teachersRes.data || [],
-    classes: classesRes.data || [],
-    students: studentsRes.data || [],
+    teachers,
+    classes,
+    students,
     classStudents: csRes.data || [],
   });
 }

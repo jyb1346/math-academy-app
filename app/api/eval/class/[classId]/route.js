@@ -30,6 +30,7 @@ export async function GET(req, { params }) {
   if (csErr) return NextResponse.json({ error: csErr.message }, { status: 500 });
 
   const students = (csData || []).map((item) => item.users).filter(Boolean);
+  students.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
   const studentIds = students.map((s) => s.id);
 
   let evaluations = [];

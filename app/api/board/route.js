@@ -52,7 +52,7 @@ export async function GET(req) {
   } else {
     myClasses = allClasses.filter((c) => c.teacher_id === user.id);
     myClassIds = myClasses.map((c) => c.id);
-    allStudents = studentsRes.data || [];
+    allStudents = (studentsRes.data || []).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
   }
 
   const visiblePosts = filterVisiblePosts(postsRes.data || [], user, myClassIds);

@@ -44,11 +44,11 @@ export default function StudentClinicModal({ user, initialScheduleId = null, onC
           initial = activeList.find((s) => s.id === initialScheduleId);
         }
         if (!initial) {
-          // 미신청 일정이 있다면 미신청 일정을 기본 선택
-          const unbooked = activeList.find(
-            (s) => !s.myBooking && (!s.myBookings || s.myBookings.length === 0)
+          // 기존 신청 내역이 있는 일정을 우선 선택 (수정/확인이 수월하도록), 없으면 첫 번째 일정
+          const booked = activeList.find(
+            (s) => (s.myBookings && s.myBookings.length > 0) || s.myBooking
           );
-          initial = unbooked || activeList[0];
+          initial = booked || activeList[0];
         }
         setSelectedScheduleId(initial.id);
         applyScheduleSelection(initial);
@@ -78,14 +78,8 @@ export default function StudentClinicModal({ user, initialScheduleId = null, onC
       setSubject(initialSubject);
       setRescheduleReason('');
     } else {
-      // 기존 예약이 없으면 기본 2시간 (4개 블록) 또는 첫 2블록 선택
-      const initStartM = timeToMinutes(sched.start_time || '10:00');
-      const schedEndM = timeToMinutes(sched.end_time || '18:00');
-      const blocks = [];
-      for (let m = initStartM; m < Math.min(initStartM + 120, schedEndM); m += 30) {
-        blocks.push(minutesToTime(m));
-      }
-      setSelectedBlocks(blocks.length > 0 ? blocks : [sched.start_time]);
+      // 기존 예약이 없으면 기본 선택 블록 없음 (학생이 원하는 시간을 직접 터치하도록 빈 배열)
+      setSelectedBlocks([]);
       setSubject('');
       setRescheduleReason('');
     }
@@ -101,10 +95,10 @@ export default function StudentClinicModal({ user, initialScheduleId = null, onC
         targetSched = cached.find((s) => s.id === initialScheduleId);
       }
       if (!targetSched) {
-        const unbooked = cached.find(
-          (s) => !s.myBooking && (!s.myBookings || s.myBookings.length === 0)
+        const booked = cached.find(
+          (s) => (s.myBookings && s.myBookings.length > 0) || s.myBooking
         );
-        targetSched = unbooked || cached[0];
+        targetSched = booked || cached[0];
       }
       setSelectedScheduleId(targetSched.id);
       applyScheduleSelection(targetSched);
@@ -481,8 +475,15 @@ export default function StudentClinicModal({ user, initialScheduleId = null, onC
                         </p>
                       )}
 
-                      <div className="pt-1 text-[11px] text-emerald-800 font-medium">
-                        💡 다른 시간대로 변경을 원하시면 아래 블록을 선택 후 사유를 입력하여 변경 요청을 제출하세요.
+                      <div className="pt-1 flex items-center justify-between flex-wrap gap-2 text-[11px] text-emerald-800 font-medium">
+                        <span>💡 다른 시간대로 변경을 원하시면 아래 블록을 선택 후 사유를 입력하여 변경 요청을 제출하세요.</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedBlocks([])}
+                          className="px-2.5 py-1 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg font-bold text-xs shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                        >
+                          🔄 블록 모두 비우고 새 시간 고르기
+                        </button>
                       </div>
                     </div>
                   )}
@@ -685,6 +686,8 @@ export default function StudentClinicModal({ user, initialScheduleId = null, onC
                     >
                       {submitting
                         ? '처리 중...'
+                        : totalMinutes <= 0
+                        ? '원하는 시간 블록을 터치해 주세요'
                         : isRescheduleMode
                         ? `📩 ${formatRangesButtonLabel(ranges, 'RESCHEDULE_REQUEST')}`
                         : `✨ ${formatRangesButtonLabel(ranges, 'BOOK')}`}

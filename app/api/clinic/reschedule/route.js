@@ -122,23 +122,36 @@ export async function POST(req) {
       let targetTeacherIds = [];
       if (schedule.teacher_id) {
         targetTeacherIds.push(schedule.teacher_id);
-      } else {
-        // 학원 전체 일정인 경우 교사/관리자 전원에게 발송
+      }
+
+      // 학생의 전담 담임 선생님도 조회하여 포함
+      const { data: studentDbUser } = await db
+        .from('users')
+        .select('teacher_id')
+        .eq('id', user.id)
+        .single();
+      if (studentDbUser?.teacher_id && !targetTeacherIds.includes(studentDbUser.teacher_id)) {
+        targetTeacherIds.push(studentDbUser.teacher_id);
+      }
+
+      // 지정된 교사가 없는 경우 교사/관리자 전원에게 발송
+      if (targetTeacherIds.length === 0) {
         const { data: teachers } = await db
           .from('users')
           .select('id')
-          .in('role', ['TEACHER', 'ADMIN']);
+          .in('role', ['TEACHER', 'HEAD_TEACHER', 'ADMIN']);
         targetTeacherIds = (teachers || []).map((t) => t.id);
       }
 
       if (targetTeacherIds.length > 0) {
         const reqSummary = formatRangesSummary(targetRanges);
         await sendPushToUsers(
+          req,
           targetTeacherIds,
-          `🚨 [클리닉 시간 변경 요청] ${user.name} 학생`,
-          `[${schedule.date}] ${user.name} 학생이 시간 변경을 요청했습니다.\n사유: ${reason.trim()}\n희망 시간: ${reqSummary}`,
-          `/teacher/dashboard`,
           {
+            title: `🚨 [클리닉 시간 변경 요청] ${user.name} 학생`,
+            message: `[${schedule.date}] ${user.name} 학생이 시간 변경을 요청했습니다.\n사유: ${reason.trim()}\n희망 시간: ${reqSummary}`,
+            url: `/teacher/dashboard`,
             tag: `clinic-reschedule-${requestRow.id}`,
             renotify: true,
           }

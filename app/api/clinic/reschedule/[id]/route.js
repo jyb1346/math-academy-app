@@ -97,11 +97,12 @@ export async function PATCH(req, { params }) {
       const approvedSummary = formatRangesSummary(requestedRanges);
       try {
         await sendPushToUsers(
+          req,
           [studentId],
-          `🎉 [클리닉 시간 변경 승인] ${schedule?.date || ''}`,
-          `선생님이 클리닉 시간 변경을 승인했습니다!\n새로운 시간: ${approvedSummary}`,
-          `/student/dashboard`,
           {
+            title: `🎉 [클리닉 시간 변경 승인] ${schedule?.date || ''}`,
+            message: `선생님이 클리닉 시간 변경을 승인했습니다!\n새로운 시간: ${approvedSummary}`,
+            url: `/student/dashboard`,
             tag: `clinic-reschedule-${requestId}`,
             renotify: true,
           }
@@ -128,11 +129,12 @@ export async function PATCH(req, { params }) {
       // 학생에게 반려 푸시 알림 발송
       try {
         await sendPushToUsers(
+          req,
           [studentId],
-          `⚠️ [클리닉 시간 변경 반려] ${schedule?.date || ''}`,
-          `클리닉 시간 변경 요청이 반려되었습니다. (기존 시간 유지)${rejectReason.trim() ? `\n사유: ${rejectReason.trim()}` : ''}`,
-          `/student/dashboard`,
           {
+            title: `⚠️ [클리닉 시간 변경 반려] ${schedule?.date || ''}`,
+            message: `클리닉 시간 변경 요청이 반려되었습니다. (기존 시간 유지)${rejectReason.trim() ? `\n사유: ${rejectReason.trim()}` : ''}`,
+            url: `/student/dashboard`,
             tag: `clinic-reschedule-${requestId}`,
             renotify: true,
           }

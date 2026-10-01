@@ -15,6 +15,7 @@ export default function TeacherDashboard() {
   const [teachers, setTeachers] = useState([]);
   const [classStudents, setClassStudents] = useState([]);
   const [qnaStats, setQnaStats] = useState({ pending: 0, inProgress: 0, resolved: 0, total: 0 });
+  const [clinicPendingCount, setClinicPendingCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   // 모달 상태
@@ -121,12 +122,26 @@ export default function TeacherDashboard() {
   const fetchTeacherData = async (teacherId, isInitial = false) => {
     if (isInitial) setLoading(true);
     try {
-      const res = await fetch('/api/teacher/data');
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '조회 실패');
+      const teacherDataPromise = fetch('/api/teacher/data').then(async (res) => {
+        if (!res.ok) return null;
+        return res.json();
+      });
 
-      setClientCache(`teacher_data_${teacherId}`, data);
-      applyTeacherData(data);
+      const clinicPromise = fetch('/api/clinic/schedules').then(async (res) => {
+        if (!res.ok) return null;
+        return res.json();
+      }).catch(() => null);
+
+      const [data, clinicData] = await Promise.all([teacherDataPromise, clinicPromise]);
+
+      if (data) {
+        setClientCache(`teacher_data_${teacherId}`, data);
+        applyTeacherData(data);
+      }
+      if (clinicData) {
+        const rList = clinicData.rescheduleRequests || [];
+        setClinicPendingCount(rList.length);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -564,8 +579,12 @@ export default function TeacherDashboard() {
               <div className="absolute top-0 right-0 -mt-8 -mr-8 w-40 h-40 bg-purple-500/20 rounded-full blur-2xl pointer-events-none"></div>
 
               <div className="flex justify-between items-start">
-                <span className="bg-white/20 backdrop-blur-md border border-white/20 text-white text-xs px-3.5 py-1 rounded-full font-bold">
-                  ⏰ Clinic
+                <span className={`text-xs px-3.5 py-1 rounded-full font-bold flex items-center gap-1.5 ${
+                  clinicPendingCount > 0
+                    ? 'bg-rose-600 text-white font-black animate-pulse shadow-md'
+                    : 'bg-white/20 backdrop-blur-md border border-white/20 text-white'
+                }`}>
+                  {clinicPendingCount > 0 ? `🚨 변경 요청 ${clinicPendingCount}건` : '⏰ Clinic'}
                 </span>
                 <span className="text-3xl text-purple-200 group-hover:text-white group-hover:translate-x-1 transition-all">→</span>
               </div>
@@ -573,7 +592,9 @@ export default function TeacherDashboard() {
               <div className="mt-8 space-y-1">
                 <h2 className="text-xl sm:text-2xl font-black text-white">클리닉 시간 관리</h2>
                 <p className="text-xs text-purple-100 font-normal leading-relaxed">
-                  클리닉 일정 개설 및 학생별 예약 시간표를 관리합니다.
+                  {clinicPendingCount > 0
+                    ? `학생의 시간 변경 요청이 대기 중입니다. 클릭하여 승인하세요.`
+                    : '클리닉 일정 개설 및 학생별 예약 시간표를 관리합니다.'}
                 </p>
               </div>
             </div>
@@ -1035,7 +1056,10 @@ export default function TeacherDashboard() {
           students={students}
           classes={classes}
           classStudents={classStudents}
-          onClose={() => setShowClinicModal(false)}
+          onClose={() => {
+            setShowClinicModal(false);
+            if (user?.id) fetchTeacherData(user.id);
+          }}
         />
       )}
 

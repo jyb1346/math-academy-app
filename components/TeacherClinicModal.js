@@ -56,16 +56,19 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
   const [proxySelectedBlocks, setProxySelectedBlocks] = useState([]);
   const [proxySubject, setProxySubject] = useState('');
 
-  // 대상 학생 검색 필터링 목록
+  // 대상 학생 검색 필터링 목록 (가나다 순 정렬)
   const filteredStudentsForTarget = useMemo(() => {
-    if (!studentSearchKeyword.trim()) return students;
-    const kw = studentSearchKeyword.trim().toLowerCase();
-    return students.filter(
-      (s) =>
-        s.name?.toLowerCase().includes(kw) ||
-        s.parent_phone?.includes(kw) ||
-        s.email?.toLowerCase().includes(kw)
-    );
+    let list = students;
+    if (studentSearchKeyword.trim()) {
+      const kw = studentSearchKeyword.trim().toLowerCase();
+      list = students.filter(
+        (s) =>
+          s.name?.toLowerCase().includes(kw) ||
+          s.parent_phone?.includes(kw) ||
+          s.email?.toLowerCase().includes(kw)
+      );
+    }
+    return [...list].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
   }, [students, studentSearchKeyword]);
 
   // 일정 목록 및 예약 데이터 불러오기
@@ -120,19 +123,18 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
     return schedules.find((s) => s.id === selectedScheduleId) || schedules[0] || null;
   }, [schedules, selectedScheduleId]);
 
-  // 🎯 현재 일정의 대상 학생 목록 계산
+  // 🎯 현재 일정의 대상 학생 목록 계산 (가나다 순 정렬)
   const scheduleTargetStudents = useMemo(() => {
     if (!currentSchedule) return [];
     const type = currentSchedule.target_type || 'TEACHER_STUDENTS';
+    let list = [];
 
     if (type === 'STUDENTS') {
       const ids = Array.isArray(currentSchedule.target_student_ids)
         ? currentSchedule.target_student_ids
         : [];
-      return students.filter((s) => ids.includes(s.id));
-    }
-
-    if (type === 'CLASS') {
+      list = students.filter((s) => ids.includes(s.id));
+    } else if (type === 'CLASS') {
       let classIds = [];
       if (Array.isArray(currentSchedule.target_class_ids)) {
         classIds = currentSchedule.target_class_ids;
@@ -146,21 +148,23 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
       if (currentSchedule.target_class_id && !classIds.includes(currentSchedule.target_class_id)) {
         classIds.push(currentSchedule.target_class_id);
       }
-      if (classIds.length === 0) return students;
-
-      if (classStudents && classStudents.length > 0) {
+      if (classIds.length === 0) {
+        list = students;
+      } else if (classStudents && classStudents.length > 0) {
         const studentIdsInClasses = new Set(
           classStudents
             .filter((cs) => classIds.some((cid) => String(cid) === String(cs.class_id)))
             .map((cs) => cs.student_id)
         );
-        return students.filter((s) => studentIdsInClasses.has(s.id) || classIds.includes(s.class_id));
+        list = students.filter((s) => studentIdsInClasses.has(s.id) || classIds.includes(s.class_id));
+      } else {
+        list = students.filter((s) => classIds.includes(s.class_id));
       }
-
-      return students.filter((s) => classIds.includes(s.class_id));
+    } else {
+      list = students;
     }
 
-    return students;
+    return [...list].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
   }, [currentSchedule, students, classStudents]);
 
   // 🎯 현재 유효 예약이 있는 고유 학생 ID Set
@@ -170,9 +174,11 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
     return new Set(validBookings.map((b) => b.student_id));
   }, [currentSchedule]);
 
-  // 🎯 미신청 학생 목록
+  // 🎯 미신청 학생 목록 (가나다 순 정렬)
   const unbookedStudents = useMemo(() => {
-    return scheduleTargetStudents.filter((s) => !bookedStudentIdSet.has(s.id));
+    return [...scheduleTargetStudents.filter((s) => !bookedStudentIdSet.has(s.id))].sort((a, b) =>
+      (a.name || '').localeCompare(b.name || '', 'ko')
+    );
   }, [scheduleTargetStudents, bookedStudentIdSet]);
 
   // 신규 일정 생성 핸들러
@@ -1695,7 +1701,9 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                   required
                 >
                   <option value="">학생을 선택하세요</option>
-                  {students.map((s) => (
+                  {[...students]
+                    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'))
+                    .map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name} {s.class_name ? `[${s.class_name}]` : ''} ({s.parent_phone || '번호 없음'})
                     </option>

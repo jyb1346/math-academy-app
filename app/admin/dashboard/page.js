@@ -67,15 +67,15 @@ export default function AdminDashboard() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '조회 실패');
 
-      const teachers = data.teachers || [];
+      const teachers = (data.teachers || []).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
       setAllTeachers(teachers);
 
       if (teachers.length > 0 && !selectedTeacherId) {
         setSelectedTeacherId(headTeacherId || teachers[0]?.id || '');
       }
 
-      setAllClasses(data.classes || []);
-      setAllStudents(data.students || []);
+      setAllClasses((data.classes || []).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko')));
+      setAllStudents((data.students || []).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko')));
       setClassStudents(data.classStudents || []);
     } catch (err) {
       console.error('Admin Fetch Error:', err);

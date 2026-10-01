@@ -154,6 +154,13 @@ export async function GET(req) {
       users: userMap[b.student_id] || { id: b.student_id, name: '학생' },
     }));
 
+    // 🎯 동일 시간대 예약 학생 가나다 순 정렬
+    bookingList.sort((a, b) => {
+      const timeDiff = (a.start_time || '').localeCompare(b.start_time || '');
+      if (timeDiff !== 0) return timeDiff;
+      return (a.users?.name || '').localeCompare(b.users?.name || '', 'ko');
+    });
+
     // 2-B. 시간 변경 승인 요청 데이터 조회 (안전 처리)
     let rescheduleRequests = [];
     try {

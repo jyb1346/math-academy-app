@@ -89,7 +89,10 @@ export default function TeacherDashboard() {
 
   const applyTeacherData = (data) => {
     setClasses(data.classes || []);
-    setStudents(data.students || []);
+    const sortedStudents = [...(data.students || [])].sort((a, b) =>
+      (a.name || '').localeCompare(b.name || '', 'ko')
+    );
+    setStudents(sortedStudents);
     setTeachers(data.teachers || []);
     setClassStudents(data.classStudents || []);
 

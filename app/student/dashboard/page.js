@@ -13,7 +13,7 @@ export default function StudentDashboard() {
   const [user, setUser] = useState(null);
   const [evaluations, setEvaluations] = useState([]);
   const [qnaStats, setQnaStats] = useState({ pending: 0, answered: 0, resolved: 0, total: 0 });
-  const [clinicInfo, setClinicInfo] = useState({ hasActive: false, activeDate: '', myBooking: null });
+  const [clinicInfo, setClinicInfo] = useState({ hasActive: false, activeDate: '', myBooking: null, bookingTimeLabel: '', activeScheduleId: null });
   const [loadingEvals, setLoadingEvals] = useState(true);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showClinicModal, setShowClinicModal] = useState(false);
@@ -40,25 +40,39 @@ export default function StudentDashboard() {
         })
         .catch(() => []);
 
+      // ⏰ 클리닉 일정 및 내 예약 상태 조회
       const clinicPromise = fetch('/api/clinic/schedules')
         .then(async (res) => {
-          if (!res.ok) return { hasActive: false, activeDate: '', myBooking: null };
+          if (!res.ok) return { hasActive: false, activeDate: '', myBooking: null, bookingTimeLabel: '', activeScheduleId: null };
           const data = await res.json();
           const activeSchedules = (data.schedules || []).filter((s) => s.is_active);
-          let cInfo = { hasActive: false, activeDate: '', myBooking: null };
+          let cInfo = { hasActive: false, activeDate: '', myBooking: null, bookingTimeLabel: '', activeScheduleId: null };
           if (activeSchedules.length > 0) {
-            const firstActive = activeSchedules[0];
+            // 학생이 이미 예약한 일정이 있다면 그 일정을 우선 표시!
+            const bookedSched = activeSchedules.find(
+              (s) => (s.myBookings && s.myBookings.length > 0) || s.myBooking
+            );
+            const target = bookedSched || activeSchedules[0];
+            const myBookings = target.myBookings || (target.myBooking ? [target.myBooking] : []);
+            let bookingLabel = '';
+            if (myBookings.length > 0) {
+              bookingLabel = myBookings.map((b) => `${b.start_time}~${b.end_time}`).join(', ');
+            }
+
             cInfo = {
               hasActive: true,
-              activeDate: firstActive.date,
-              myBooking: firstActive.myBooking || null,
+              activeDate: target.date,
+              myBooking: myBookings[0] || null,
+              bookingTimeLabel: bookingLabel,
+              activeScheduleId: target.id,
             };
           }
           setClinicInfo(cInfo);
           return cInfo;
         })
-        .catch(() => ({ hasActive: false, activeDate: '', myBooking: null }));
+        .catch(() => ({ hasActive: false, activeDate: '', myBooking: null, bookingTimeLabel: '', activeScheduleId: null }));
 
+      // 1:1 Q&A 질문 상태 조회
       const qnaPromise = fetch('/api/qna')
         .then(async (res) => {
           if (!res.ok) return { pending: 0, answered: 0, resolved: 0, total: 0 };
@@ -154,7 +168,7 @@ export default function StudentDashboard() {
                 품
               </div>
               <div>
-                <h1 className="text-base sm:text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
+                <h1 className="text-base sm:text-lg font-black text-slate-900 tracking-tight flex items-center gap-2 cursor-pointer" onClick={() => router.push('/')}>
                   <span>품수학 학생 대시보드</span>
                   <span className="bg-blue-100 text-blue-800 text-[10px] font-black px-2 py-0.5 rounded-full">
                     Student
@@ -227,7 +241,7 @@ export default function StudentDashboard() {
             <div className="flex justify-between items-start">
               {clinicInfo.myBooking ? (
                 <span className="bg-emerald-400 text-slate-950 text-[11px] px-3.5 py-1 rounded-full font-black flex items-center gap-1.5 shadow-md">
-                  <span>⭐ {clinicInfo.activeDate} ({clinicInfo.myBooking.start_time}~{clinicInfo.myBooking.end_time}) 예약 확정</span>
+                  <span>⭐ {clinicInfo.activeDate} ({clinicInfo.bookingTimeLabel || `${clinicInfo.myBooking.start_time}~${clinicInfo.myBooking.end_time}`}) 예약 확정</span>
                 </span>
               ) : (
                 <span className="bg-amber-300 text-slate-950 text-[11px] px-3.5 py-1 rounded-full font-black flex items-center gap-1.5 shadow-xs animate-pulse">
@@ -242,7 +256,7 @@ export default function StudentDashboard() {
               </h3>
               <p className="text-xs text-purple-100 mt-1 leading-relaxed">
                 {clinicInfo.myBooking
-                  ? `신청 완료: ${clinicInfo.activeDate} ${clinicInfo.myBooking.start_time} ~ ${clinicInfo.myBooking.end_time} (터치하여 시간 변경 또는 취소)`
+                  ? `신청 완료: ${clinicInfo.activeDate} ${clinicInfo.bookingTimeLabel || `${clinicInfo.myBooking.start_time} ~ ${clinicInfo.myBooking.end_time}`} (터치하여 시간 변경 또는 취소)`
                   : `${clinicInfo.activeDate} 원하는 시작 시간을 골라 개별 클리닉을 예약하세요.`}
               </p>
             </div>
@@ -312,6 +326,7 @@ export default function StudentDashboard() {
       {showClinicModal && user && (
         <StudentClinicModal
           user={user}
+          initialScheduleId={clinicInfo.activeScheduleId}
           onClose={() => setShowClinicModal(false)}
           onBookingUpdated={() => fetchStudentData(user.id)}
         />

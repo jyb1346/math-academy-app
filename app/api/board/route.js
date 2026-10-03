@@ -3,7 +3,7 @@ import { requireSession, requireRole } from '@/lib/session';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { sendPushToUsers } from '@/lib/pushService';
 
-function filterVisiblePosts(posts, user, myClassIds) {
+function filterVisiblePosts(posts, user, myClassIds, myTeacherIds = []) {
   return posts.filter((p) => {
     try {
       const m = JSON.parse(p.content || '{}');
@@ -12,6 +12,16 @@ function filterVisiblePosts(posts, user, myClassIds) {
       // ignore parse error, treat as normal post
     }
     if (p.class_id !== null && !myClassIds.includes(p.class_id)) return false;
+    // 학생인 경우: class_id가 null(내 담당반 전체)인 글은 본인의 담당 선생님(또는 원장/관리자)이 작성한 글만 표시
+    if (user.role === 'STUDENT' && p.class_id === null) {
+      const authorRole = p.users?.role;
+      if (authorRole === 'HEAD_TEACHER' || authorRole === 'ADMIN') {
+        return true;
+      }
+      if (myTeacherIds.length > 0 && !myTeacherIds.includes(p.author_id)) {
+        return false;
+      }
+    }
     return true;
   });
 }
@@ -30,7 +40,7 @@ export async function GET(req) {
     db.from('class_students').select('class_id, student_id'),
     db
       .from('posts')
-      .select('id, title, content, category, author_id, class_id, due_date, created_at, users!posts_author_id_fkey(name), classes(name, teacher_id)')
+      .select('id, title, content, category, author_id, class_id, due_date, created_at, users!posts_author_id_fkey(name, role), classes(name, teacher_id)')
       .order('created_at', { ascending: false })
       .limit(80),
     db.from('post_confirmations').select('post_id, student_id, created_at'),
@@ -44,18 +54,20 @@ export async function GET(req) {
 
   let myClasses = [];
   let myClassIds = [];
+  let myTeacherIds = [];
   let allStudents = [];
 
   if (isStudent) {
     myClassIds = classStudents.filter((cs) => cs.student_id === user.id).map((cs) => cs.class_id);
     myClasses = allClasses.filter((c) => myClassIds.includes(c.id));
+    myTeacherIds = Array.from(new Set(myClasses.map((c) => c.teacher_id).filter(Boolean)));
   } else {
     myClasses = allClasses.filter((c) => c.teacher_id === user.id);
     myClassIds = myClasses.map((c) => c.id);
     allStudents = (studentsRes.data || []).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
   }
 
-  const visiblePosts = filterVisiblePosts(postsRes.data || [], user, myClassIds);
+  const visiblePosts = filterVisiblePosts(postsRes.data || [], user, myClassIds, myTeacherIds);
   const visiblePostIds = new Set(visiblePosts.map((p) => p.id));
   const confirmations = (confirmRes.data || []).filter((c) => visiblePostIds.has(c.post_id));
 

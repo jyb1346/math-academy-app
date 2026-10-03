@@ -32,11 +32,26 @@ export async function POST(req, { params }) {
         .eq('class_id', post.class_id);
       targetStudentIds = (csRows || []).map((c) => c.student_id);
     } else {
-      const { data: allStudents } = await db
-        .from('users')
+      // 내 담당반 전체 공지인 경우: 작성자(교사)의 담당 반 학생들만 조회
+      const { data: authorClasses } = await db
+        .from('classes')
         .select('id')
-        .eq('role', 'STUDENT');
-      targetStudentIds = (allStudents || []).map((s) => s.id);
+        .eq('teacher_id', post.author_id);
+
+      if (authorClasses && authorClasses.length > 0) {
+        const authorClassIds = authorClasses.map((c) => c.id);
+        const { data: csRows } = await db
+          .from('class_students')
+          .select('student_id')
+          .in('class_id', authorClassIds);
+        targetStudentIds = Array.from(new Set((csRows || []).map((c) => c.student_id)));
+      } else {
+        const { data: allStudents } = await db
+          .from('users')
+          .select('id')
+          .eq('role', 'STUDENT');
+        targetStudentIds = (allStudents || []).map((s) => s.id);
+      }
     }
 
     if (targetStudentIds.length === 0) {

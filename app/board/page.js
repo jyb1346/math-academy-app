@@ -607,7 +607,12 @@ function BoardMain() {
 
   const getAvailableStudents = (clsId) => {
     if (!clsId || clsId === 'ALL_STUDENTS') {
-      return allStudents || [];
+      const myClassIds = (myClasses || []).map((c) => String(c.id));
+      const myStudentIds = (classStudents || [])
+        .filter((cs) => myClassIds.includes(String(cs.class_id)))
+        .map((cs) => String(cs.student_id));
+      const filtered = (allStudents || []).filter((st) => myStudentIds.includes(String(st.id)));
+      return filtered.length > 0 ? filtered : (allStudents || []);
     }
     const enrolledStudentIds = (classStudents || [])
       .filter((cs) => String(cs.class_id) === String(clsId))
@@ -626,7 +631,14 @@ function BoardMain() {
           .filter((cs) => String(cs.class_id) === String(post.class_id))
           .map((cs) => cs.student_id);
       } else {
-        targetUserIds = allStudents.map((s) => s.id);
+        const myClassIds = (myClasses || []).map((c) => String(c.id));
+        targetUserIds = (classStudents || [])
+          .filter((cs) => myClassIds.includes(String(cs.class_id)))
+          .map((cs) => cs.student_id);
+        targetUserIds = Array.from(new Set(targetUserIds));
+        if (targetUserIds.length === 0 && (!myClasses || myClasses.length === 0)) {
+          targetUserIds = allStudents.map((s) => s.id);
+        }
       }
 
       if (targetUserIds.length === 0) {
@@ -708,7 +720,14 @@ function BoardMain() {
           .filter((cs) => String(cs.class_id) === String(validClassId))
           .map((cs) => cs.student_id);
       } else {
-        targetUserIds = (allStudents || []).map((st) => st.id);
+        const myClassIds = (myClasses || []).map((c) => String(c.id));
+        targetUserIds = (classStudents || [])
+          .filter((cs) => myClassIds.includes(String(cs.class_id)))
+          .map((cs) => cs.student_id);
+        targetUserIds = Array.from(new Set(targetUserIds));
+        if (targetUserIds.length === 0 && (!myClasses || myClasses.length === 0)) {
+          targetUserIds = (allStudents || []).map((st) => st.id);
+        }
       }
 
       const createRes = await fetch('/api/board', {
@@ -721,7 +740,7 @@ function BoardMain() {
           classId: validClassId,
           dueDate,
           pushTargetUserIds: targetUserIds,
-          pushTitle: `[품수학 ${matchedClass ? matchedClass.name : '학원공지'}] ${title.trim()}`,
+          pushTitle: `[품수학 ${matchedClass ? matchedClass.name : '내 담당반 공지'}] ${title.trim()}`,
           pushMessage: newCategory === 'HOMEWORK' ? '새로운 숙제가 등록되었습니다. 기한을 확인하세요.' : '새로운 공지사항이 등록되었습니다.',
         }),
       });
@@ -734,7 +753,7 @@ function BoardMain() {
       setAttachedFile(null);
       setHomeworkList([{ bookTitle: '', range: '', targetType: 'ALL', targetStudentNames: [] }]);
       loadBoardData(user);
-      alert(`${matchedClass ? `[${matchedClass.name}] 반` : '학원 전체'} 게시글이 성공적으로 등록되었습니다!`);
+      alert(`${matchedClass ? `[${matchedClass.name}] 반` : '내 담당반 전체'} 게시글이 성공적으로 등록되었습니다!`);
     } catch (err) {
       console.error(err);
       alert('등록 실패: ' + err.message);
@@ -905,19 +924,23 @@ function BoardMain() {
   const visiblePosts = posts.filter((post) => {
     // 1. 접근 권한 필터
     if (user?.role === 'STUDENT') {
-      // 학생은 학원 전체 공지(class_id === null) 또는 본인이 소속된 반의 글만 허용
+      // 학생은 내 담당반 전체 공지(class_id === null) 또는 본인이 소속된 반의 글만 허용
       if (post.class_id !== null && !myClassIds.includes(post.class_id)) {
         return false;
       }
     } else {
-      // 선생님(원장님 포함)은 학원 전체 공지 또는 본인 담당 반의 글만 허용
+      // 선생님(원장님 포함)은 내 담당반 전체 공지 또는 본인 담당 반의 글만 허용
       const myClassIdList = myClasses.map((c) => c.id);
       if (post.class_id !== null && !myClassIdList.includes(post.class_id)) {
         return false;
       }
+      // 일반 강사인 경우 다른 교사의 '내 담당반 전체' 공지는 제외
+      if (user?.role === 'TEACHER' && post.class_id === null && post.author_id !== user.id) {
+        return false;
+      }
     }
 
-    // 2. 반 탭 필터 (전체 반 탭 없음: [🌐 학원 전체 공지] vs [🎯 특정 반])
+    // 2. 반 탭 필터 (전체 반 탭 없음: [👥 내 담당반 전체 공지] vs [🎯 특정 반])
     if (selectedClassId === 'PUBLIC') {
       if (post.class_id !== null) return false;
     } else {
@@ -945,7 +968,16 @@ function BoardMain() {
         .map((cs) => cs.student_id);
       targetStudents = allStudents.filter((st) => enrolledStudentIds.includes(st.id));
     } else {
-      targetStudents = allStudents;
+      // 👥 내 담당반 전체 공지인 경우: 담당 반 학생들만 대상으로 집계
+      const teacherClassIds = (myClasses || []).map((c) => String(c.id));
+      const myStudentIds = (classStudents || [])
+        .filter((cs) => teacherClassIds.includes(String(cs.class_id)))
+        .map((cs) => cs.student_id);
+      const myStudentIdSet = new Set(myStudentIds);
+      targetStudents = allStudents.filter((st) => myStudentIdSet.has(st.id));
+      if (targetStudents.length === 0 && (!myClasses || myClasses.length === 0)) {
+        targetStudents = allStudents;
+      }
     }
 
     const confirmedSet = confirmations[post.id] || new Set();
@@ -1016,6 +1048,7 @@ function BoardMain() {
               }
             }}
             myClasses={myClasses}
+            user={user}
           />
         </div>
 
@@ -1060,7 +1093,7 @@ function BoardMain() {
             </div>
           ) : (
             visiblePosts.map((post) => {
-              const matchedClassName = post.classes?.name || classes.find((c) => String(c.id) === String(post.class_id))?.name || '학원 전체 공지';
+              const matchedClassName = post.classes?.name || classes.find((c) => String(c.id) === String(post.class_id))?.name || '내 담당반 전체 공지';
               const isPublic = !post.class_id;
               const authorName = post.users?.name || '선생님';
               const rawContent = post.content || '';
@@ -1076,7 +1109,7 @@ function BoardMain() {
                     <div className="space-y-1 flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className={isPublic ? 'text-xs sm:text-sm font-black px-3.5 py-1 rounded-full border bg-slate-100 text-slate-700 border-slate-200 whitespace-nowrap' : 'text-xs sm:text-sm font-black px-3.5 py-1 rounded-full border bg-indigo-50 text-indigo-700 border-indigo-100 whitespace-nowrap'}>
-                          {isPublic ? '🌐 학원 전체 공지' : (`🎯 [${matchedClassName}]`)}
+                          {isPublic ? '👥 내 담당반 전체' : (`🎯 [${matchedClassName}]`)}
                         </span>
                         <span className="bg-slate-100 text-slate-600 text-xs sm:text-sm font-black px-3.5 py-1 rounded-full whitespace-nowrap">
                           {post.category === 'NOTICE' && '📢 일반 공지'}
@@ -1243,7 +1276,7 @@ function BoardMain() {
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div>
                 <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md">
-                  {activeConfirmModalPost.class_id ? '반별 공지' : '학원 전체 공지'}
+                  {activeConfirmModalPost.class_id ? '반별 공지' : '내 담당반 전체 공지'}
                 </span>
                 <h3 className="text-base font-black text-slate-800 pt-1">
                   [{activeConfirmModalPost.title}] 읽음 확인 현황

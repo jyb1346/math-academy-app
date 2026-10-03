@@ -6,6 +6,7 @@ export default function CategoryTabs({
   selectedClassId,
   setSelectedClassId,
   myClasses = [],
+  user = null,
 }) {
   return (
     <div className="space-y-3">
@@ -76,7 +77,9 @@ export default function CategoryTabs({
           onChange={(e) => setSelectedClassId(e.target.value)}
           className="flex-1 p-2 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm font-bold text-slate-800 shadow-2xs focus:outline-none focus:border-indigo-500 cursor-pointer"
         >
-          <option value="PUBLIC">🌐 학원 전체 공지사항</option>
+          <option value="PUBLIC">
+            {user?.role === 'STUDENT' ? '👥 내 소속반 전체 공지' : '👥 내 담당반 전체 공지'}
+          </option>
           {myClasses.map((c) => (
             <option key={c.id} value={String(c.id)}>
               🎯 [{c.name}]

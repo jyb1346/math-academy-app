@@ -45,7 +45,7 @@ export default function PostCreateForm({
               )}
             </optgroup>
             <optgroup label="──────────────────">
-              <option value="ALL_STUDENTS">📢 학원 전체 학생 공지</option>
+              <option value="ALL_STUDENTS">👥 내 담당반 전체 공지</option>
             </optgroup>
           </select>
 

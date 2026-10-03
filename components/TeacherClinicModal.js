@@ -67,6 +67,21 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
   const [liveNow, setLiveNow] = useState(() => new Date());
   const [showCountdownSection, setShowCountdownSection] = useState(true);
   const [showDepartedList, setShowDepartedList] = useState(false);
+  const [countdownViewMode, setCountdownViewMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        return localStorage.getItem('clinic_countdown_view_mode') || 'SLIM_BAR';
+      } catch {}
+    }
+    return 'SLIM_BAR';
+  });
+
+  const handleToggleCountdownViewMode = (mode) => {
+    setCountdownViewMode(mode);
+    try {
+      localStorage.setItem('clinic_countdown_view_mode', mode);
+    } catch {}
+  };
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -1488,8 +1503,38 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-indigo-700 bg-indigo-100 font-extrabold px-2 py-1 rounded-lg flex items-center gap-1">
+                          <div className="flex items-center gap-2 flex-wrap justify-end">
+                            {/* 🔀 한눈에 보기 / 카드 뷰 토글 스위치 */}
+                            <div className="flex items-center bg-white p-0.5 rounded-xl border border-indigo-200/80 shadow-2xs">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleCountdownViewMode('SLIM_BAR')}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-black transition flex items-center gap-1 ${
+                                  countdownViewMode === 'SLIM_BAR'
+                                    ? 'bg-indigo-600 text-white shadow-2xs'
+                                    : 'text-slate-600 hover:text-indigo-900'
+                                }`}
+                                title="한 줄로 많은 학생을 한눈에 보기"
+                              >
+                                <span>📋</span>
+                                <span>한눈에 보기</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleCountdownViewMode('COMPACT_CARD')}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-black transition flex items-center gap-1 ${
+                                  countdownViewMode === 'COMPACT_CARD'
+                                    ? 'bg-indigo-600 text-white shadow-2xs'
+                                    : 'text-slate-600 hover:text-indigo-900'
+                                }`}
+                                title="컴팩트 카드 형태로 보기"
+                              >
+                                <span>🗂️</span>
+                                <span>카드 뷰</span>
+                              </button>
+                            </div>
+
+                            <span className="hidden sm:flex text-[10px] text-indigo-700 bg-indigo-100 font-extrabold px-2 py-1 rounded-lg items-center gap-1">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
                               <span>5초 주기 자동 갱신</span>
                             </span>
@@ -1515,8 +1560,124 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                                   아래 시간표의 학생 카드에서 <span className="text-emerald-700 font-black">[출석]</span> 버튼을 누르면 즉시 실시간 귀가 카운트다운이 시작됩니다.
                                 </p>
                               </div>
+                            ) : countdownViewMode === 'SLIM_BAR' ? (
+                              /* 📋 모드 1: 한눈에 보기 (슬림 가로 바 목록 - 모니터 20~30명 / 모바일 8~10명 바로 보임) */
+                              <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
+                                {clinicAttendanceGroups.activeList.map((st) => {
+                                  const isOverdue = !st.isPaused && st.remainingMins <= 0;
+                                  const isImminent = !st.isPaused && !isOverdue && st.remainingMins <= 15;
+
+                                  return (
+                                    <div
+                                      key={st.studentId}
+                                      className={`px-3 py-2 rounded-xl border transition shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
+                                        st.isPaused
+                                          ? 'bg-amber-50/90 border-amber-300 ring-1 ring-amber-400'
+                                          : isOverdue
+                                          ? 'bg-rose-50/90 border-rose-300 ring-1 ring-rose-400'
+                                          : isImminent
+                                          ? 'bg-amber-50/80 border-amber-300'
+                                          : 'bg-white border-slate-200 hover:border-indigo-300'
+                                      }`}
+                                    >
+                                      {/* Left: 이름 + 남은시간 뱃지 + 등원~귀가 시각 */}
+                                      <div className="flex items-center gap-2 flex-wrap min-w-0">
+                                        <span className="text-xs sm:text-sm font-black text-slate-900 whitespace-nowrap">
+                                          👤 {st.studentName}
+                                        </span>
+
+                                        {/* 뱃지 */}
+                                        {st.isPaused ? (
+                                          <span className="bg-amber-500 text-white text-[10.5px] font-black px-2 py-0.5 rounded-md animate-pulse whitespace-nowrap flex items-center gap-0.5 shadow-2xs">
+                                            <span>🏃</span>
+                                            <span>외출 {st.curOutMins}분째</span>
+                                          </span>
+                                        ) : isOverdue ? (
+                                          <span className="bg-rose-600 text-white text-[10.5px] font-black px-2 py-0.5 rounded-md animate-pulse whitespace-nowrap shadow-2xs">
+                                            🚨 {Math.abs(st.remainingMins)}분 초과
+                                          </span>
+                                        ) : isImminent ? (
+                                          <span className="bg-amber-500 text-white text-[10.5px] font-black px-2 py-0.5 rounded-md animate-pulse whitespace-nowrap shadow-2xs">
+                                            ⚠️ {st.remainingMins}분 남음
+                                          </span>
+                                        ) : (
+                                          <span className="bg-emerald-600 text-white text-[10.5px] font-black px-2 py-0.5 rounded-md whitespace-nowrap shadow-2xs">
+                                            ⏳ {Math.floor(st.remainingMins / 60) > 0 ? `${Math.floor(st.remainingMins / 60)}h ` : ''}{st.remainingMins % 60}m 남음
+                                          </span>
+                                        )}
+
+                                        {/* 시간 표시 */}
+                                        <span className="font-mono font-bold text-xs text-indigo-950 bg-indigo-50/70 border border-indigo-100 px-1.5 py-0.5 rounded-md whitespace-nowrap">
+                                          🕒 {st.checkInStr}~{st.expectedEndStr}
+                                        </span>
+
+                                        {/* 시간수정 버튼 */}
+                                        <button
+                                          type="button"
+                                          onClick={() => handleEditCheckInTime(st)}
+                                          className="text-[10px] text-indigo-600 hover:text-indigo-800 hover:underline font-bold whitespace-nowrap px-1 py-0.5"
+                                          title="등원(출석) 시간 수정"
+                                        >
+                                          ✏️수정
+                                        </button>
+
+                                        {st.totalPauseMins > 0 && !st.isPaused && (
+                                          <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-1 py-0.2 rounded font-bold whitespace-nowrap">
+                                            외출 {st.totalPauseMins}m 반영
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      {/* Right: 액션 버튼들 */}
+                                      <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
+                                        {st.isPaused ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleResumeStudent(st)}
+                                            className="text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white font-black px-2.5 py-1 rounded-lg shadow-2xs transition active:scale-95 whitespace-nowrap flex items-center gap-0.5 animate-pulse"
+                                            title="복귀 처리"
+                                          >
+                                            <span>▶️</span>
+                                            <span>복귀</span>
+                                          </button>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            onClick={() => handlePauseStudent(st)}
+                                            className="text-[11px] bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-black px-2 py-1 rounded-lg transition active:scale-95 whitespace-nowrap flex items-center gap-0.5"
+                                            title="외출 처리"
+                                          >
+                                            <span>⏸️</span>
+                                            <span>외출</span>
+                                          </button>
+                                        )}
+
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDepartStudent(st)}
+                                          className="text-[11px] bg-indigo-600 hover:bg-indigo-700 text-white font-black px-2.5 py-1 rounded-lg shadow-2xs transition active:scale-95 whitespace-nowrap flex items-center gap-0.5"
+                                          title="퇴실 처리"
+                                        >
+                                          <span>🚪</span>
+                                          <span>퇴실</span>
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          onClick={() => handleCancelAttendanceForStudent(st)}
+                                          className="text-xs text-slate-300 hover:text-rose-600 font-bold px-1.5 py-1 rounded transition whitespace-nowrap"
+                                          title="출석 취소 (예약 상태로 복구)"
+                                        >
+                                          ✕
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             ) : (
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                              /* 🗂️ 모드 2: 컴팩트 카드 뷰 (모바일 2열 / PC 4~5열로 고밀도 카드 배치) */
+                              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5">
                                 {clinicAttendanceGroups.activeList.map((st) => {
                                   const isOverdue = !st.isPaused && st.remainingMins <= 0;
                                   const isImminent = !st.isPaused && !isOverdue && st.remainingMins <= 15;
@@ -1528,88 +1689,59 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                                   return (
                                     <div
                                       key={st.studentId}
-                                      className={`p-3.5 rounded-2xl border transition shadow-xs flex flex-col justify-between gap-3 ${
+                                      className={`p-2.5 rounded-2xl border transition shadow-2xs flex flex-col justify-between gap-2 ${
                                         st.isPaused
                                           ? 'bg-amber-50/90 border-amber-300 ring-2 ring-amber-400'
                                           : isOverdue
                                           ? 'bg-rose-50/90 border-rose-300 ring-2 ring-rose-400'
                                           : isImminent
-                                          ? 'bg-amber-50/90 border-amber-300 ring-2 ring-amber-400'
+                                          ? 'bg-amber-50/80 border-amber-300'
                                           : 'bg-white border-slate-200 hover:border-indigo-300'
                                       }`}
                                     >
-                                      {/* 상단: 이름 + 남은 시간 뱃지 */}
-                                      <div className="flex items-start justify-between gap-1.5">
-                                        <div className="min-w-0">
-                                          <div className="flex items-center gap-1.5 flex-wrap">
-                                            <span className="text-sm font-black text-slate-900 whitespace-nowrap">
-                                              👤 {st.studentName}
-                                            </span>
-                                            {st.parentPhone && (
-                                              <span className="text-[10px] text-slate-400 font-normal whitespace-nowrap">
-                                                {st.parentPhone}
-                                              </span>
-                                            )}
-                                          </div>
-                                        </div>
-
-                                        {/* 남은 시간 or 외출 뱃지 */}
+                                      {/* 상단: 이름 + 남은시간 뱃지 */}
+                                      <div className="flex items-center justify-between gap-1">
+                                        <span className="text-xs sm:text-sm font-black text-slate-900 truncate">
+                                          👤 {st.studentName}
+                                        </span>
+                                        {/* 뱃지 */}
                                         {st.isPaused ? (
-                                          <span className="bg-amber-500 text-white text-[11px] font-black px-2.5 py-1 rounded-lg animate-pulse flex items-center gap-1 shadow-xs shrink-0 whitespace-nowrap">
-                                            <span>🏃</span>
-                                            <span>외출 중 ({st.curOutMins}분째)</span>
+                                          <span className="bg-amber-500 text-white text-[9.5px] font-black px-1.5 py-0.5 rounded-md animate-pulse whitespace-nowrap shrink-0">
+                                            🏃 {st.curOutMins}m 외출
                                           </span>
                                         ) : isOverdue ? (
-                                          <span className="bg-rose-600 text-white text-[11px] font-black px-2.5 py-1 rounded-lg animate-pulse flex items-center gap-1 shadow-xs shrink-0 whitespace-nowrap">
-                                            <span>🚨</span>
-                                            <span>{Math.abs(st.remainingMins)}분 초과</span>
+                                          <span className="bg-rose-600 text-white text-[9.5px] font-black px-1.5 py-0.5 rounded-md animate-pulse whitespace-nowrap shrink-0">
+                                            🚨 +{Math.abs(st.remainingMins)}m
                                           </span>
                                         ) : isImminent ? (
-                                          <span className="bg-amber-500 text-white text-[11px] font-black px-2.5 py-1 rounded-lg animate-pulse flex items-center gap-1 shadow-xs shrink-0 whitespace-nowrap">
-                                            <span>⚠️</span>
-                                            <span>{st.remainingMins}분 남음</span>
+                                          <span className="bg-amber-500 text-white text-[9.5px] font-black px-1.5 py-0.5 rounded-md animate-pulse whitespace-nowrap shrink-0">
+                                            ⚠️ {st.remainingMins}m
                                           </span>
                                         ) : (
-                                          <span className="bg-emerald-600 text-white text-[11px] font-black px-2.5 py-1 rounded-lg shadow-2xs shrink-0 whitespace-nowrap">
-                                            ⏳ {Math.floor(st.remainingMins / 60) > 0 ? `${Math.floor(st.remainingMins / 60)}시간 ` : ''}
-                                            {st.remainingMins % 60}분 남음
+                                          <span className="bg-emerald-600 text-white text-[9.5px] font-black px-1.5 py-0.5 rounded-md whitespace-nowrap shrink-0">
+                                            ⏳ {Math.floor(st.remainingMins / 60) > 0 ? `${Math.floor(st.remainingMins / 60)}h ` : ''}{st.remainingMins % 60}m
                                           </span>
                                         )}
                                       </div>
 
-                                      {/* 중앙: 입실 및 귀가 예정 시간 표시 (예: 10:12 ~ 12:12) */}
-                                      <div className="bg-slate-50/80 rounded-xl p-2.5 border border-slate-200/80 space-y-1.5">
-                                        <div className="flex items-center justify-between gap-1">
-                                          <div className="flex items-center gap-1 font-mono font-black text-indigo-900 text-sm tracking-tight whitespace-nowrap">
-                                            <span className="text-xs">🕒</span>
-                                            <span>{st.checkInStr} ~ {st.expectedEndStr}</span>
-                                          </div>
+                                      {/* 중앙: 시간 + 수정 */}
+                                      <div className="bg-slate-50/90 rounded-lg p-1.5 border border-slate-200/80 space-y-1">
+                                        <div className="flex items-center justify-between gap-1 text-[11px]">
+                                          <span className="font-mono font-black text-indigo-950 whitespace-nowrap tracking-tight">
+                                            🕒 {st.checkInStr}~{st.expectedEndStr}
+                                          </span>
                                           <button
                                             type="button"
                                             onClick={() => handleEditCheckInTime(st)}
-                                            className="text-[11px] text-indigo-700 bg-white hover:bg-indigo-50 border border-indigo-200 font-bold px-2 py-0.5 rounded-lg transition whitespace-nowrap shrink-0 flex items-center gap-0.5 shadow-2xs active:scale-95"
+                                            className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold whitespace-nowrap px-0.5"
                                             title="등원(출석) 시간 수정"
                                           >
-                                            <span>✏️</span>
-                                            <span>시간수정</span>
+                                            ✏️
                                           </button>
                                         </div>
-
-                                        <div className="flex items-center justify-between text-[10.5px] text-slate-500 font-medium whitespace-nowrap">
-                                          <span>신청: {formatDurationLabel(st.targetDuration)}</span>
-                                          {st.isPaused ? (
-                                            <span className="text-amber-700 font-black flex items-center gap-0.5">
-                                              <span>⏸️ 잔여 {st.remainingMins}분 (외출 중 멈춤)</span>
-                                            </span>
-                                          ) : (
-                                            <span>{isOverdue ? '클리닉 종료됨' : `${progressPercent}% 경과`}</span>
-                                          )}
-                                        </div>
-
-                                        {/* 프로그레스 바 */}
-                                        <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                                        <div className="w-full bg-slate-200 h-1 rounded-full overflow-hidden">
                                           <div
-                                            className={`h-full transition-all duration-500 rounded-full ${
+                                            className={`h-full rounded-full ${
                                               st.isPaused
                                                 ? 'bg-amber-500'
                                                 : isOverdue
@@ -1621,59 +1753,49 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                                             style={{ width: `${progressPercent}%` }}
                                           />
                                         </div>
-
-                                        {st.totalPauseMins > 0 && !st.isPaused && (
-                                          <p className="text-[10px] text-indigo-600 font-bold">
-                                            ℹ️ 이전 외출 {st.totalPauseMins}분이 귀가 시각에 자동 연장되었습니다.
-                                          </p>
-                                        )}
                                       </div>
 
-                                      {/* 하단: 2단 깔끔 분할 버튼 (외출/복귀 + 퇴실완료) & 출석취소 링크 */}
-                                      <div className="pt-2 border-t border-slate-100 space-y-1.5">
-                                        <div className="grid grid-cols-2 gap-1.5">
+                                      {/* 하단: 액션 버튼 2단 */}
+                                      <div className="space-y-1 pt-1 border-t border-slate-100">
+                                        <div className="grid grid-cols-2 gap-1">
                                           {st.isPaused ? (
                                             <button
                                               type="button"
                                               onClick={() => handleResumeStudent(st)}
-                                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black py-2 px-2 rounded-xl shadow-xs transition active:scale-95 flex items-center justify-center gap-1 whitespace-nowrap animate-pulse"
-                                              title="외출을 마치고 복귀 (외출한 시간만큼 종료 시각 자동 연장)"
+                                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10.5px] font-black py-1 px-1 rounded-lg shadow-2xs transition active:scale-95 whitespace-nowrap flex items-center justify-center gap-0.5 animate-pulse"
+                                              title="복귀"
                                             >
-                                              <span>▶️</span>
-                                              <span>복귀 (도착)</span>
+                                              ▶️ 복귀
                                             </button>
                                           ) : (
                                             <button
                                               type="button"
                                               onClick={() => handlePauseStudent(st)}
-                                              className="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-black py-2 px-2 rounded-xl transition active:scale-95 flex items-center justify-center gap-1 whitespace-nowrap"
-                                              title="다른 학원 다녀오기 등 외출 시 타이머 일시정지"
+                                              className="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-[10.5px] font-black py-1 px-1 rounded-lg transition active:scale-95 whitespace-nowrap flex items-center justify-center gap-0.5"
+                                              title="외출"
                                             >
-                                              <span>⏸️</span>
-                                              <span>외출/타학원</span>
+                                              ⏸️ 외출
                                             </button>
                                           )}
 
                                           <button
                                             type="button"
                                             onClick={() => handleDepartStudent(st)}
-                                            className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black py-2 px-2 rounded-xl shadow-xs transition active:scale-95 flex items-center justify-center gap-1 whitespace-nowrap"
-                                            title="퇴실 처리 (퇴실 완료 명단으로 이동)"
+                                            className="bg-indigo-600 hover:bg-indigo-700 text-white text-[10.5px] font-black py-1 px-1 rounded-lg shadow-2xs transition active:scale-95 whitespace-nowrap flex items-center justify-center gap-0.5"
+                                            title="퇴실"
                                           >
-                                            <span>🚪</span>
-                                            <span>퇴실 완료</span>
+                                            🚪 퇴실
                                           </button>
                                         </div>
 
-                                        <div className="flex items-center justify-end">
+                                        <div className="flex justify-end">
                                           <button
                                             type="button"
                                             onClick={() => handleCancelAttendanceForStudent(st)}
-                                            className="text-[10.5px] text-slate-400 hover:text-rose-600 font-bold hover:underline transition whitespace-nowrap flex items-center gap-0.5"
-                                            title="출석 취소 (예약 상태로 복구)"
+                                            className="text-[9.5px] text-slate-400 hover:text-rose-600 font-bold transition whitespace-nowrap"
+                                            title="출석 취소"
                                           >
-                                            <span>✕</span>
-                                            <span>출석 취소(예약 복구)</span>
+                                            ✕ 취소
                                           </button>
                                         </div>
                                       </div>

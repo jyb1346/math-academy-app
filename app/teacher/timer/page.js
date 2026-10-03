@@ -673,73 +673,99 @@ export default function TeacherExamTimerPage() {
             <p className="text-sm font-extrabold text-slate-800">해당 조건의 학생이 없습니다.</p>
             <p className="text-xs text-slate-400 font-medium">반 선택 필터 또는 검색어를 확인해 주세요.</p>
           </div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-2.5">
-            {sortedStudents.map((st) => {
-              const t = timers[st.id];
-              const status = t?.status || 'IDLE';
+        ) : (() => {
+          const timerStudentsList = sortedStudents.map((st) => {
+            const t = timers[st.id];
+            const status = t?.status || 'IDLE';
 
-              let remainingSeconds = 0;
-              let isOverdue = false;
-              let overdueSeconds = 0;
+            let remainingSeconds = 0;
+            let isOverdue = false;
+            let overdueSeconds = 0;
 
-              if (t) {
-                if (status === 'RUNNING') {
-                  const diff = Math.floor((t.targetEndTimestamp - now) / 1000);
-                  if (diff >= 0) {
-                    remainingSeconds = diff;
-                  } else {
-                    isOverdue = true;
-                    overdueSeconds = Math.abs(diff);
-                  }
-                } else if (status === 'PAUSED') {
-                  remainingSeconds = t.pausedRemainingSeconds || 0;
-                } else if (status === 'EXPIRED') {
-                  const diff = Math.floor((now - t.targetEndTimestamp) / 1000);
+            if (t) {
+              if (status === 'RUNNING') {
+                const diff = Math.floor((t.targetEndTimestamp - now) / 1000);
+                if (diff >= 0) {
+                  remainingSeconds = diff;
+                } else {
                   isOverdue = true;
-                  overdueSeconds = Math.max(0, diff);
+                  overdueSeconds = Math.abs(diff);
                 }
+              } else if (status === 'PAUSED') {
+                remainingSeconds = t.pausedRemainingSeconds || 0;
+              } else if (status === 'EXPIRED') {
+                const diff = Math.floor((now - t.targetEndTimestamp) / 1000);
+                isOverdue = true;
+                overdueSeconds = Math.max(0, diff);
               }
+            }
 
-              const minutes = Math.floor(remainingSeconds / 60);
-              const seconds = remainingSeconds % 60;
-              const formatTime = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            const minutes = Math.floor(remainingSeconds / 60);
+            const seconds = remainingSeconds % 60;
+            const formatTime = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
-              const overdueMins = Math.floor(overdueSeconds / 60);
-              const overdueSecs = overdueSeconds % 60;
-              const formatOverdue = `+${String(overdueMins).padStart(2, '0')}:${String(overdueSecs).padStart(2, '0')}`;
+            const overdueMins = Math.floor(overdueSeconds / 60);
+            const overdueSecs = overdueSeconds % 60;
+            const formatOverdue = `+${String(overdueMins).padStart(2, '0')}:${String(overdueSecs).padStart(2, '0')}`;
 
-              const totalSec = t?.totalSeconds || (defaultDuration * 60);
-              const progressPct = t && status !== 'IDLE'
-                ? Math.max(0, Math.min(100, (remainingSeconds / totalSec) * 100))
-                : 100;
+            const totalSec = t?.totalSeconds || (defaultDuration * 60);
+            const progressPct = t && status !== 'IDLE'
+              ? Math.max(0, Math.min(100, (remainingSeconds / totalSec) * 100))
+              : 100;
 
-              const stClassNames = classStudents
-                .filter((cs) => cs.student_id === st.id)
-                .map((cs) => classes.find((c) => c.id === cs.class_id)?.name)
-                .filter(Boolean);
+            const stClassNames = classStudents
+              .filter((cs) => cs.student_id === st.id)
+              .map((cs) => classes.find((c) => c.id === cs.class_id)?.name)
+              .filter(Boolean);
 
-              const isSelected = selectedStudentIds.has(st.id);
+            const isSelected = selectedStudentIds.has(st.id);
 
-              return (
-                <div
-                  key={st.id}
-                  className={`rounded-2xl p-2.5 sm:p-3 border transition-all duration-200 relative flex flex-col justify-between h-[96px] sm:h-[102px] ${
-                    status === 'EXPIRED'
-                      ? 'bg-rose-50/95 border-rose-500 shadow-md ring-2 ring-rose-500/50 animate-pulse'
-                      : status === 'RUNNING'
-                      ? 'bg-white border-indigo-400 shadow-xs ring-1 ring-indigo-500/20'
-                      : status === 'PAUSED'
-                      ? 'bg-amber-50/90 border-amber-300'
-                      : status === 'COMPLETED'
-                      ? 'bg-emerald-50/70 border-emerald-200 opacity-90'
-                      : 'bg-white border-slate-200/90 shadow-2xs hover:border-indigo-300'
-                  }`}
-                >
-                  {/* 윗줄: 이름 + 반 / 남은 시간 or 뱃지 */}
-                  <div className="flex items-center justify-between gap-1">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      {status === 'IDLE' && (
+            return {
+              st,
+              t,
+              status,
+              remainingSeconds,
+              isOverdue,
+              overdueSeconds,
+              formatTime,
+              formatOverdue,
+              progressPct,
+              stClassNames,
+              isSelected,
+            };
+          });
+
+          return (
+            <>
+              {/* 📱 [1번] 모바일 전용 출석부 스타일 한 줄 슬림 바 (sm:hidden) */}
+              <div className="sm:hidden space-y-1.5 pb-8">
+                {timerStudentsList.map(({
+                  st,
+                  status,
+                  remainingSeconds,
+                  formatTime,
+                  formatOverdue,
+                  progressPct,
+                  stClassNames,
+                  isSelected,
+                }) => (
+                  <div
+                    key={st.id}
+                    className={`relative overflow-hidden rounded-xl px-2.5 py-2 border transition-all duration-150 flex items-center justify-between gap-2 shadow-2xs ${
+                      status === 'EXPIRED'
+                        ? 'bg-rose-50/95 border-rose-500 ring-1 ring-rose-500/50 animate-pulse'
+                        : status === 'RUNNING'
+                        ? 'bg-white border-indigo-400 ring-1 ring-indigo-500/20'
+                        : status === 'PAUSED'
+                        ? 'bg-amber-50/90 border-amber-300'
+                        : status === 'COMPLETED'
+                        ? 'bg-emerald-50/70 border-emerald-200 opacity-90'
+                        : 'bg-white border-slate-200'
+                    }`}
+                  >
+                    {/* 좌측: 체크박스/상태점 + 이름 + 반 */}
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      {status === 'IDLE' ? (
                         <input
                           type="checkbox"
                           checked={isSelected}
@@ -747,35 +773,51 @@ export default function TeacherExamTimerPage() {
                             e.stopPropagation();
                             toggleSelectStudent(st.id);
                           }}
-                          className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-0 cursor-pointer shrink-0"
+                          className="w-4 h-4 rounded text-indigo-600 focus:ring-0 cursor-pointer shrink-0"
+                        />
+                      ) : (
+                        <span
+                          className={`w-2 h-2 rounded-full shrink-0 ${
+                            status === 'RUNNING'
+                              ? 'bg-indigo-600 animate-pulse'
+                              : status === 'EXPIRED'
+                              ? 'bg-rose-500 animate-ping'
+                              : status === 'PAUSED'
+                              ? 'bg-amber-500'
+                              : 'bg-emerald-500'
+                          }`}
                         />
                       )}
-                      <span className="text-xs sm:text-sm font-black text-slate-900 truncate">
-                        {st.name}
-                      </span>
-                      {stClassNames.length > 0 && (
-                        <span className="text-[9.5px] font-bold text-slate-400 truncate max-w-[50px] hidden sm:inline-block">
-                          {stClassNames[0]}
+                      <div className="min-w-0 flex items-baseline gap-1.5">
+                        <span className="text-sm font-black text-slate-900 truncate">
+                          {st.name}
                         </span>
-                      )}
+                        {stClassNames.length > 0 && (
+                          <span className="text-[10px] font-bold text-slate-400 truncate max-w-[65px]">
+                            {stClassNames[0]}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
-                    {/* 시간/상태 표시 */}
-                    <div className="shrink-0 text-right">
+                    {/* 중앙: 실시간 타이머 / 상태 */}
+                    <div className="shrink-0 text-center px-1">
                       {status === 'IDLE' && (
                         <span className="text-[11px] font-bold text-slate-400">
                           {defaultDuration}:00
                         </span>
                       )}
                       {(status === 'RUNNING' || status === 'PAUSED') && (
-                        <span className={`text-sm sm:text-base font-black tabular-nums leading-none ${
-                          remainingSeconds < 300 ? 'text-amber-600 animate-pulse' : 'text-slate-900'
-                        }`}>
+                        <span
+                          className={`text-sm font-black tabular-nums leading-none ${
+                            remainingSeconds < 300 ? 'text-amber-600 animate-pulse' : 'text-slate-900'
+                          }`}
+                        >
                           {status === 'PAUSED' ? `⏸ ${formatTime}` : formatTime}
                         </span>
                       )}
                       {status === 'EXPIRED' && (
-                        <span className="text-[11px] sm:text-xs font-black text-rose-600 tabular-nums leading-none animate-pulse">
+                        <span className="text-xs font-black text-rose-600 tabular-nums leading-none animate-pulse">
                           🚨 {formatOverdue}
                         </span>
                       )}
@@ -785,123 +827,318 @@ export default function TeacherExamTimerPage() {
                         </span>
                       )}
                     </div>
-                  </div>
 
-                  {/* 게이지 바 (진행 중일 때만 얇은 1줄) */}
-                  {(status === 'RUNNING' || status === 'PAUSED' || status === 'EXPIRED') && (
-                    <div className="w-full bg-slate-100 rounded-full h-1 overflow-hidden my-0.5">
-                      <div
-                        className={`h-full transition-all duration-1000 ${
-                          status === 'EXPIRED'
-                            ? 'bg-rose-500 w-full'
-                            : remainingSeconds < 300
-                            ? 'bg-amber-500'
-                            : 'bg-indigo-600'
-                        }`}
-                        style={{ width: status === 'EXPIRED' ? '100%' : `${progressPct}%` }}
-                      />
+                    {/* 우측: 원터치 컴팩트 버튼 컨트롤 */}
+                    <div className="shrink-0 flex items-center gap-1">
+                      {status === 'IDLE' && (
+                        <button
+                          type="button"
+                          onClick={() => handleStartTimer(st.id)}
+                          className="bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-black px-2.5 py-1.5 rounded-lg text-xs shadow-2xs transition flex items-center gap-1"
+                        >
+                          <span>▶</span>
+                          <span>시작</span>
+                        </button>
+                      )}
+
+                      {status === 'RUNNING' && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handlePauseTimer(st.id)}
+                            className="bg-amber-100 hover:bg-amber-200 text-amber-900 font-extrabold px-2 py-1.5 rounded-lg text-xs transition"
+                            title="일시 정지"
+                          >
+                            ⏸
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAddMinutes(st.id, 5)}
+                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold px-1.5 py-1.5 rounded-lg text-xs transition border border-slate-200"
+                            title="5분 추가"
+                          >
+                            +5m
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCompleteTimer(st.id)}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-2 py-1.5 rounded-lg text-xs transition shadow-2xs"
+                            title="완료"
+                          >
+                            완료
+                          </button>
+                        </>
+                      )}
+
+                      {status === 'PAUSED' && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleResumeTimer(st.id)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold px-2 py-1.5 rounded-lg text-xs transition"
+                            title="타이머 재개"
+                          >
+                            ▶
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAddMinutes(st.id, 5)}
+                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold px-1.5 py-1.5 rounded-lg text-xs transition border border-slate-200"
+                          >
+                            +5m
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCompleteTimer(st.id)}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-2 py-1.5 rounded-lg text-xs transition shadow-2xs"
+                          >
+                            완료
+                          </button>
+                        </>
+                      )}
+
+                      {status === 'EXPIRED' && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleCompleteTimer(st.id)}
+                            className="bg-rose-600 hover:bg-rose-700 text-white font-black px-2 py-1.5 rounded-lg text-xs transition shadow-xs animate-pulse"
+                          >
+                            ✅ 회수
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAddMinutes(st.id, 5)}
+                            className="bg-white hover:bg-slate-100 text-slate-700 font-extrabold px-1.5 py-1.5 rounded-lg text-xs transition border border-slate-200"
+                          >
+                            +5m
+                          </button>
+                        </>
+                      )}
+
+                      {status === 'COMPLETED' && (
+                        <button
+                          type="button"
+                          onClick={() => handleResetTimer(st.id)}
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-2 py-1.5 rounded-lg text-xs transition border border-slate-200"
+                        >
+                          🔄 리셋
+                        </button>
+                      )}
                     </div>
-                  )}
 
-                  {/* 아랫줄: 원터치 컴팩트 버튼 컨트롤 */}
-                  <div className="pt-0.5">
-                    {status === 'IDLE' && (
-                      <button
-                        type="button"
-                        onClick={() => handleStartTimer(st.id)}
-                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-1 rounded-xl text-[11px] sm:text-xs shadow-2xs transition active:scale-95 flex items-center justify-center gap-1 cursor-pointer"
-                      >
-                        <span>▶</span>
-                        <span>{defaultDuration}분 시작</span>
-                      </button>
-                    )}
-
-                    {status === 'RUNNING' && (
-                      <div className="grid grid-cols-3 gap-1">
-                        <button
-                          type="button"
-                          onClick={() => handlePauseTimer(st.id)}
-                          className="bg-amber-100 hover:bg-amber-200 text-amber-900 font-extrabold py-1 rounded-lg text-[10.5px] transition"
-                        >
-                          ⏸ 정지
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleAddMinutes(st.id, 5)}
-                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold py-1 rounded-lg text-[10.5px] transition border border-slate-200"
-                        >
-                          +5분
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleCompleteTimer(st.id)}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-black py-1 rounded-lg text-[10.5px] transition shadow-2xs"
-                        >
-                          완료
-                        </button>
+                    {/* 하단 얇은 진행 게이지 바 (2px) */}
+                    {(status === 'RUNNING' || status === 'PAUSED' || status === 'EXPIRED') && (
+                      <div className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-slate-100 overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-1000 ${
+                            status === 'EXPIRED'
+                              ? 'bg-rose-500 w-full'
+                              : remainingSeconds < 300
+                              ? 'bg-amber-500'
+                              : 'bg-indigo-600'
+                          }`}
+                          style={{ width: status === 'EXPIRED' ? '100%' : `${progressPct}%` }}
+                        />
                       </div>
-                    )}
-
-                    {status === 'PAUSED' && (
-                      <div className="grid grid-cols-3 gap-1">
-                        <button
-                          type="button"
-                          onClick={() => handleResumeTimer(st.id)}
-                          className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold py-1 rounded-lg text-[10.5px] transition"
-                        >
-                          ▶ 재개
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleAddMinutes(st.id, 5)}
-                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold py-1 rounded-lg text-[10.5px] transition border border-slate-200"
-                        >
-                          +5분
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleCompleteTimer(st.id)}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-black py-1 rounded-lg text-[10.5px] transition"
-                        >
-                          완료
-                        </button>
-                      </div>
-                    )}
-
-                    {status === 'EXPIRED' && (
-                      <div className="grid grid-cols-2 gap-1">
-                        <button
-                          type="button"
-                          onClick={() => handleCompleteTimer(st.id)}
-                          className="bg-rose-600 hover:bg-rose-700 text-white font-black py-1 rounded-lg text-[11px] transition shadow-xs"
-                        >
-                          ✅ 회수완료
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleAddMinutes(st.id, 5)}
-                          className="bg-white hover:bg-slate-100 text-slate-700 font-extrabold py-1 rounded-lg text-[10.5px] transition border border-slate-200"
-                        >
-                          +5분 더
-                        </button>
-                      </div>
-                    )}
-
-                    {status === 'COMPLETED' && (
-                      <button
-                        type="button"
-                        onClick={() => handleResetTimer(st.id)}
-                        className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-1 rounded-lg text-[11px] transition border border-slate-200"
-                      >
-                        🔄 리셋
-                      </button>
                     )}
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                ))}
+              </div>
+
+              {/* 🖥️ [A형] PC/태블릿 미니 타일 그리드 (hidden sm:grid) - 기존 형태 100% 동일 유지 */}
+              <div className="hidden sm:grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-2.5 pb-8">
+                {timerStudentsList.map(({
+                  st,
+                  status,
+                  remainingSeconds,
+                  formatTime,
+                  formatOverdue,
+                  progressPct,
+                  stClassNames,
+                  isSelected,
+                }) => (
+                  <div
+                    key={st.id}
+                    className={`rounded-2xl p-2.5 sm:p-3 border transition-all duration-200 relative flex flex-col justify-between h-[96px] sm:h-[102px] ${
+                      status === 'EXPIRED'
+                        ? 'bg-rose-50/95 border-rose-500 shadow-md ring-2 ring-rose-500/50 animate-pulse'
+                        : status === 'RUNNING'
+                        ? 'bg-white border-indigo-400 shadow-xs ring-1 ring-indigo-500/20'
+                        : status === 'PAUSED'
+                        ? 'bg-amber-50/90 border-amber-300'
+                        : status === 'COMPLETED'
+                        ? 'bg-emerald-50/70 border-emerald-200 opacity-90'
+                        : 'bg-white border-slate-200/90 shadow-2xs hover:border-indigo-300'
+                    }`}
+                  >
+                    {/* 윗줄: 이름 + 반 / 남은 시간 or 뱃지 */}
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {status === 'IDLE' && (
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              toggleSelectStudent(st.id);
+                            }}
+                            className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-0 cursor-pointer shrink-0"
+                          />
+                        )}
+                        <span className="text-xs sm:text-sm font-black text-slate-900 truncate">
+                          {st.name}
+                        </span>
+                        {stClassNames.length > 0 && (
+                          <span className="text-[9.5px] font-bold text-slate-400 truncate max-w-[50px] hidden sm:inline-block">
+                            {stClassNames[0]}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* 시간/상태 표시 */}
+                      <div className="shrink-0 text-right">
+                        {status === 'IDLE' && (
+                          <span className="text-[11px] font-bold text-slate-400">
+                            {defaultDuration}:00
+                          </span>
+                        )}
+                        {(status === 'RUNNING' || status === 'PAUSED') && (
+                          <span className={`text-sm sm:text-base font-black tabular-nums leading-none ${
+                            remainingSeconds < 300 ? 'text-amber-600 animate-pulse' : 'text-slate-900'
+                          }`}>
+                            {status === 'PAUSED' ? `⏸ ${formatTime}` : formatTime}
+                          </span>
+                        )}
+                        {status === 'EXPIRED' && (
+                          <span className="text-[11px] sm:text-xs font-black text-rose-600 tabular-nums leading-none animate-pulse">
+                            🚨 {formatOverdue}
+                          </span>
+                        )}
+                        {status === 'COMPLETED' && (
+                          <span className="text-[11px] font-black text-emerald-600">
+                            ✓ 완료
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 게이지 바 (진행 중일 때만 얇은 1줄) */}
+                    {(status === 'RUNNING' || status === 'PAUSED' || status === 'EXPIRED') && (
+                      <div className="w-full bg-slate-100 rounded-full h-1 overflow-hidden my-0.5">
+                        <div
+                          className={`h-full transition-all duration-1000 ${
+                            status === 'EXPIRED'
+                              ? 'bg-rose-500 w-full'
+                              : remainingSeconds < 300
+                              ? 'bg-amber-500'
+                              : 'bg-indigo-600'
+                          }`}
+                          style={{ width: status === 'EXPIRED' ? '100%' : `${progressPct}%` }}
+                        />
+                      </div>
+                    )}
+
+                    {/* 아랫줄: 원터치 컴팩트 버튼 컨트롤 */}
+                    <div className="pt-0.5">
+                      {status === 'IDLE' && (
+                        <button
+                          type="button"
+                          onClick={() => handleStartTimer(st.id)}
+                          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-1 rounded-xl text-[11px] sm:text-xs shadow-2xs transition active:scale-95 flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <span>▶</span>
+                          <span>{defaultDuration}분 시작</span>
+                        </button>
+                      )}
+
+                      {status === 'RUNNING' && (
+                        <div className="grid grid-cols-3 gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handlePauseTimer(st.id)}
+                            className="bg-amber-100 hover:bg-amber-200 text-amber-900 font-extrabold py-1 rounded-lg text-[10.5px] transition"
+                          >
+                            ⏸ 정지
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAddMinutes(st.id, 5)}
+                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold py-1 rounded-lg text-[10.5px] transition border border-slate-200"
+                          >
+                            +5분
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCompleteTimer(st.id)}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-black py-1 rounded-lg text-[10.5px] transition shadow-2xs"
+                          >
+                            완료
+                          </button>
+                        </div>
+                      )}
+
+                      {status === 'PAUSED' && (
+                        <div className="grid grid-cols-3 gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleResumeTimer(st.id)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold py-1 rounded-lg text-[10.5px] transition"
+                          >
+                            ▶ 재개
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAddMinutes(st.id, 5)}
+                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold py-1 rounded-lg text-[10.5px] transition border border-slate-200"
+                          >
+                            +5분
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCompleteTimer(st.id)}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-black py-1 rounded-lg text-[10.5px] transition"
+                          >
+                            완료
+                          </button>
+                        </div>
+                      )}
+
+                      {status === 'EXPIRED' && (
+                        <div className="grid grid-cols-2 gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleCompleteTimer(st.id)}
+                            className="bg-rose-600 hover:bg-rose-700 text-white font-black py-1 rounded-lg text-[11px] transition shadow-xs"
+                          >
+                            ✅ 회수완료
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAddMinutes(st.id, 5)}
+                            className="bg-white hover:bg-slate-100 text-slate-700 font-extrabold py-1 rounded-lg text-[10.5px] transition border border-slate-200"
+                          >
+                            +5분 더
+                          </button>
+                        </div>
+                      )}
+
+                      {status === 'COMPLETED' && (
+                        <button
+                          type="button"
+                          onClick={() => handleResetTimer(st.id)}
+                          className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-1 rounded-lg text-[11px] transition border border-slate-200"
+                        >
+                          🔄 리셋
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          );
+        })()}
       </main>
     </div>
   );

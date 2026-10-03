@@ -1539,14 +1539,14 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                                       }`}
                                     >
                                       {/* 상단: 이름 + 남은 시간 뱃지 */}
-                                      <div className="flex items-start justify-between gap-2">
-                                        <div>
+                                      <div className="flex items-start justify-between gap-1.5">
+                                        <div className="min-w-0">
                                           <div className="flex items-center gap-1.5 flex-wrap">
-                                            <span className="text-sm font-black text-slate-900">
+                                            <span className="text-sm font-black text-slate-900 whitespace-nowrap">
                                               👤 {st.studentName}
                                             </span>
                                             {st.parentPhone && (
-                                              <span className="text-[10px] text-slate-400 font-normal">
+                                              <span className="text-[10px] text-slate-400 font-normal whitespace-nowrap">
                                                 {st.parentPhone}
                                               </span>
                                             )}
@@ -1555,22 +1555,22 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
 
                                         {/* 남은 시간 or 외출 뱃지 */}
                                         {st.isPaused ? (
-                                          <span className="bg-amber-500 text-white text-[11px] font-black px-2.5 py-1 rounded-lg animate-pulse flex items-center gap-1 shadow-xs shrink-0">
+                                          <span className="bg-amber-500 text-white text-[11px] font-black px-2.5 py-1 rounded-lg animate-pulse flex items-center gap-1 shadow-xs shrink-0 whitespace-nowrap">
                                             <span>🏃</span>
                                             <span>외출 중 ({st.curOutMins}분째)</span>
                                           </span>
                                         ) : isOverdue ? (
-                                          <span className="bg-rose-600 text-white text-[11px] font-black px-2.5 py-1 rounded-lg animate-pulse flex items-center gap-1 shadow-xs shrink-0">
+                                          <span className="bg-rose-600 text-white text-[11px] font-black px-2.5 py-1 rounded-lg animate-pulse flex items-center gap-1 shadow-xs shrink-0 whitespace-nowrap">
                                             <span>🚨</span>
                                             <span>{Math.abs(st.remainingMins)}분 초과</span>
                                           </span>
                                         ) : isImminent ? (
-                                          <span className="bg-amber-500 text-white text-[11px] font-black px-2.5 py-1 rounded-lg animate-pulse flex items-center gap-1 shadow-xs shrink-0">
+                                          <span className="bg-amber-500 text-white text-[11px] font-black px-2.5 py-1 rounded-lg animate-pulse flex items-center gap-1 shadow-xs shrink-0 whitespace-nowrap">
                                             <span>⚠️</span>
                                             <span>{st.remainingMins}분 남음</span>
                                           </span>
                                         ) : (
-                                          <span className="bg-emerald-600 text-white text-[11px] font-black px-2.5 py-1 rounded-lg shadow-2xs shrink-0">
+                                          <span className="bg-emerald-600 text-white text-[11px] font-black px-2.5 py-1 rounded-lg shadow-2xs shrink-0 whitespace-nowrap">
                                             ⏳ {Math.floor(st.remainingMins / 60) > 0 ? `${Math.floor(st.remainingMins / 60)}시간 ` : ''}
                                             {st.remainingMins % 60}분 남음
                                           </span>
@@ -1579,22 +1579,23 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
 
                                       {/* 중앙: 입실 및 귀가 예정 시간 표시 (예: 10:12 ~ 12:12) */}
                                       <div className="bg-slate-50/80 rounded-xl p-2.5 border border-slate-200/80 space-y-1.5">
-                                        <div className="flex items-center justify-between text-xs">
-                                          <span className="font-mono font-black text-indigo-900 text-sm tracking-tight flex items-center gap-1">
-                                            <span>🕒</span>
+                                        <div className="flex items-center justify-between gap-1">
+                                          <div className="flex items-center gap-1 font-mono font-black text-indigo-900 text-sm tracking-tight whitespace-nowrap">
+                                            <span className="text-xs">🕒</span>
                                             <span>{st.checkInStr} ~ {st.expectedEndStr}</span>
-                                          </span>
+                                          </div>
                                           <button
                                             type="button"
                                             onClick={() => handleEditCheckInTime(st)}
-                                            className="text-[10.5px] text-indigo-600 hover:text-indigo-800 hover:underline font-bold px-1 py-0.5 rounded transition"
+                                            className="text-[11px] text-indigo-700 bg-white hover:bg-indigo-50 border border-indigo-200 font-bold px-2 py-0.5 rounded-lg transition whitespace-nowrap shrink-0 flex items-center gap-0.5 shadow-2xs active:scale-95"
                                             title="등원(출석) 시간 수정"
                                           >
-                                            ✏️ 시간수정
+                                            <span>✏️</span>
+                                            <span>시간수정</span>
                                           </button>
                                         </div>
 
-                                        <div className="flex items-center justify-between text-[10.5px] text-slate-500 font-medium">
+                                        <div className="flex items-center justify-between text-[10.5px] text-slate-500 font-medium whitespace-nowrap">
                                           <span>신청: {formatDurationLabel(st.targetDuration)}</span>
                                           {st.isPaused ? (
                                             <span className="text-amber-700 font-black flex items-center gap-0.5">
@@ -1628,47 +1629,53 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                                         )}
                                       </div>
 
-                                      {/* 하단: 외출/복귀 & 퇴실 처리 & 출석 취소 버튼 */}
-                                      <div className="flex items-center gap-1.5 pt-1 border-t border-slate-100 flex-wrap">
-                                        {st.isPaused ? (
-                                          <button
-                                            type="button"
-                                            onClick={() => handleResumeStudent(st)}
-                                            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black py-1.5 px-2.5 rounded-xl shadow-xs transition active:scale-95 flex items-center justify-center gap-1 animate-pulse"
-                                            title="외출을 마치고 복귀 (외출한 시간만큼 종료 시각 자동 연장)"
-                                          >
-                                            <span>▶️</span>
-                                            <span>복귀 (학원 도착)</span>
-                                          </button>
-                                        ) : (
-                                          <button
-                                            type="button"
-                                            onClick={() => handlePauseStudent(st)}
-                                            className="bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-xs font-black py-1.5 px-2.5 rounded-xl transition active:scale-95 flex items-center justify-center gap-1"
-                                            title="다른 학원 다녀오기 등 외출 시 타이머 일시정지"
-                                          >
-                                            <span>⏸️</span>
-                                            <span>외출/타학원</span>
-                                          </button>
-                                        )}
+                                      {/* 하단: 2단 깔끔 분할 버튼 (외출/복귀 + 퇴실완료) & 출석취소 링크 */}
+                                      <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                                        <div className="grid grid-cols-2 gap-1.5">
+                                          {st.isPaused ? (
+                                            <button
+                                              type="button"
+                                              onClick={() => handleResumeStudent(st)}
+                                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black py-2 px-2 rounded-xl shadow-xs transition active:scale-95 flex items-center justify-center gap-1 whitespace-nowrap animate-pulse"
+                                              title="외출을 마치고 복귀 (외출한 시간만큼 종료 시각 자동 연장)"
+                                            >
+                                              <span>▶️</span>
+                                              <span>복귀 (도착)</span>
+                                            </button>
+                                          ) : (
+                                            <button
+                                              type="button"
+                                              onClick={() => handlePauseStudent(st)}
+                                              className="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-black py-2 px-2 rounded-xl transition active:scale-95 flex items-center justify-center gap-1 whitespace-nowrap"
+                                              title="다른 학원 다녀오기 등 외출 시 타이머 일시정지"
+                                            >
+                                              <span>⏸️</span>
+                                              <span>외출/타학원</span>
+                                            </button>
+                                          )}
 
-                                        <button
-                                          type="button"
-                                          onClick={() => handleDepartStudent(st)}
-                                          className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black py-1.5 px-2.5 rounded-xl shadow-xs transition active:scale-95 flex items-center justify-center gap-1"
-                                          title="퇴실 처리 (퇴실 완료 명단으로 이동)"
-                                        >
-                                          <span>🚪</span>
-                                          <span>퇴실 완료</span>
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleCancelAttendanceForStudent(st)}
-                                          className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-1.5 px-2 rounded-xl transition"
-                                          title="출석 취소 (예약 상태로 복구)"
-                                        >
-                                          취소
-                                        </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDepartStudent(st)}
+                                            className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black py-2 px-2 rounded-xl shadow-xs transition active:scale-95 flex items-center justify-center gap-1 whitespace-nowrap"
+                                            title="퇴실 처리 (퇴실 완료 명단으로 이동)"
+                                          >
+                                            <span>🚪</span>
+                                            <span>퇴실 완료</span>
+                                          </button>
+                                        </div>
+
+                                        <div className="flex items-center justify-end">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleCancelAttendanceForStudent(st)}
+                                            className="text-[10.5px] text-slate-400 hover:text-rose-600 font-bold hover:underline transition whitespace-nowrap flex items-center gap-0.5"
+                                            title="출석 취소 (예약 상태로 복구)"
+                                          >
+                                            <span>✕</span>
+                                            <span>출석 취소(예약 복구)</span>
+                                          </button>
+                                        </div>
                                       </div>
                                     </div>
                                   );
@@ -1718,7 +1725,7 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                                         <button
                                           type="button"
                                           onClick={() => handleReenterStudent(st)}
-                                          className="text-[10.5px] bg-white hover:bg-slate-100 text-slate-700 font-extrabold px-2 py-1 rounded-lg border border-slate-200 transition shrink-0 active:scale-95"
+                                          className="text-[10.5px] bg-white hover:bg-slate-100 text-slate-700 font-extrabold px-2.5 py-1 rounded-lg border border-slate-200 transition shrink-0 whitespace-nowrap active:scale-95"
                                           title="퇴실 취소하고 다시 재실 상태로 복구"
                                         >
                                           ↩️ 재입실

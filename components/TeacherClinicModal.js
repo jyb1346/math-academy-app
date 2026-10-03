@@ -14,6 +14,19 @@ import {
 } from '@/lib/clinicUtils';
 import { getClientCache, setClientCache } from '@/lib/clientCache';
 
+function formatTimeHHMM(val) {
+  if (!val) return '';
+  if (typeof val === 'string' && /^\d{1,2}:\d{2}$/.test(val)) {
+    const parts = val.split(':');
+    return `${parts[0].padStart(2, '0')}:${parts[1]}`;
+  }
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return '';
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
 export default function TeacherClinicModal({ user, students = [], classes = [], classStudents = [], onClose }) {
   const [activeTab, setActiveTab] = useState('TIMETABLE'); // 'TIMETABLE' | 'CREATE'
   const [schedules, setSchedules] = useState([]);
@@ -49,6 +62,18 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
   const [targetStudentIds, setTargetStudentIds] = useState([]);
   const [studentSearchKeyword, setStudentSearchKeyword] = useState('');
   const [showUnbookedList, setShowUnbookedList] = useState(false);
+
+  // ⏱️ 실시간 재실 & 출석 카운트다운 타이머 (5초마다 자동 갱신)
+  const [liveNow, setLiveNow] = useState(() => new Date());
+  const [showCountdownSection, setShowCountdownSection] = useState(true);
+  const [showDepartedList, setShowDepartedList] = useState(false);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setLiveNow(new Date());
+    }, 5000);
+    return () => clearInterval(timer);
+  }, []);
 
   // 학생 대리 등록 모달 상태 (30분 단위 다중/분리 블록 선택 지원)
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
@@ -181,6 +206,103 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
     );
   }, [scheduleTargetStudents, bookedStudentIdSet]);
 
+  // ⏱️ 실시간 재실 & 퇴실 학생 그룹 계산 (출석 시점 기준 예약시간 카운트다운)
+  const clinicAttendanceGroups = useMemo(() => {
+    if (!currentSchedule || !currentSchedule.bookings) return { activeList: [], departedList: [] };
+
+    const attendedBookings = (currentSchedule.bookings || []).filter(
+      (b) => b.status === 'ATTENDED'
+    );
+
+    const studentMap = {};
+    attendedBookings.forEach((b) => {
+      const sId = b.student_id;
+      if (!studentMap[sId]) {
+        studentMap[sId] = {
+          studentId: sId,
+          studentName: b.users?.name || '학생',
+          parentPhone: b.users?.parent_phone || '',
+          bookingIds: [],
+          bookings: [],
+          totalDurationMins: 0,
+          earliestAttendedAt: null,
+          latestDepartedAt: null,
+          isAllDeparted: true,
+        };
+      }
+      studentMap[sId].bookingIds.push(b.id);
+      studentMap[sId].bookings.push(b);
+
+      const dur = (timeToMinutes(b.end_time) - timeToMinutes(b.start_time)) || 120;
+      studentMap[sId].totalDurationMins += dur;
+
+      if (b.attended_at) {
+        if (!studentMap[sId].earliestAttendedAt || new Date(b.attended_at) < new Date(studentMap[sId].earliestAttendedAt)) {
+          studentMap[sId].earliestAttendedAt = b.attended_at;
+        }
+      }
+      if (b.departed_at) {
+        if (!studentMap[sId].latestDepartedAt || new Date(b.departed_at) > new Date(studentMap[sId].latestDepartedAt)) {
+          studentMap[sId].latestDepartedAt = b.departed_at;
+        }
+      } else {
+        studentMap[sId].isAllDeparted = false;
+      }
+    });
+
+    const activeList = [];
+    const departedList = [];
+
+    Object.values(studentMap).forEach((st) => {
+      let checkInStr = '';
+      if (st.earliestAttendedAt) {
+        checkInStr = formatTimeHHMM(st.earliestAttendedAt);
+      } else if (st.bookings[0]?.start_time) {
+        checkInStr = st.bookings[0].start_time;
+      } else {
+        const hh = String(liveNow.getHours()).padStart(2, '0');
+        const mm = String(liveNow.getMinutes()).padStart(2, '0');
+        checkInStr = `${hh}:${mm}`;
+      }
+
+      const checkInMins = timeToMinutes(checkInStr);
+      const targetDuration = st.totalDurationMins > 0 ? st.totalDurationMins : 120;
+      const expectedEndMins = checkInMins + targetDuration;
+      const expectedEndStr = minutesToTime(expectedEndMins);
+
+      const curMins = liveNow.getHours() * 60 + liveNow.getMinutes();
+      const remainingMins = expectedEndMins - curMins;
+
+      let checkOutStr = '';
+      let actualStayMins = targetDuration;
+      if (st.latestDepartedAt) {
+        checkOutStr = formatTimeHHMM(st.latestDepartedAt);
+        actualStayMins = Math.max(0, timeToMinutes(checkOutStr) - checkInMins);
+      }
+
+      const enriched = {
+        ...st,
+        checkInStr,
+        expectedEndStr,
+        checkOutStr,
+        targetDuration,
+        remainingMins,
+        actualStayMins,
+      };
+
+      if (st.isAllDeparted && st.latestDepartedAt) {
+        departedList.push(enriched);
+      } else {
+        activeList.push(enriched);
+      }
+    });
+
+    activeList.sort((a, b) => a.remainingMins - b.remainingMins);
+    departedList.sort((a, b) => (a.studentName || '').localeCompare(b.studentName || '', 'ko'));
+
+    return { activeList, departedList };
+  }, [currentSchedule, liveNow]);
+
   // 신규 일정 생성 핸들러
   const handleCreateSchedule = async (e) => {
     e.preventDefault();
@@ -259,27 +381,221 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
 
   // 학생 출석 상태 변경 핸들러 (⚡ 낙관적 업데이트: 클릭 즉시 0초 반응)
   const handleUpdateBookingStatus = async (bookingId, nextStatus) => {
-    // 1. 실패 시 롤백을 위해 이전 상태 보관
     const prevSchedules = schedules;
+    const nowIso = new Date().toISOString();
 
-    // 2. ⚡ 화면 상태를 0.00초 만에 즉시 변경 (버튼 즉시 초록색 전환!)
     applyOptimisticScheduleUpdate((bookings) =>
-      bookings.map((b) => (b.id === bookingId ? { ...b, status: nextStatus } : b))
+      bookings.map((b) => {
+        if (b.id === bookingId) {
+          return {
+            ...b,
+            status: nextStatus,
+            attended_at: nextStatus === 'ATTENDED' ? (b.attended_at || nowIso) : null,
+            departed_at: nextStatus === 'ATTENDED' ? null : b.departed_at,
+          };
+        }
+        return b;
+      })
     );
 
-    // 3. 백그라운드 서버 통신
     try {
       const res = await fetch(`/api/clinic/bookings/${bookingId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: nextStatus }),
+        body: JSON.stringify({
+          status: nextStatus,
+          attended_at: nextStatus === 'ATTENDED' ? nowIso : null,
+          departed_at: nextStatus === 'ATTENDED' ? null : undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '상태 변경 실패');
     } catch (err) {
-      // 실패 시 원래 상태로 복원
       setSchedules(prevSchedules);
       alert(`상태 변경 실패: ${err.message}`);
+    }
+  };
+
+  // 학생 출석 토글 핸들러 (출석 시 현재 시각 기록 및 실시간 카운트다운 시작, 취소 시 해제)
+  const handleToggleAttendance = async (booking) => {
+    const nextStatus = booking.status === 'ATTENDED' ? 'BOOKED' : 'ATTENDED';
+    const sId = booking.student_id;
+    const nowIso = new Date().toISOString();
+
+    // 해당 일정 내 해당 학생의 모든 연관 예약 슬롯(연속 시간 등) 일괄 처리
+    const studentBookings = (currentSchedule?.bookings || []).filter(
+      (b) => b.student_id === sId && b.status !== 'CANCELLED'
+    );
+    const targetBookingIds = studentBookings.length > 0 ? studentBookings.map((b) => b.id) : [booking.id];
+
+    const prevSchedules = schedules;
+
+    // ⚡ 0.00초 즉시 화면 상태 낙관적 업데이트
+    applyOptimisticScheduleUpdate((bookings) =>
+      bookings.map((b) => {
+        if (targetBookingIds.includes(b.id)) {
+          return {
+            ...b,
+            status: nextStatus,
+            attended_at: nextStatus === 'ATTENDED' ? (b.attended_at || nowIso) : null,
+            departed_at: null,
+          };
+        }
+        return b;
+      })
+    );
+
+    try {
+      await Promise.all(
+        targetBookingIds.map((id) =>
+          fetch(`/api/clinic/bookings/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              status: nextStatus,
+              attended_at: nextStatus === 'ATTENDED' ? nowIso : null,
+              departed_at: null,
+            }),
+          })
+        )
+      );
+    } catch (err) {
+      setSchedules(prevSchedules);
+      alert(`출석 상태 변경 실패: ${err.message}`);
+    }
+  };
+
+  // 🚪 학생 퇴실 처리 핸들러 (퇴실 시간 기록)
+  const handleDepartStudent = async (studentGroup) => {
+    const nowIso = new Date().toISOString();
+    const prevSchedules = schedules;
+
+    applyOptimisticScheduleUpdate((bookings) =>
+      bookings.map((b) => {
+        if (studentGroup.bookingIds.includes(b.id)) {
+          return { ...b, departed_at: nowIso };
+        }
+        return b;
+      })
+    );
+
+    try {
+      await Promise.all(
+        studentGroup.bookingIds.map((id) =>
+          fetch(`/api/clinic/bookings/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ departed_at: nowIso }),
+          })
+        )
+      );
+    } catch (err) {
+      setSchedules(prevSchedules);
+      alert(`퇴실 처리 실패: ${err.message}`);
+    }
+  };
+
+  // ↩️ 학생 재입실 처리 핸들러 (퇴실 상태 취소)
+  const handleReenterStudent = async (studentGroup) => {
+    const prevSchedules = schedules;
+
+    applyOptimisticScheduleUpdate((bookings) =>
+      bookings.map((b) => {
+        if (studentGroup.bookingIds.includes(b.id)) {
+          return { ...b, departed_at: null };
+        }
+        return b;
+      })
+    );
+
+    try {
+      await Promise.all(
+        studentGroup.bookingIds.map((id) =>
+          fetch(`/api/clinic/bookings/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ departed_at: null }),
+          })
+        )
+      );
+    } catch (err) {
+      setSchedules(prevSchedules);
+      alert(`재입실 처리 실패: ${err.message}`);
+    }
+  };
+
+  // ❌ 학생 출석 취소 (예약 상태로 복구)
+  const handleCancelAttendanceForStudent = async (studentGroup) => {
+    if (!confirm(`[${studentGroup.studentName}] 학생의 출석 상태를 취소(예약 상태로 복구)하시겠습니까?`)) return;
+    const prevSchedules = schedules;
+
+    applyOptimisticScheduleUpdate((bookings) =>
+      bookings.map((b) => {
+        if (studentGroup.bookingIds.includes(b.id)) {
+          return { ...b, status: 'BOOKED', attended_at: null, departed_at: null };
+        }
+        return b;
+      })
+    );
+
+    try {
+      await Promise.all(
+        studentGroup.bookingIds.map((id) =>
+          fetch(`/api/clinic/bookings/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'BOOKED', attended_at: null, departed_at: null }),
+          })
+        )
+      );
+    } catch (err) {
+      setSchedules(prevSchedules);
+      alert(`출석 취소 실패: ${err.message}`);
+    }
+  };
+
+  // ✏️ 학생 출석(등원) 시간 직접 수정 핸들러
+  const handleEditCheckInTime = async (studentGroup) => {
+    const input = prompt(
+      `[${studentGroup.studentName}] 학생의 등원(출석) 시간을 입력해주세요.\n(예: 10:05, 14:30)`,
+      studentGroup.checkInStr || '10:00'
+    );
+    if (!input) return;
+    const trimmed = input.trim();
+    const timeRegex = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+    if (!timeRegex.test(trimmed)) {
+      alert('올바른 시간 형식(HH:MM)으로 입력해주세요. (예: 10:05)');
+      return;
+    }
+
+    const [hh, mm] = trimmed.split(':').map((v) => v.padStart(2, '0'));
+    const baseDate = currentSchedule?.date || new Date().toISOString().slice(0, 10);
+    const newDateObj = new Date(`${baseDate}T${hh}:${mm}:00`);
+    const newAttendedAt = isNaN(newDateObj.getTime()) ? new Date().toISOString() : newDateObj.toISOString();
+
+    const prevSchedules = schedules;
+    applyOptimisticScheduleUpdate((bookings) =>
+      bookings.map((b) => {
+        if (studentGroup.bookingIds.includes(b.id)) {
+          return { ...b, attended_at: newAttendedAt };
+        }
+        return b;
+      })
+    );
+
+    try {
+      await Promise.all(
+        studentGroup.bookingIds.map((id) =>
+          fetch(`/api/clinic/bookings/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ attended_at: newAttendedAt }),
+          })
+        )
+      );
+    } catch (err) {
+      setSchedules(prevSchedules);
+      alert(`시간 수정 실패: ${err.message}`);
     }
   };
 
@@ -1029,6 +1345,229 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                         )}
                       </div>
 
+                      {/* ⏱️ 실시간 재실 & 귀가 카운트다운 패널 (출석 누른 시각부터 카운트다운) */}
+                      <div className="bg-gradient-to-br from-indigo-50/90 via-slate-50 to-blue-50/60 border-2 border-indigo-200 rounded-3xl p-4 sm:p-5 shadow-sm space-y-4">
+                        <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-indigo-100">
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-xl">⏱️</span>
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="text-sm sm:text-base font-black text-slate-900">
+                                  실시간 재실 현황 & 귀가 카운트다운
+                                </h4>
+                                <span className="bg-indigo-600 text-white text-[10.5px] font-black px-2.5 py-0.5 rounded-full shadow-2xs">
+                                  재실 {clinicAttendanceGroups.activeList.length}명
+                                </span>
+                                {clinicAttendanceGroups.departedList.length > 0 && (
+                                  <span className="bg-slate-200 text-slate-700 text-[10.5px] font-black px-2 py-0.5 rounded-full">
+                                    퇴실 {clinicAttendanceGroups.departedList.length}명
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                                출석 체크 시각부터 학생의 신청 시간({formatDurationLabel(currentSchedule.duration_minutes || 120)}) 기준 실시간 귀가 카운트다운이 동작합니다.
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-indigo-700 bg-indigo-100 font-extrabold px-2 py-1 rounded-lg flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                              <span>5초 주기 자동 갱신</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setShowCountdownSection((prev) => !prev)}
+                              className="text-xs bg-white text-indigo-900 border border-indigo-200 font-bold px-2.5 py-1 rounded-xl hover:bg-indigo-50 transition"
+                            >
+                              {showCountdownSection ? '▲ 접기' : '▼ 펼치기'}
+                            </button>
+                          </div>
+                        </div>
+
+                        {showCountdownSection && (
+                          <div className="space-y-4">
+                            {/* 1. 현재 재실 중인 학생 카드 목록 */}
+                            {clinicAttendanceGroups.activeList.length === 0 ? (
+                              <div className="text-center py-6 px-4 bg-white/80 rounded-2xl border border-indigo-100/80">
+                                <p className="text-xs sm:text-sm font-bold text-slate-500">
+                                  🌱 현재 출석 체크된 재실 학생이 없습니다.
+                                </p>
+                                <p className="text-[11px] text-slate-400 mt-1">
+                                  아래 시간표의 학생 카드에서 <span className="text-emerald-700 font-black">[출석]</span> 버튼을 누르면 즉시 실시간 귀가 카운트다운이 시작됩니다.
+                                </p>
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                {clinicAttendanceGroups.activeList.map((st) => {
+                                  const isOverdue = st.remainingMins <= 0;
+                                  const isImminent = !isOverdue && st.remainingMins <= 15;
+                                  const progressPercent = Math.min(
+                                    100,
+                                    Math.max(0, Math.round(((st.targetDuration - st.remainingMins) / st.targetDuration) * 100))
+                                  );
+
+                                  return (
+                                    <div
+                                      key={st.studentId}
+                                      className={`p-3.5 rounded-2xl border transition shadow-xs flex flex-col justify-between gap-3 ${
+                                        isOverdue
+                                          ? 'bg-rose-50/90 border-rose-300 ring-2 ring-rose-400'
+                                          : isImminent
+                                          ? 'bg-amber-50/90 border-amber-300 ring-2 ring-amber-400'
+                                          : 'bg-white border-slate-200 hover:border-indigo-300'
+                                      }`}
+                                    >
+                                      {/* 상단: 이름 + 남은 시간 뱃지 */}
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div>
+                                          <div className="flex items-center gap-1.5 flex-wrap">
+                                            <span className="text-sm font-black text-slate-900">
+                                              👤 {st.studentName}
+                                            </span>
+                                            {st.parentPhone && (
+                                              <span className="text-[10px] text-slate-400 font-normal">
+                                                {st.parentPhone}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        {/* 남은 시간 뱃지 */}
+                                        {isOverdue ? (
+                                          <span className="bg-rose-600 text-white text-[11px] font-black px-2.5 py-1 rounded-lg animate-pulse flex items-center gap-1 shadow-xs shrink-0">
+                                            <span>🚨</span>
+                                            <span>{Math.abs(st.remainingMins)}분 초과</span>
+                                          </span>
+                                        ) : isImminent ? (
+                                          <span className="bg-amber-500 text-white text-[11px] font-black px-2.5 py-1 rounded-lg animate-pulse flex items-center gap-1 shadow-xs shrink-0">
+                                            <span>⚠️</span>
+                                            <span>{st.remainingMins}분 남음</span>
+                                          </span>
+                                        ) : (
+                                          <span className="bg-emerald-600 text-white text-[11px] font-black px-2.5 py-1 rounded-lg shadow-2xs shrink-0">
+                                            ⏳ {Math.floor(st.remainingMins / 60) > 0 ? `${Math.floor(st.remainingMins / 60)}시간 ` : ''}
+                                            {st.remainingMins % 60}분 남음
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      {/* 중앙: 입실 및 귀가 예정 시간 표시 (예: 10:12 ~ 12:12) */}
+                                      <div className="bg-slate-50/80 rounded-xl p-2.5 border border-slate-200/80 space-y-1.5">
+                                        <div className="flex items-center justify-between text-xs">
+                                          <span className="font-mono font-black text-indigo-900 text-sm tracking-tight flex items-center gap-1">
+                                            <span>🕒</span>
+                                            <span>{st.checkInStr} ~ {st.expectedEndStr}</span>
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleEditCheckInTime(st)}
+                                            className="text-[10.5px] text-indigo-600 hover:text-indigo-800 hover:underline font-bold px-1 py-0.5 rounded transition"
+                                            title="등원(출석) 시간 수정"
+                                          >
+                                            ✏️ 시간수정
+                                          </button>
+                                        </div>
+
+                                        <div className="flex items-center justify-between text-[10.5px] text-slate-500 font-medium">
+                                          <span>신청: {formatDurationLabel(st.targetDuration)}</span>
+                                          <span>{isOverdue ? '클리닉 종료됨' : `${progressPercent}% 경과`}</span>
+                                        </div>
+
+                                        {/* 프로그레스 바 */}
+                                        <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                                          <div
+                                            className={`h-full transition-all duration-500 rounded-full ${
+                                              isOverdue ? 'bg-rose-500' : isImminent ? 'bg-amber-500' : 'bg-emerald-500'
+                                            }`}
+                                            style={{ width: `${progressPercent}%` }}
+                                          />
+                                        </div>
+                                      </div>
+
+                                      {/* 하단: 퇴실 처리 & 출석 취소 버튼 */}
+                                      <div className="flex items-center gap-1.5 pt-1 border-t border-slate-100">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDepartStudent(st)}
+                                          className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black py-1.5 px-2.5 rounded-xl shadow-xs transition active:scale-95 flex items-center justify-center gap-1"
+                                          title="퇴실 처리 (퇴실 완료 명단으로 이동)"
+                                        >
+                                          <span>🚪</span>
+                                          <span>퇴실 완료</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleCancelAttendanceForStudent(st)}
+                                          className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-1.5 px-2 rounded-xl transition"
+                                          title="출석 취소 (예약 상태로 복구)"
+                                        >
+                                          취소
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            {/* 2. 퇴실 완료 명단 (별도 구분 섹션) */}
+                            {clinicAttendanceGroups.departedList.length > 0 && (
+                              <div className="bg-white/80 border border-slate-200 rounded-2xl p-3.5 space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm">🚪</span>
+                                    <span className="text-xs sm:text-sm font-black text-slate-800">
+                                      퇴실 완료 학생 ({clinicAttendanceGroups.departedList.length}명)
+                                    </span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowDepartedList((prev) => !prev)}
+                                    className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2 py-1 rounded-lg transition"
+                                  >
+                                    {showDepartedList ? '▲ 접기' : '▼ 펼치기'}
+                                  </button>
+                                </div>
+
+                                {showDepartedList && (
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pt-1">
+                                    {clinicAttendanceGroups.departedList.map((st) => (
+                                      <div
+                                        key={st.studentId}
+                                        className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 flex items-center justify-between text-xs"
+                                      >
+                                        <div>
+                                          <div className="font-extrabold text-slate-800 flex items-center gap-1">
+                                            <span>👤</span>
+                                            <span>{st.studentName}</span>
+                                            <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-1 rounded font-bold">
+                                              퇴실
+                                            </span>
+                                          </div>
+                                          <div className="text-[10.5px] font-mono text-slate-500 mt-0.5">
+                                            {st.checkInStr} ~ {st.checkOutStr} ({formatDurationLabel(st.actualStayMins)} 체류)
+                                          </div>
+                                        </div>
+
+                                        <button
+                                          type="button"
+                                          onClick={() => handleReenterStudent(st)}
+                                          className="text-[10.5px] bg-white hover:bg-slate-100 text-slate-700 font-extrabold px-2 py-1 rounded-lg border border-slate-200 transition shrink-0 active:scale-95"
+                                          title="퇴실 취소하고 다시 재실 상태로 복구"
+                                        >
+                                          ↩️ 재입실
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
                       {/* 1. 타임라인(시간표) 뷰 */}
                       {viewMode === 'TIMELINE' && (
                         <div className="space-y-2 bg-white p-4 rounded-2xl border border-slate-200">
@@ -1188,18 +1727,13 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                                           {/* 간편 출석 체크 버튼 */}
                                           <button
                                             type="button"
-                                            onClick={() =>
-                                              handleUpdateBookingStatus(
-                                                b.id,
-                                                b.status === 'ATTENDED' ? 'BOOKED' : 'ATTENDED'
-                                              )
-                                            }
+                                            onClick={() => handleToggleAttendance(b)}
                                             className={`text-[10px] px-1.5 py-0.5 rounded font-black transition ${
                                               b.status === 'ATTENDED'
                                                 ? 'bg-emerald-600 text-white shadow-2xs'
                                                 : 'bg-white hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 border border-slate-200'
                                             }`}
-                                            title="출석 완료 체크"
+                                            title={b.status === 'ATTENDED' ? '출석 취소 (카운트다운 해제)' : '출석 완료 체크 & 실시간 카운트다운 시작'}
                                           >
                                             {b.status === 'ATTENDED' ? '✓ 출석' : '출석'}
                                           </button>
@@ -1272,10 +1806,15 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                                         </td>
                                         <td className="p-3 text-right space-x-1">
                                           <button
-                                            onClick={() => handleUpdateBookingStatus(b.id, 'ATTENDED')}
-                                            className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-black rounded-lg transition"
+                                            onClick={() => handleToggleAttendance(b)}
+                                            className={`px-2 py-1 font-black rounded-lg transition ${
+                                              b.status === 'ATTENDED'
+                                                ? 'bg-emerald-600 text-white shadow-2xs'
+                                                : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700'
+                                            }`}
+                                            title={b.status === 'ATTENDED' ? '출석 취소 (카운트다운 해제)' : '출석 완료 체크 & 카운트다운 시작'}
                                           >
-                                            출석
+                                            {b.status === 'ATTENDED' ? '✓ 출석완료' : '출석'}
                                           </button>
                                           <button
                                             onClick={() => handleUpdateBookingStatus(b.id, 'ABSENT')}

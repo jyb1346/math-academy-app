@@ -149,10 +149,23 @@ export async function GET(req) {
       });
     }
 
-    const bookingList = initialBookings.map((b) => ({
-      ...b,
-      users: userMap[b.student_id] || { id: b.student_id, name: '학생' },
-    }));
+    const bookingList = initialBookings.map((b) => {
+      let attended_at = b.attended_at || null;
+      let departed_at = b.departed_at || null;
+      if (!attended_at && b.memo?.startsWith('{')) {
+        try {
+          const m = JSON.parse(b.memo);
+          if (m.attended_at) attended_at = m.attended_at;
+          if (m.departed_at) departed_at = m.departed_at;
+        } catch {}
+      }
+      return {
+        ...b,
+        attended_at,
+        departed_at,
+        users: userMap[b.student_id] || { id: b.student_id, name: '학생' },
+      };
+    });
 
     // 🎯 동일 시간대 예약 학생 가나다 순 정렬
     bookingList.sort((a, b) => {

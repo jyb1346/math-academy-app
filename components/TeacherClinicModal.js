@@ -228,6 +228,9 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
           earliestAttendedAt: null,
           latestDepartedAt: null,
           isAllDeparted: true,
+          isPaused: false,
+          pausedAt: null,
+          totalPauseMins: 0,
         };
       }
       studentMap[sId].bookingIds.push(b.id);
@@ -248,6 +251,13 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
       } else {
         studentMap[sId].isAllDeparted = false;
       }
+      if (b.paused_at) {
+        studentMap[sId].isPaused = true;
+        studentMap[sId].pausedAt = b.paused_at;
+      }
+      if (b.total_pause_minutes) {
+        studentMap[sId].totalPauseMins = Math.max(studentMap[sId].totalPauseMins || 0, b.total_pause_minutes);
+      }
     });
 
     const activeList = [];
@@ -266,18 +276,35 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
       }
 
       const checkInMins = timeToMinutes(checkInStr);
+      const isPaused = Boolean(st.isPaused && st.pausedAt);
+      let curOutMins = 0;
+      if (isPaused) {
+        curOutMins = Math.max(0, Math.round((liveNow.getTime() - new Date(st.pausedAt).getTime()) / 60000));
+      }
+
+      const totalPauseMins = st.totalPauseMins || 0;
+      const effectiveTotalPause = totalPauseMins + curOutMins;
+
       const targetDuration = st.totalDurationMins > 0 ? st.totalDurationMins : 120;
-      const expectedEndMins = checkInMins + targetDuration;
+      const expectedEndMins = checkInMins + targetDuration + effectiveTotalPause;
       const expectedEndStr = minutesToTime(expectedEndMins);
 
       const curMins = liveNow.getHours() * 60 + liveNow.getMinutes();
-      const remainingMins = expectedEndMins - curMins;
+      let remainingMins;
+      if (isPaused) {
+        // 일시정지(외출 중) 시에는 잔여 학습 시간을 외출 직전 상태로 동결
+        const pauseStartMins = timeToMinutes(formatTimeHHMM(st.pausedAt));
+        const stayBeforePause = Math.max(0, (pauseStartMins - checkInMins) - totalPauseMins);
+        remainingMins = Math.max(0, targetDuration - stayBeforePause);
+      } else {
+        remainingMins = expectedEndMins - curMins;
+      }
 
       let checkOutStr = '';
       let actualStayMins = targetDuration;
       if (st.latestDepartedAt) {
         checkOutStr = formatTimeHHMM(st.latestDepartedAt);
-        actualStayMins = Math.max(0, timeToMinutes(checkOutStr) - checkInMins);
+        actualStayMins = Math.max(0, timeToMinutes(checkOutStr) - checkInMins - totalPauseMins);
       }
 
       const enriched = {
@@ -288,6 +315,10 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
         targetDuration,
         remainingMins,
         actualStayMins,
+        isPaused,
+        curOutMins,
+        totalPauseMins,
+        effectiveTotalPause,
       };
 
       if (st.isAllDeparted && st.latestDepartedAt) {
@@ -297,7 +328,10 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
       }
     });
 
-    activeList.sort((a, b) => a.remainingMins - b.remainingMins);
+    activeList.sort((a, b) => {
+      if (a.isPaused !== b.isPaused) return a.isPaused ? 1 : -1;
+      return a.remainingMins - b.remainingMins;
+    });
     departedList.sort((a, b) => (a.studentName || '').localeCompare(b.studentName || '', 'ko'));
 
     return { activeList, departedList };
@@ -465,15 +499,15 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
     }
   };
 
-  // 🚪 학생 퇴실 처리 핸들러 (퇴실 시간 기록)
-  const handleDepartStudent = async (studentGroup) => {
+  // ⏸️ 학생 외출/타학원 일시정지 핸들러
+  const handlePauseStudent = async (studentGroup) => {
     const nowIso = new Date().toISOString();
     const prevSchedules = schedules;
 
     applyOptimisticScheduleUpdate((bookings) =>
       bookings.map((b) => {
         if (studentGroup.bookingIds.includes(b.id)) {
-          return { ...b, departed_at: nowIso };
+          return { ...b, paused_at: nowIso };
         }
         return b;
       })
@@ -485,7 +519,78 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
           fetch(`/api/clinic/bookings/${id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ departed_at: nowIso }),
+            body: JSON.stringify({ paused_at: nowIso }),
+          })
+        )
+      );
+    } catch (err) {
+      setSchedules(prevSchedules);
+      alert(`외출 처리 실패: ${err.message}`);
+    }
+  };
+
+  // ▶️ 학생 복귀 핸들러 (외출 시간만큼 귀가 예정 시간 자동 연장)
+  const handleResumeStudent = async (studentGroup) => {
+    const now = new Date();
+    const pauseStart = studentGroup.pausedAt ? new Date(studentGroup.pausedAt) : now;
+    const outMinutes = Math.max(0, Math.round((now.getTime() - pauseStart.getTime()) / 60000));
+    const newTotalPause = (studentGroup.totalPauseMins || 0) + outMinutes;
+
+    const prevSchedules = schedules;
+
+    applyOptimisticScheduleUpdate((bookings) =>
+      bookings.map((b) => {
+        if (studentGroup.bookingIds.includes(b.id)) {
+          return {
+            ...b,
+            paused_at: null,
+            total_pause_minutes: newTotalPause,
+          };
+        }
+        return b;
+      })
+    );
+
+    try {
+      await Promise.all(
+        studentGroup.bookingIds.map((id) =>
+          fetch(`/api/clinic/bookings/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              paused_at: null,
+              total_pause_minutes: newTotalPause,
+            }),
+          })
+        )
+      );
+    } catch (err) {
+      setSchedules(prevSchedules);
+      alert(`복귀 처리 실패: ${err.message}`);
+    }
+  };
+
+  // 🚪 학생 퇴실 처리 핸들러 (퇴실 시간 기록)
+  const handleDepartStudent = async (studentGroup) => {
+    const nowIso = new Date().toISOString();
+    const prevSchedules = schedules;
+
+    applyOptimisticScheduleUpdate((bookings) =>
+      bookings.map((b) => {
+        if (studentGroup.bookingIds.includes(b.id)) {
+          return { ...b, departed_at: nowIso, paused_at: null };
+        }
+        return b;
+      })
+    );
+
+    try {
+      await Promise.all(
+        studentGroup.bookingIds.map((id) =>
+          fetch(`/api/clinic/bookings/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ departed_at: nowIso, paused_at: null }),
           })
         )
       );
@@ -532,7 +637,14 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
     applyOptimisticScheduleUpdate((bookings) =>
       bookings.map((b) => {
         if (studentGroup.bookingIds.includes(b.id)) {
-          return { ...b, status: 'BOOKED', attended_at: null, departed_at: null };
+          return {
+            ...b,
+            status: 'BOOKED',
+            attended_at: null,
+            departed_at: null,
+            paused_at: null,
+            total_pause_minutes: 0,
+          };
         }
         return b;
       })
@@ -544,7 +656,13 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
           fetch(`/api/clinic/bookings/${id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: 'BOOKED', attended_at: null, departed_at: null }),
+            body: JSON.stringify({
+              status: 'BOOKED',
+              attended_at: null,
+              departed_at: null,
+              paused_at: null,
+              total_pause_minutes: 0,
+            }),
           })
         )
       );
@@ -1364,8 +1482,8 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                                   </span>
                                 )}
                               </div>
-                              <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                                출석 체크 시각부터 학생의 신청 시간({formatDurationLabel(currentSchedule.duration_minutes || 120)}) 기준 실시간 귀가 카운트다운이 동작합니다.
+                                <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                                출석 시각부터 신청 시간({formatDurationLabel(currentSchedule.duration_minutes || 120)}) 기준 실시간 카운트다운이 동작합니다. (외출 시 [외출]을 누르면 시간이 멈추고 [복귀] 시 자동 연장됩니다)
                               </p>
                             </div>
                           </div>
@@ -1400,8 +1518,8 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                             ) : (
                               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                 {clinicAttendanceGroups.activeList.map((st) => {
-                                  const isOverdue = st.remainingMins <= 0;
-                                  const isImminent = !isOverdue && st.remainingMins <= 15;
+                                  const isOverdue = !st.isPaused && st.remainingMins <= 0;
+                                  const isImminent = !st.isPaused && !isOverdue && st.remainingMins <= 15;
                                   const progressPercent = Math.min(
                                     100,
                                     Math.max(0, Math.round(((st.targetDuration - st.remainingMins) / st.targetDuration) * 100))
@@ -1411,7 +1529,9 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                                     <div
                                       key={st.studentId}
                                       className={`p-3.5 rounded-2xl border transition shadow-xs flex flex-col justify-between gap-3 ${
-                                        isOverdue
+                                        st.isPaused
+                                          ? 'bg-amber-50/90 border-amber-300 ring-2 ring-amber-400'
+                                          : isOverdue
                                           ? 'bg-rose-50/90 border-rose-300 ring-2 ring-rose-400'
                                           : isImminent
                                           ? 'bg-amber-50/90 border-amber-300 ring-2 ring-amber-400'
@@ -1433,8 +1553,13 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                                           </div>
                                         </div>
 
-                                        {/* 남은 시간 뱃지 */}
-                                        {isOverdue ? (
+                                        {/* 남은 시간 or 외출 뱃지 */}
+                                        {st.isPaused ? (
+                                          <span className="bg-amber-500 text-white text-[11px] font-black px-2.5 py-1 rounded-lg animate-pulse flex items-center gap-1 shadow-xs shrink-0">
+                                            <span>🏃</span>
+                                            <span>외출 중 ({st.curOutMins}분째)</span>
+                                          </span>
+                                        ) : isOverdue ? (
                                           <span className="bg-rose-600 text-white text-[11px] font-black px-2.5 py-1 rounded-lg animate-pulse flex items-center gap-1 shadow-xs shrink-0">
                                             <span>🚨</span>
                                             <span>{Math.abs(st.remainingMins)}분 초과</span>
@@ -1471,22 +1596,62 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
 
                                         <div className="flex items-center justify-between text-[10.5px] text-slate-500 font-medium">
                                           <span>신청: {formatDurationLabel(st.targetDuration)}</span>
-                                          <span>{isOverdue ? '클리닉 종료됨' : `${progressPercent}% 경과`}</span>
+                                          {st.isPaused ? (
+                                            <span className="text-amber-700 font-black flex items-center gap-0.5">
+                                              <span>⏸️ 잔여 {st.remainingMins}분 (외출 중 멈춤)</span>
+                                            </span>
+                                          ) : (
+                                            <span>{isOverdue ? '클리닉 종료됨' : `${progressPercent}% 경과`}</span>
+                                          )}
                                         </div>
 
                                         {/* 프로그레스 바 */}
                                         <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
                                           <div
                                             className={`h-full transition-all duration-500 rounded-full ${
-                                              isOverdue ? 'bg-rose-500' : isImminent ? 'bg-amber-500' : 'bg-emerald-500'
+                                              st.isPaused
+                                                ? 'bg-amber-500'
+                                                : isOverdue
+                                                ? 'bg-rose-500'
+                                                : isImminent
+                                                ? 'bg-amber-500'
+                                                : 'bg-emerald-500'
                                             }`}
                                             style={{ width: `${progressPercent}%` }}
                                           />
                                         </div>
+
+                                        {st.totalPauseMins > 0 && !st.isPaused && (
+                                          <p className="text-[10px] text-indigo-600 font-bold">
+                                            ℹ️ 이전 외출 {st.totalPauseMins}분이 귀가 시각에 자동 연장되었습니다.
+                                          </p>
+                                        )}
                                       </div>
 
-                                      {/* 하단: 퇴실 처리 & 출석 취소 버튼 */}
-                                      <div className="flex items-center gap-1.5 pt-1 border-t border-slate-100">
+                                      {/* 하단: 외출/복귀 & 퇴실 처리 & 출석 취소 버튼 */}
+                                      <div className="flex items-center gap-1.5 pt-1 border-t border-slate-100 flex-wrap">
+                                        {st.isPaused ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleResumeStudent(st)}
+                                            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black py-1.5 px-2.5 rounded-xl shadow-xs transition active:scale-95 flex items-center justify-center gap-1 animate-pulse"
+                                            title="외출을 마치고 복귀 (외출한 시간만큼 종료 시각 자동 연장)"
+                                          >
+                                            <span>▶️</span>
+                                            <span>복귀 (학원 도착)</span>
+                                          </button>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            onClick={() => handlePauseStudent(st)}
+                                            className="bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-xs font-black py-1.5 px-2.5 rounded-xl transition active:scale-95 flex items-center justify-center gap-1"
+                                            title="다른 학원 다녀오기 등 외출 시 타이머 일시정지"
+                                          >
+                                            <span>⏸️</span>
+                                            <span>외출/타학원</span>
+                                          </button>
+                                        )}
+
                                         <button
                                           type="button"
                                           onClick={() => handleDepartStudent(st)}

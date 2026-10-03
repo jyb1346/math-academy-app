@@ -26,22 +26,86 @@ export async function PATCH(req, { params }) {
     const updateData = {};
     if (body.status !== undefined) {
       updateData.status = body.status;
+      // 출석 처리 시 attended_at 자동 기록
+      if (body.status === 'ATTENDED' && !booking.attended_at && !body.attended_at) {
+        updateData.attended_at = new Date().toISOString();
+      } else if (body.status === 'BOOKED') {
+        // 출석 취소 시 시간 초기화
+        updateData.attended_at = null;
+        updateData.departed_at = null;
+      }
     }
+    if (body.attended_at !== undefined) updateData.attended_at = body.attended_at;
+    if (body.departed_at !== undefined) updateData.departed_at = body.departed_at;
     if (body.startTime !== undefined) updateData.start_time = body.startTime;
     if (body.endTime !== undefined) updateData.end_time = body.endTime;
     if (body.subject !== undefined) updateData.subject = body.subject ? body.subject.trim() : null;
     if (body.memo !== undefined) updateData.memo = body.memo ? body.memo.trim() : null;
     updateData.updated_at = new Date().toISOString();
 
-    const { data: updated, error: updateErr } = await db
+    let { data: updated, error: updateErr } = await db
       .from('clinic_bookings')
       .update(updateData)
       .eq('id', id)
       .select('*')
       .single();
 
+    if (
+      updateErr &&
+      (updateErr.code === '42703' ||
+        updateErr.message?.includes('attended_at') ||
+        updateErr.message?.includes('departed_at'))
+    ) {
+      // DB 컬럼이 아직 없는 경우 memo JSON fallback
+      const fallbackData = { ...updateData };
+      delete fallbackData.attended_at;
+      delete fallbackData.departed_at;
+
+      let meta = {};
+      try {
+        if (booking.memo && booking.memo.startsWith('{')) meta = JSON.parse(booking.memo);
+      } catch {}
+
+      if (updateData.attended_at !== undefined) {
+        if (updateData.attended_at === null) delete meta.attended_at;
+        else meta.attended_at = updateData.attended_at;
+      }
+      if (updateData.departed_at !== undefined) {
+        if (updateData.departed_at === null) delete meta.departed_at;
+        else meta.departed_at = updateData.departed_at;
+      }
+
+      fallbackData.memo = JSON.stringify(meta);
+
+      const retryRes = await db
+        .from('clinic_bookings')
+        .update(fallbackData)
+        .eq('id', id)
+        .select('*')
+        .single();
+
+      if (retryRes.data) {
+        updated = {
+          ...retryRes.data,
+          attended_at: meta.attended_at || null,
+          departed_at: meta.departed_at || null,
+        };
+        updateErr = null;
+      } else {
+        updateErr = retryRes.error;
+      }
+    }
+
     if (updateErr) {
       return NextResponse.json({ error: updateErr.message }, { status: 500 });
+    }
+
+    if (updated && !updated.attended_at && updated.memo?.startsWith('{')) {
+      try {
+        const m = JSON.parse(updated.memo);
+        if (m.attended_at) updated.attended_at = m.attended_at;
+        if (m.departed_at) updated.departed_at = m.departed_at;
+      } catch {}
     }
 
     return NextResponse.json({ booking: updated });

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireSession } from '@/lib/session';
+import { requireSession, attachSessionCookie } from '@/lib/session';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
 export async function GET(req) {
@@ -18,5 +18,8 @@ export async function GET(req) {
     return NextResponse.json({ error: '사용자를 찾을 수 없습니다.' }, { status: 401 });
   }
 
-  return NextResponse.json({ user: freshUser });
+  const res = NextResponse.json({ user: freshUser });
+  // Sliding session: 접속할 때마다 쿠키 만료일을 다시 180일로 연장
+  attachSessionCookie(res, freshUser);
+  return res;
 }

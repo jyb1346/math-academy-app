@@ -77,12 +77,15 @@ export default function CategoryTabs({
           onChange={(e) => setSelectedClassId(e.target.value)}
           className="flex-1 p-2 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm font-bold text-slate-800 shadow-2xs focus:outline-none focus:border-indigo-500 cursor-pointer"
         >
+          <option value="ALL">
+            {user?.role === 'STUDENT' ? '📋 전체 글 보기 (내 모든 반 + 전체 공지)' : '📋 전체 글 보기 (내 모든 반 + 전체 공지)'}
+          </option>
           <option value="PUBLIC">
-            {user?.role === 'STUDENT' ? '👥 내 소속반 전체 공지' : '👥 내 담당반 전체 공지'}
+            {user?.role === 'STUDENT' ? '👥 내 소속반 전체 공지만' : '👥 내 담당반 전체 공지만'}
           </option>
           {myClasses.map((c) => (
             <option key={c.id} value={String(c.id)}>
-              🎯 [{c.name}]
+              🎯 [{c.name}] 전용만
             </option>
           ))}
         </select>

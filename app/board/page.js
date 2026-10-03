@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import CategoryTabs from './components/CategoryTabs';
 import PostCreateForm from './components/PostCreateForm';
 import PostEditModal from './components/PostEditModal';
-import { getClientCache, setClientCache } from '@/lib/clientCache';
+import { getClientCache, setClientCache, invalidateClientCache } from '@/lib/clientCache';
 
 function getYouTubeId(url) {
   if (!url) return null;
@@ -382,7 +382,7 @@ function BoardMain() {
   const [classStudents, setClassStudents] = useState([]);
   
   const [targetClassId, setTargetClassId] = useState('');
-  const [selectedClassId, setSelectedClassId] = useState('PUBLIC');
+  const [selectedClassId, setSelectedClassId] = useState('ALL');
   const [category, setCategory] = useState('ALL');
   const [newCategory, setNewCategory] = useState('HOMEWORK');
   const [dueDate, setDueDate] = useState('');
@@ -452,7 +452,7 @@ function BoardMain() {
 
     if (currentUser.role !== 'STUDENT') {
       if (myC.length > 0) {
-        setSelectedClassId((prev) => (prev && prev !== 'PUBLIC' ? prev : String(myC[0].id)));
+        setSelectedClassId((prev) => (prev && prev !== 'PUBLIC' && prev !== 'ALL' ? prev : String(myC[0].id)));
         setTargetClassId((prev) => (prev && prev !== 'ALL_STUDENTS' ? prev : String(myC[0].id)));
       } else {
         setSelectedClassId('PUBLIC');
@@ -460,7 +460,8 @@ function BoardMain() {
       }
     } else {
       setMyClassIds(data.myClassIds || []);
-      setSelectedClassId((prev) => (prev && prev !== 'PUBLIC' ? prev : (myC.length > 0 ? String(myC[0].id) : 'PUBLIC')));
+      // 학생의 경우 기본값을 'ALL'(전체 글 보기)로 설정하여 본인 소속 반 공지와 전체 공지를 모두 바로 볼 수 있도록 함
+      setSelectedClassId((prev) => (prev ? prev : 'ALL'));
     }
 
     const filtered = (data.posts || []).filter((p) => {
@@ -491,6 +492,14 @@ function BoardMain() {
     if (showSpinner) setLoading(true);
     try {
       const res = await fetch('/api/board');
+      if (res.status === 401) {
+        // 세션 만료 시 무작정 빈 화면으로 방치하지 않고 캐시 정리 후 재로그인 유도
+        invalidateClientCache();
+        localStorage.removeItem('user');
+        alert('로그인 세션이 만료되었습니다. 다시 로그인해 주세요.');
+        router.push('/login');
+        return;
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '조회 실패');
 
@@ -940,8 +949,10 @@ function BoardMain() {
       }
     }
 
-    // 2. 반 탭 필터 (전체 반 탭 없음: [👥 내 담당반 전체 공지] vs [🎯 특정 반])
-    if (selectedClassId === 'PUBLIC') {
+    // 2. 반 탭 필터
+    if (selectedClassId === 'ALL') {
+      // '전체 글 보기' 선택 시 반 필터 없이 통과 (1번 접근 권한 필터에 의해 학생 본인 관련 글만 노출)
+    } else if (selectedClassId === 'PUBLIC') {
       if (post.class_id !== null) return false;
     } else {
       if (String(post.class_id) !== String(selectedClassId)) return false;
@@ -1041,7 +1052,7 @@ function BoardMain() {
             selectedClassId={selectedClassId}
             setSelectedClassId={(clsId) => {
               setSelectedClassId(clsId);
-              if (clsId === 'PUBLIC') {
+              if (clsId === 'PUBLIC' || clsId === 'ALL') {
                 setTargetClassId('ALL_STUDENTS');
               } else {
                 setTargetClassId(clsId);

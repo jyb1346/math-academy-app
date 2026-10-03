@@ -152,17 +152,23 @@ export async function GET(req) {
     const bookingList = initialBookings.map((b) => {
       let attended_at = b.attended_at || null;
       let departed_at = b.departed_at || null;
-      if (!attended_at && b.memo?.startsWith('{')) {
+      let paused_at = b.paused_at || null;
+      let total_pause_minutes = b.total_pause_minutes || 0;
+      if (b.memo?.startsWith('{')) {
         try {
           const m = JSON.parse(b.memo);
-          if (m.attended_at) attended_at = m.attended_at;
-          if (m.departed_at) departed_at = m.departed_at;
+          if (!attended_at && m.attended_at) attended_at = m.attended_at;
+          if (!departed_at && m.departed_at) departed_at = m.departed_at;
+          if (!paused_at && m.paused_at) paused_at = m.paused_at;
+          if (!total_pause_minutes && m.total_pause_minutes) total_pause_minutes = m.total_pause_minutes;
         } catch {}
       }
       return {
         ...b,
         attended_at,
         departed_at,
+        paused_at,
+        total_pause_minutes,
         users: userMap[b.student_id] || { id: b.student_id, name: '학생' },
       };
     });

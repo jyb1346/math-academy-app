@@ -33,10 +33,14 @@ export async function PATCH(req, { params }) {
         // 출석 취소 시 시간 초기화
         updateData.attended_at = null;
         updateData.departed_at = null;
+        updateData.paused_at = null;
+        updateData.total_pause_minutes = 0;
       }
     }
     if (body.attended_at !== undefined) updateData.attended_at = body.attended_at;
     if (body.departed_at !== undefined) updateData.departed_at = body.departed_at;
+    if (body.paused_at !== undefined) updateData.paused_at = body.paused_at;
+    if (body.total_pause_minutes !== undefined) updateData.total_pause_minutes = body.total_pause_minutes;
     if (body.startTime !== undefined) updateData.start_time = body.startTime;
     if (body.endTime !== undefined) updateData.end_time = body.endTime;
     if (body.subject !== undefined) updateData.subject = body.subject ? body.subject.trim() : null;
@@ -54,12 +58,16 @@ export async function PATCH(req, { params }) {
       updateErr &&
       (updateErr.code === '42703' ||
         updateErr.message?.includes('attended_at') ||
-        updateErr.message?.includes('departed_at'))
+        updateErr.message?.includes('departed_at') ||
+        updateErr.message?.includes('paused_at') ||
+        updateErr.message?.includes('total_pause_minutes'))
     ) {
       // DB 컬럼이 아직 없는 경우 memo JSON fallback
       const fallbackData = { ...updateData };
       delete fallbackData.attended_at;
       delete fallbackData.departed_at;
+      delete fallbackData.paused_at;
+      delete fallbackData.total_pause_minutes;
 
       let meta = {};
       try {
@@ -73,6 +81,14 @@ export async function PATCH(req, { params }) {
       if (updateData.departed_at !== undefined) {
         if (updateData.departed_at === null) delete meta.departed_at;
         else meta.departed_at = updateData.departed_at;
+      }
+      if (updateData.paused_at !== undefined) {
+        if (updateData.paused_at === null) delete meta.paused_at;
+        else meta.paused_at = updateData.paused_at;
+      }
+      if (updateData.total_pause_minutes !== undefined) {
+        if (updateData.total_pause_minutes === null) delete meta.total_pause_minutes;
+        else meta.total_pause_minutes = updateData.total_pause_minutes;
       }
 
       fallbackData.memo = JSON.stringify(meta);
@@ -89,6 +105,8 @@ export async function PATCH(req, { params }) {
           ...retryRes.data,
           attended_at: meta.attended_at || null,
           departed_at: meta.departed_at || null,
+          paused_at: meta.paused_at || null,
+          total_pause_minutes: meta.total_pause_minutes || 0,
         };
         updateErr = null;
       } else {
@@ -100,11 +118,15 @@ export async function PATCH(req, { params }) {
       return NextResponse.json({ error: updateErr.message }, { status: 500 });
     }
 
-    if (updated && !updated.attended_at && updated.memo?.startsWith('{')) {
+    if (updated && updated.memo?.startsWith('{')) {
       try {
         const m = JSON.parse(updated.memo);
-        if (m.attended_at) updated.attended_at = m.attended_at;
-        if (m.departed_at) updated.departed_at = m.departed_at;
+        if (!updated.attended_at && m.attended_at) updated.attended_at = m.attended_at;
+        if (!updated.departed_at && m.departed_at) updated.departed_at = m.departed_at;
+        if (!updated.paused_at && m.paused_at) updated.paused_at = m.paused_at;
+        if (updated.total_pause_minutes === undefined && m.total_pause_minutes !== undefined) {
+          updated.total_pause_minutes = m.total_pause_minutes;
+        }
       } catch {}
     }
 

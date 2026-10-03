@@ -104,7 +104,7 @@ export default function PostEditModal({
                   ))}
                 </optgroup>
                 <optgroup label="──────────────────">
-                  <option value="ALL_STUDENTS">📢 학원 전체 학생</option>
+                  <option value="ALL_STUDENTS">👥 내 담당반 전체</option>
                 </optgroup>
               </select>
             </div>

@@ -49,7 +49,7 @@ export default function PostItem({
             </span>
           ) : (
             <span className="bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-bold">
-              🌐 학원 전체 공지
+              👥 내 담당반 전체 공지
             </span>
           )}
           {post.due_date && (
@@ -160,7 +160,7 @@ export default function PostItem({
           <div className="flex justify-between items-center">
             <p className="text-xs font-bold text-slate-700">👀 학생 공지/숙제 확인 현황</p>
             <span className="text-[10px] font-bold text-blue-600">
-              {studentScope === 'MY_STUDENTS' ? '👤 내 담당 학생만 보기' : '🌐 학원 전체 학생 보기'}
+              {studentScope === 'MY_STUDENTS' ? '👤 내 담당 학생만 보기' : '👥 내 담당반 전체 학생 보기'}
             </span>
           </div>
 

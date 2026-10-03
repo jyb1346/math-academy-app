@@ -502,37 +502,6 @@ export default function TeacherDashboard() {
       <main className="max-w-5xl mx-auto px-4 mt-8 space-y-8">
         <PushNotificationManager user={user} />
 
-        {/* ⏱️ 개별 시험 타이머 배너 */}
-        <section>
-          <div
-            onClick={() => router.push('/teacher/timer')}
-            className="group relative bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-800 p-6 rounded-3xl shadow-xl shadow-teal-950/10 cursor-pointer overflow-hidden transition-all duration-300 hover:scale-[1.01] border border-emerald-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
-          >
-            <div className="absolute top-0 right-0 -mt-8 -mr-8 w-40 h-40 bg-white/10 rounded-full blur-2xl pointer-events-none" />
-            <div className="flex items-center gap-4 z-10">
-              <div className="w-13 h-13 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-3xl shrink-0 shadow-md">
-                ⏱️
-              </div>
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
-                  <h2 className="text-xl sm:text-2xl font-black text-white">개별 시험 실시간 타이머</h2>
-                  <span className="bg-amber-300 text-amber-950 font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-2xs">
-                    NEW 수업 집중 도구
-                  </span>
-                </div>
-                <p className="text-xs text-emerald-100/90 leading-relaxed">
-                  학생 이름을 클릭하면 즉시 45분 카운트다운 시작! 개별로 시작 시간이 달라도 한눈에 체크합니다.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 z-10 self-end sm:self-center">
-              <span className="text-xs font-black text-white bg-white/20 px-4 py-2.5 rounded-2xl backdrop-blur-md border border-white/20 group-hover:bg-white group-hover:text-emerald-950 transition shadow-sm">
-                타이머 열기 →
-              </span>
-            </div>
-          </div>
-        </section>
-
         {/* 🎯 1. 메인 대형 액션 메뉴 */}
         <section className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">

@@ -23,3 +23,31 @@ export async function DELETE(req, { params }) {
 
   return NextResponse.json({ ok: true });
 }
+
+// PATCH /api/admin/teachers/[id] — 강사 계정 수정 (권한, 이름 등)
+export async function PATCH(req, { params }) {
+  const { user, error } = requireRole(req, ['HEAD_TEACHER']);
+  if (error) return error;
+
+  const { id } = await params;
+  const db = getSupabaseAdmin(req);
+
+  const body = await req.json();
+  const updates = {};
+  if (body.role && ['TEACHER', 'HEAD_TEACHER', 'ADMIN'].includes(body.role)) {
+    updates.role = body.role;
+  }
+  if (body.name && typeof body.name === 'string') {
+    updates.name = body.name.trim();
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: '수정할 데이터가 없습니다.' }, { status: 400 });
+  }
+
+  const { error: updateErr } = await db.from('users').update(updates).eq('id', id);
+  if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
+
+  return NextResponse.json({ ok: true });
+}
+

@@ -68,7 +68,12 @@ export default function QnaPage() {
     try {
       if (showLoading) setLoading(true);
 
-      const res = await fetch('/api/qna');
+      const res = await fetch(`/api/qna?_t=${Date.now()}`, { cache: 'no-store' });
+      if (res.status === 401) {
+        alert('로그인이 만료되었습니다. 다시 로그인해 주세요.');
+        router.push('/login');
+        return;
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '조회 실패');
 
@@ -122,6 +127,20 @@ export default function QnaPage() {
       console.error('QnA data loading error:', e);
       fetchQuestions(parsedUser, true);
     }
+
+    // ⚡ 2. 모바일 알림 탭 복귀 / 창 활성화 시 자동 최신 데이터 재조회
+    const handleRevalidate = () => {
+      if (document.visibilityState === 'visible') {
+        fetchQuestions(parsedUser, false);
+      }
+    };
+    window.addEventListener('focus', handleRevalidate);
+    document.addEventListener('visibilitychange', handleRevalidate);
+
+    return () => {
+      window.removeEventListener('focus', handleRevalidate);
+      document.removeEventListener('visibilitychange', handleRevalidate);
+    };
   }, []);
 
   // 학생: 최초 질문 파일 선택 시 미리보기 생성
@@ -687,12 +706,6 @@ export default function QnaPage() {
                   onChange={(e) => setTeacherFilter(e.target.value)}
                   className="text-xs font-bold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
                 >
-                  <option value="ALL">전체 강사 질문</option>
-                  {teachersList.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name} 선생님
-                    </option>
-                  ))}
                   <option value={user?.id}>⭐ 내 담당 질문 (기본)</option>
                   <option value="ALL">🌐 전체 강사 질문</option>
                   {teachersList

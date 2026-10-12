@@ -4,6 +4,9 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { computeAvailableTargets } from '@/lib/qnaTargets';
 import { sendPushToUsers } from '@/lib/pushService';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // GET /api/qna — 역할별 범위로 질문 목록 + 표시용 이름 매핑 조회
 export async function GET(req) {
   const { user, error } = requireSession(req);
@@ -34,7 +37,7 @@ export async function GET(req) {
       : Promise.resolve({ data: [] }),
     user.role === 'STUDENT'
       ? computeAvailableTargets(db, user)
-      : db.from('users').select('id, name').in('role', ['TEACHER', 'HEAD_TEACHER']),
+      : db.from('users').select('id, name').in('role', ['TEACHER', 'HEAD_TEACHER']).order('name'),
   ]);
 
   const usersMap = {};
@@ -43,7 +46,14 @@ export async function GET(req) {
   const teachersList = user.role === 'STUDENT' ? [] : (secondaryRes.data || []);
   const availableTargets = user.role === 'STUDENT' ? secondaryRes.targets : [];
 
-  return NextResponse.json({ questions, usersMap, teachersList, availableTargets });
+  return NextResponse.json(
+    { questions, usersMap, teachersList, availableTargets },
+    {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      },
+    }
+  );
 }
 
 // POST /api/qna — 학생의 1:1 최초 질문 등록

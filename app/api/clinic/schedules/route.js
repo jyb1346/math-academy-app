@@ -5,6 +5,8 @@ import { sendPushToUsers } from '@/lib/pushService';
 import {
   generateIntervalsWithAvailability,
   generateTeacherTimetableGrid,
+  normalizeClinicSchedule,
+  serializeTargetMeta,
 } from '@/lib/clinicUtils';
 
 // GET /api/clinic/schedules — 클리닉 일정 및 예약 현황 조회
@@ -42,7 +44,7 @@ export async function GET(req) {
       return NextResponse.json({ error: schedErr.message }, { status: 500 });
     }
 
-    let rawSchedules = schedules || [];
+    let rawSchedules = (schedules || []).map(normalizeClinicSchedule);
 
     // 🎯 학생인 경우: 대상(내 담당 교사 / 소속 반 / 지정 학생 / 전체)에 맞는 일정만 필터링
     if (isStudent) {
@@ -339,11 +341,15 @@ export async function POST(req) {
         insertErr.message?.includes('target_student_ids') ||
         insertErr.code === '42703')
     ) {
-      // DB에 새 컬럼이 아직 없는 경우 호환 fallback
+      // DB에 새 컬럼이 아직 없는 경우 notice에 메타데이터를 포함하여 호환 저장
       const fallbackData = { ...scheduleData };
       delete fallbackData.target_type;
       delete fallbackData.target_class_ids;
       delete fallbackData.target_student_ids;
+
+      const metaTag = serializeTargetMeta(targetType, classIdsArray, targetStudentIds);
+      fallbackData.notice = notice ? `${notice.trim()}\n${metaTag}` : metaTag;
+
       const fallbackRes = await db
         .from('clinic_schedules')
         .insert([fallbackData])
@@ -356,6 +362,9 @@ export async function POST(req) {
     if (insertErr) {
       return NextResponse.json({ error: insertErr.message }, { status: 500 });
     }
+
+    // 반환 객체 정규화 (notice 메타태그 분리 및 대상 복원)
+    inserted = normalizeClinicSchedule(inserted);
 
     // 푸시 알림 전송 옵션이 켜진 경우
     if (sendPush) {

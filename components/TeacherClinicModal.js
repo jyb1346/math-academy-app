@@ -170,9 +170,16 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
     let list = [];
 
     if (type === 'STUDENTS') {
-      const ids = Array.isArray(currentSchedule.target_student_ids)
-        ? currentSchedule.target_student_ids
-        : [];
+      let ids = [];
+      if (Array.isArray(currentSchedule.target_student_ids)) {
+        ids = currentSchedule.target_student_ids;
+      } else if (typeof currentSchedule.target_student_ids === 'string') {
+        try {
+          ids = JSON.parse(currentSchedule.target_student_ids);
+        } catch {
+          ids = [currentSchedule.target_student_ids];
+        }
+      }
       list = students.filter((s) => ids.includes(s.id));
     } else if (type === 'CLASS') {
       let classIds = [];
@@ -1230,7 +1237,7 @@ export default function TeacherClinicModal({ user, students = [], classes = [], 
                                       : classes.find((c) => c.id === currentSchedule.target_class_id)?.name || '지정 반'
                                   })`
                                 : currentSchedule.target_type === 'STUDENTS'
-                                ? `지정 학생 (${Array.isArray(currentSchedule.target_student_ids) ? currentSchedule.target_student_ids.length : 0}명)`
+                                ? `지정 학생 (${scheduleTargetStudents.length > 0 ? scheduleTargetStudents.length : (Array.isArray(currentSchedule.target_student_ids) ? currentSchedule.target_student_ids.length : 0)}명)`
                                 : '내 담당 학생'}
                             </span>
                           </div>

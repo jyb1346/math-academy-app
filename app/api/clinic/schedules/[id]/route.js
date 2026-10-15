@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/session';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { normalizeClinicSchedule, serializeTargetMeta } from '@/lib/clinicUtils';
 
 // PATCH /api/clinic/schedules/[id] — 클리닉 일정 수정 / 마감 토글
 export async function PATCH(req, { params }) {
@@ -20,8 +21,27 @@ export async function PATCH(req, { params }) {
     if (body.maxCapacity !== undefined) {
       updateData.max_capacity = body.maxCapacity && Number(body.maxCapacity) > 0 ? Number(body.maxCapacity) : null;
     }
-    if (body.notice !== undefined) updateData.notice = body.notice ? body.notice.trim() : null;
     if (body.isActive !== undefined) updateData.is_active = Boolean(body.isActive);
+
+    // 공지사항 또는 대상 변경 시 기존 메타데이터 보존 처리
+    if (body.notice !== undefined || body.targetType !== undefined) {
+      const { data: cur } = await db.from('clinic_schedules').select('notice').eq('id', id).single();
+      let metaStr = '';
+      if (body.targetType !== undefined) {
+        metaStr = serializeTargetMeta(body.targetType, body.targetClassIds || [], body.targetStudentIds || []);
+      } else if (cur?.notice && cur.notice.includes('[TARGET_META:')) {
+        const match = cur.notice.match(/\[TARGET_META:.*?\]/s);
+        if (match) metaStr = match[0];
+      }
+
+      const inputNotice = body.notice !== undefined ? (body.notice ? body.notice.trim() : '') : (cur?.notice?.replace(/\[TARGET_META:.*?\]/s, '').trim() || '');
+      if (metaStr) {
+        updateData.notice = inputNotice ? `${inputNotice}\n${metaStr}` : metaStr;
+      } else {
+        updateData.notice = inputNotice || null;
+      }
+    }
+
     updateData.updated_at = new Date().toISOString();
 
     const { data: updated, error: updateErr } = await db
@@ -35,7 +55,7 @@ export async function PATCH(req, { params }) {
       return NextResponse.json({ error: updateErr.message }, { status: 500 });
     }
 
-    return NextResponse.json({ schedule: updated });
+    return NextResponse.json({ schedule: normalizeClinicSchedule(updated) });
   } catch (err) {
     console.error('clinic schedule PATCH error:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });

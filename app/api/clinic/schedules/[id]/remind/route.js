@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/session';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { sendPushToUsers } from '@/lib/pushService';
+import { normalizeClinicSchedule } from '@/lib/clinicUtils';
 
 // POST /api/clinic/schedules/[id]/remind — 클리닉 미신청 학생들에게 푸시 알림 수동 재전송
 export async function POST(req, { params }) {
@@ -13,15 +14,17 @@ export async function POST(req, { params }) {
     const db = getSupabaseAdmin(req);
 
     // 1. 클리닉 일정 조회
-    const { data: schedule, error: schedErr } = await db
+    const { data: rawSchedule, error: schedErr } = await db
       .from('clinic_schedules')
       .select('*')
       .eq('id', scheduleId)
       .single();
 
-    if (schedErr || !schedule) {
+    if (schedErr || !rawSchedule) {
       return NextResponse.json({ error: '클리닉 일정을 찾을 수 없습니다.' }, { status: 404 });
     }
+
+    const schedule = normalizeClinicSchedule(rawSchedule);
 
     // 2. 대상 학생 목록 계산
     let targetStudentIds = [];

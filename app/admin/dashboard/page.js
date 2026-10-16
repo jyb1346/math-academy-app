@@ -317,6 +317,12 @@ export default function AdminDashboard() {
 
         <div className="flex items-center gap-2">
           <button
+            onClick={() => router.push('/teacher/scores')}
+            className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-black px-3.5 py-2 rounded-xl transition shadow-xs"
+          >
+            📈 고교 성적 추이
+          </button>
+          <button
             onClick={() => setShowPushModal(true)}
             className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold px-3.5 py-2 rounded-xl transition border border-emerald-200"
           >

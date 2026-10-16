@@ -454,6 +454,15 @@ export default function TeacherDashboard() {
           {/* 2층: 액션 버튼 그룹 (모바일에서 가로로 시원하게 배치) */}
           <div className="flex items-center gap-2 overflow-x-auto pb-0.5 pt-1 md:pt-0 scrollbar-none">
             <button
+              onClick={() => router.push('/teacher/scores')}
+              className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-black px-3.5 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0"
+              title="고교 내신 및 모의고사 성적 추이·패인 분석 센터 열기"
+            >
+              <span>📈</span>
+              <span>고교 성적 추이</span>
+            </button>
+
+            <button
               onClick={() => router.push('/teacher/timer')}
               className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-black px-3.5 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0"
               title="수업 중 개별 시험 타이머 열기"
@@ -614,12 +623,36 @@ export default function TeacherDashboard() {
 
           </div>
 
-          <div className="flex justify-end">
+          {/* 📈 고교 수학 내신·모의고사 성적 추이 & 패인 분석 배너 + 피드백 내역 바로가기 */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div
+              onClick={() => router.push('/teacher/scores')}
+              className="flex-1 bg-gradient-to-r from-indigo-900 via-indigo-800 to-emerald-900 text-white px-5 py-3.5 rounded-2xl shadow-md cursor-pointer hover:opacity-95 transition flex items-center justify-between gap-3"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">📈</span>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-black">
+                      고교 내신 · 모의고사 성적 추이 & 패인 분석 센터
+                    </span>
+                    <span className="text-[10px] bg-emerald-400 text-slate-950 font-black px-2 py-0.5 rounded-full">
+                      NEW
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-indigo-100/90 font-medium">
+                    원점수 · 등급 · 석차 · 표준편차(Z점수) · 실수 보정 잠재점수 및 전회차 대비 오답 체질 비교
+                  </p>
+                </div>
+              </div>
+              <span className="text-lg font-black text-white/80 shrink-0">열기 →</span>
+            </div>
+
             <button
               onClick={() => router.push('/teacher/eval/history')}
-              className="text-xs bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/80 px-4 py-2.5 rounded-2xl font-bold transition shadow-xs flex items-center gap-2"
+              className="text-xs bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/80 px-4 py-3.5 rounded-2xl font-bold transition shadow-xs flex items-center justify-center gap-2 shrink-0"
             >
-              <span>📋 작성된 일일 피드백 리포트 내역 및 학부모 답장 보기</span>
+              <span>📋 일일 피드백 내역 및 학부모 답장 보기</span>
               <span>→</span>
             </button>
           </div>

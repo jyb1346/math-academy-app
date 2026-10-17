@@ -11,6 +11,7 @@ import {
   ERROR_REASON_CATEGORIES,
   calculateZScore,
   zScoreToTopPercent,
+  calculateAutoGrade,
   analyzePotentialPerformance,
   analyzeGradePosition,
   compareErrorTrends,
@@ -383,8 +384,14 @@ export default function TeacherScoresPage() {
   const handleSaveSingleScore = async (e) => {
     e.preventDefault();
     if (!currentStudent) return;
-    if (examForm.raw_score === '' && examForm.grade === '') {
-      return alert('원점수 또는 등급 중 최소 한 가지는 입력해 주세요.');
+    const autoGradeResult = calculateAutoGrade(
+      examForm,
+      examForm.exam_category === 'INTERNAL' ? profileGradeSystem : 9
+    );
+    const resolvedGrade = autoGradeResult.grade ?? examForm.grade;
+
+    if (examForm.raw_score === '' && examForm.rank === '' && !resolvedGrade) {
+      return alert('원점수 또는 석차(등수) 중 최소 한 가지는 입력해 주세요.');
     }
 
     try {
@@ -397,6 +404,7 @@ export default function TeacherScoresPage() {
           syncSchoolStats: true,
           score: {
             ...examForm,
+            grade: resolvedGrade ?? '',
             student_id: currentStudent.id,
             school_name: profileSchoolName,
             grade_system: profileGradeSystem,
@@ -1861,20 +1869,29 @@ export default function TeacherScoresPage() {
                     <th className="py-2.5 px-2 min-w-[75px] bg-indigo-50/60 text-indigo-900">
                       원점수
                     </th>
-                    <th className="py-2.5 px-2 min-w-[65px] bg-indigo-50/60 text-indigo-900">
-                      등급
-                    </th>
                     {batchMeta.exam_category === 'INTERNAL' ? (
                       <>
-                        <th className="py-2.5 px-2 min-w-[70px]">전교석차</th>
-                        <th className="py-2.5 px-2 min-w-[75px]">수강자수</th>
+                        <th className="py-2.5 px-2 min-w-[72px] bg-indigo-50/60 text-indigo-900">
+                          전교석차(등수)
+                        </th>
+                        <th className="py-2.5 px-2 min-w-[78px] bg-indigo-50/60 text-indigo-900">
+                          수강자수(전교생)
+                        </th>
+                        <th className="py-2.5 px-2 min-w-[92px] bg-emerald-50 text-emerald-900 text-center">
+                          ⚡ 자동 등급
+                        </th>
                         <th className="py-2.5 px-2 min-w-[75px]">학교평균</th>
                         <th className="py-2.5 px-2 min-w-[75px]">표준편차</th>
                       </>
                     ) : (
                       <>
-                        <th className="py-2.5 px-2 min-w-[75px]">백분위(%)</th>
+                        <th className="py-2.5 px-2 min-w-[78px] bg-indigo-50/60 text-indigo-900">
+                          백분위(%)
+                        </th>
                         <th className="py-2.5 px-2 min-w-[75px]">표준점수</th>
+                        <th className="py-2.5 px-2 min-w-[92px] bg-emerald-50 text-emerald-900 text-center">
+                          ⚡ 자동 등급
+                        </th>
                       </>
                     )}
                     <th
@@ -1919,6 +1936,12 @@ export default function TeacherScoresPage() {
                 <tbody className="divide-y divide-slate-200/70">
                   {batchTargetStudents.map((st) => {
                     const row = batchRows[st.id] || { error_breakdown: {} };
+                    const autoGradeInfo = calculateAutoGrade(
+                      { ...row, exam_category: batchMeta.exam_category },
+                      batchMeta.exam_category === 'INTERNAL' ? Number(row.grade_system) || 9 : 9
+                    );
+                    const displayGrade = autoGradeInfo.grade ?? (row.grade ? Number(row.grade) : null);
+
                     return (
                       <tr key={st.id} className="hover:bg-slate-50/80">
                         <td className="py-2 px-2.5 font-black text-slate-900 whitespace-nowrap">
@@ -1948,34 +1971,21 @@ export default function TeacherScoresPage() {
                             className="w-full bg-white border border-indigo-200 rounded-lg px-2 py-1.5 font-black text-indigo-950 text-right focus:outline-indigo-600"
                           />
                         </td>
-                        <td className="py-1.5 px-1.5 bg-indigo-50/20">
-                          <input
-                            type="number"
-                            min="1"
-                            max="9"
-                            placeholder="등급"
-                            value={row.grade ?? ''}
-                            onChange={(e) =>
-                              handleBatchRowChange(st.id, 'grade', e.target.value)
-                            }
-                            className="w-full bg-white border border-indigo-200 rounded-lg px-2 py-1.5 font-black text-indigo-950 text-center focus:outline-indigo-600"
-                          />
-                        </td>
 
                         {batchMeta.exam_category === 'INTERNAL' ? (
                           <>
-                            <td className="py-1.5 px-1.5">
+                            <td className="py-1.5 px-1.5 bg-indigo-50/20">
                               <input
                                 type="number"
-                                placeholder="석차"
+                                placeholder="등수"
                                 value={row.rank ?? ''}
                                 onChange={(e) =>
                                   handleBatchRowChange(st.id, 'rank', e.target.value)
                                 }
-                                className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 font-semibold text-right"
+                                className="w-full bg-white border border-indigo-200 rounded-lg px-2 py-1.5 font-black text-indigo-950 text-right focus:outline-indigo-600"
                               />
                             </td>
-                            <td className="py-1.5 px-1.5">
+                            <td className="py-1.5 px-1.5 bg-indigo-50/20">
                               <input
                                 type="number"
                                 placeholder="전교생"
@@ -1983,8 +1993,26 @@ export default function TeacherScoresPage() {
                                 onChange={(e) =>
                                   handleBatchRowChange(st.id, 'total_students', e.target.value)
                                 }
-                                className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 font-semibold text-right"
+                                className="w-full bg-white border border-indigo-200 rounded-lg px-2 py-1.5 font-semibold text-right focus:outline-indigo-600"
                               />
+                            </td>
+                            <td className="py-1.5 px-1.5 bg-emerald-50/40 text-center">
+                              {displayGrade ? (
+                                <div className="flex flex-col items-center leading-tight">
+                                  <span className="bg-emerald-600 text-white font-black px-2 py-0.5 rounded-md text-xs">
+                                    {displayGrade}등급
+                                  </span>
+                                  {autoGradeInfo.topPct !== null && (
+                                    <span className="text-[10px] font-bold text-emerald-800 mt-0.5">
+                                      상위 {autoGradeInfo.topPct}%
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-[10px] font-bold text-slate-400">
+                                  등수 입력 시 자동
+                                </span>
+                              )}
                             </td>
                             <td className="py-1.5 px-1.5">
                               <input
@@ -2013,7 +2041,7 @@ export default function TeacherScoresPage() {
                           </>
                         ) : (
                           <>
-                            <td className="py-1.5 px-1.5">
+                            <td className="py-1.5 px-1.5 bg-indigo-50/20">
                               <input
                                 type="number"
                                 step="0.1"
@@ -2022,7 +2050,7 @@ export default function TeacherScoresPage() {
                                 onChange={(e) =>
                                   handleBatchRowChange(st.id, 'percentile', e.target.value)
                                 }
-                                className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 font-semibold text-right"
+                                className="w-full bg-white border border-indigo-200 rounded-lg px-2 py-1.5 font-black text-indigo-950 text-right focus:outline-indigo-600"
                               />
                             </td>
                             <td className="py-1.5 px-1.5">
@@ -2035,6 +2063,17 @@ export default function TeacherScoresPage() {
                                 }
                                 className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 font-semibold text-right"
                               />
+                            </td>
+                            <td className="py-1.5 px-1.5 bg-emerald-50/40 text-center">
+                              {displayGrade ? (
+                                <span className="bg-emerald-600 text-white font-black px-2 py-0.5 rounded-md text-xs">
+                                  {displayGrade}등급
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-bold text-slate-400">
+                                  백분위 입력 시 자동
+                                </span>
+                              )}
                             </td>
                           </>
                         )}
@@ -2312,144 +2351,187 @@ export default function TeacherScoresPage() {
                 </div>
               )}
 
-              {/* 2. 점수 · 등급 · 석차 · 표준편차 */}
+              {/* 2. 점수 · 석차 · 자동 등급 · 표준편차 */}
               <div className="space-y-2.5">
-                <h4 className="text-xs font-black text-slate-800">
-                  📊 성적 지표 입력
-                </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                      원점수 (100점 만점) *
-                    </label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      placeholder="예: 86.5"
-                      value={examForm.raw_score}
-                      onChange={(e) =>
-                        setExamForm((p) => ({ ...p, raw_score: e.target.value }))
-                      }
-                      className="w-full text-sm bg-indigo-50/40 border border-indigo-300 rounded-xl px-3 py-2 font-black text-indigo-950"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                      등급 (1~{examForm.exam_category === 'INTERNAL' ? profileGradeSystem : 9}등급)
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="9"
-                      placeholder="예: 2"
-                      value={examForm.grade}
-                      onChange={(e) =>
-                        setExamForm((p) => ({ ...p, grade: e.target.value }))
-                      }
-                      className="w-full text-sm bg-indigo-50/40 border border-indigo-300 rounded-xl px-3 py-2 font-black text-indigo-950"
-                    />
-                  </div>
-
-                  {examForm.exam_category === 'INTERNAL' ? (
-                    <>
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                          전교 석차 (등수)
-                        </label>
-                        <input
-                          type="number"
-                          placeholder="예: 14"
-                          value={examForm.rank}
-                          onChange={(e) =>
-                            setExamForm((p) => ({ ...p, rank: e.target.value }))
-                          }
-                          className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-bold"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                          수강자 수 (전교생 수)
-                        </label>
-                        <input
-                          type="number"
-                          placeholder="예: 260"
-                          value={examForm.total_students}
-                          onChange={(e) =>
-                            setExamForm((p) => ({ ...p, total_students: e.target.value }))
-                          }
-                          className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-bold"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                          학교 과목 평균
-                        </label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          placeholder="예: 54.2"
-                          value={examForm.school_mean}
-                          onChange={(e) =>
-                            setExamForm((p) => ({ ...p, school_mean: e.target.value }))
-                          }
-                          className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-bold"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                          학교 표준편차 🌟
-                        </label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          placeholder="예: 18.5"
-                          value={examForm.school_std_dev}
-                          onChange={(e) =>
-                            setExamForm((p) => ({ ...p, school_std_dev: e.target.value }))
-                          }
-                          className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-bold"
-                        />
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                          백분위 (%)
-                        </label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          placeholder="예: 94"
-                          value={examForm.percentile}
-                          onChange={(e) =>
-                            setExamForm((p) => ({ ...p, percentile: e.target.value }))
-                          }
-                          className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-bold"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                          표준점수 (선택)
-                        </label>
-                        <input
-                          type="number"
-                          placeholder="예: 135"
-                          value={examForm.standard_score}
-                          onChange={(e) =>
-                            setExamForm((p) => ({ ...p, standard_score: e.target.value }))
-                          }
-                          className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-bold"
-                        />
-                      </div>
-                    </>
-                  )}
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black text-slate-800">
+                    📊 성적 지표 입력
+                  </h4>
+                  <span className="text-[11px] font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+                    ⚡ 등수·전교생 수(또는 백분위) 입력 시 등급 자동 산출
+                  </span>
                 </div>
+
+                {(() => {
+                  const modalAutoGrade = calculateAutoGrade(
+                    examForm,
+                    examForm.exam_category === 'INTERNAL' ? profileGradeSystem : 9
+                  );
+                  const displayModalGrade =
+                    modalAutoGrade.grade ?? (examForm.grade ? Number(examForm.grade) : null);
+
+                  return (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                          원점수 (100점 만점) *
+                        </label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          placeholder="예: 86.5"
+                          value={examForm.raw_score}
+                          onChange={(e) =>
+                            setExamForm((p) => ({ ...p, raw_score: e.target.value }))
+                          }
+                          className="w-full text-sm bg-indigo-50/40 border border-indigo-300 rounded-xl px-3 py-2 font-black text-indigo-950"
+                        />
+                      </div>
+
+                      {examForm.exam_category === 'INTERNAL' ? (
+                        <>
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                              전교 석차 (등수) *
+                            </label>
+                            <input
+                              type="number"
+                              placeholder="예: 14"
+                              value={examForm.rank}
+                              onChange={(e) =>
+                                setExamForm((p) => ({ ...p, rank: e.target.value }))
+                              }
+                              className="w-full text-sm bg-indigo-50/40 border border-indigo-300 rounded-xl px-3 py-2 font-black text-indigo-950"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                              수강자 수 (전교생 수) *
+                            </label>
+                            <input
+                              type="number"
+                              placeholder="예: 260"
+                              value={examForm.total_students}
+                              onChange={(e) =>
+                                setExamForm((p) => ({ ...p, total_students: e.target.value }))
+                              }
+                              className="w-full text-sm bg-indigo-50/40 border border-indigo-300 rounded-xl px-3 py-2 font-black text-indigo-950"
+                            />
+                          </div>
+
+                          {/* ⚡ 자동 산출 등급 표시 카드 */}
+                          <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl px-3 py-2 flex flex-col justify-center">
+                            <span className="text-[10px] font-extrabold text-emerald-800">
+                              ⚡ 자동 산출 등급 ({profileGradeSystem}등급제)
+                            </span>
+                            {displayModalGrade ? (
+                              <div className="flex items-baseline gap-1.5 mt-0.5">
+                                <span className="text-base font-black text-emerald-950">
+                                  {displayModalGrade}등급
+                                </span>
+                                {modalAutoGrade.topPct !== null && (
+                                  <span className="text-[11px] font-extrabold text-emerald-700">
+                                    (상위 {modalAutoGrade.topPct}%
+                                    {modalAutoGrade.source === 'Z_SCORE' ? ' 추정' : ''})
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-[11px] font-bold text-slate-400 mt-0.5">
+                                등수·전교생 입력 시 자동 표시
+                              </span>
+                            )}
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                              학교 과목 평균
+                            </label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              placeholder="예: 54.2"
+                              value={examForm.school_mean}
+                              onChange={(e) =>
+                                setExamForm((p) => ({ ...p, school_mean: e.target.value }))
+                              }
+                              className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-bold"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                              학교 표준편차 🌟
+                            </label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              placeholder="예: 18.5"
+                              value={examForm.school_std_dev}
+                              onChange={(e) =>
+                                setExamForm((p) => ({ ...p, school_std_dev: e.target.value }))
+                              }
+                              className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-bold"
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                              백분위 (%) *
+                            </label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              placeholder="예: 94"
+                              value={examForm.percentile}
+                              onChange={(e) =>
+                                setExamForm((p) => ({ ...p, percentile: e.target.value }))
+                              }
+                              className="w-full text-sm bg-indigo-50/40 border border-indigo-300 rounded-xl px-3 py-2 font-black text-indigo-950"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                              표준점수 (선택)
+                            </label>
+                            <input
+                              type="number"
+                              placeholder="예: 135"
+                              value={examForm.standard_score}
+                              onChange={(e) =>
+                                setExamForm((p) => ({ ...p, standard_score: e.target.value }))
+                              }
+                              className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-bold"
+                            />
+                          </div>
+
+                          {/* ⚡ 모의고사 자동 산출 등급 표시 카드 */}
+                          <div className="col-span-2 sm:col-span-3 bg-emerald-50/80 border border-emerald-200 rounded-xl px-3.5 py-2.5 flex items-center justify-between">
+                            <span className="text-xs font-extrabold text-emerald-900">
+                              ⚡ 백분위 기준 자동 산출 등급
+                            </span>
+                            {displayModalGrade ? (
+                              <span className="text-sm font-black text-emerald-950 bg-white px-3 py-1 rounded-lg border border-emerald-300">
+                                {displayModalGrade}등급{' '}
+                                {modalAutoGrade.topPct !== null
+                                  ? `(상위 ${modalAutoGrade.topPct}%)`
+                                  : ''}
+                              </span>
+                            ) : (
+                              <span className="text-xs font-bold text-slate-400">
+                                백분위(%) 입력 시 자동 산출됩니다
+                              </span>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* 3. 🔍 6대 오답 패인(감점 요인) 상세 점수 입력 */}
@@ -2829,3 +2911,4 @@ function ScoreTimelineChart({
     </div>
   );
 }
+

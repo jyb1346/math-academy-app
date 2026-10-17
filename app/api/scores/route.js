@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/session';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { calculateAutoGrade } from '@/lib/scoreUtils';
 
 const BUCKET_NAME = 'attachments';
 const STORE_PATH = 'system_store/high_school_scores_v1.json';
@@ -220,11 +221,6 @@ function normalizeScoreRecord(input, existingId, teacherId) {
       ? Number(input.essay_score)
       : null;
 
-  const grade =
-    input.grade !== '' && input.grade !== null && input.grade !== undefined
-      ? Number(input.grade)
-      : null;
-
   const rank =
     input.rank !== '' && input.rank !== null && input.rank !== undefined
       ? Number(input.rank)
@@ -255,6 +251,25 @@ function normalizeScoreRecord(input, existingId, teacherId) {
       ? Number(input.standard_score)
       : null;
 
+  const examCategory = input.exam_category === 'MOCK' ? 'MOCK' : 'INTERNAL';
+  const gradeSystem = Number(input.grade_system) === 5 ? 5 : 9;
+
+  // 🎯 등수/수강자수 또는 백분위/Z점수 기반으로 등급 자동 산출
+  const autoGradeRes = calculateAutoGrade(
+    {
+      exam_category: examCategory,
+      rank,
+      total_students: totalStudents,
+      raw_score: rawScore,
+      school_mean: schoolMean,
+      school_std_dev: schoolStdDev,
+      percentile,
+      grade: input.grade,
+    },
+    gradeSystem
+  );
+  const grade = autoGradeRes.grade;
+
   const eb = input.error_breakdown || {};
   const errorBreakdown = {
     mistake_calc: Number(eb.mistake_calc) || 0,
@@ -271,7 +286,7 @@ function normalizeScoreRecord(input, existingId, teacherId) {
     school_name: (input.school_name || '').trim(),
     school_grade: Number(input.school_grade) || 1,
     exam_year: Number(input.exam_year) || new Date().getFullYear(),
-    exam_category: input.exam_category === 'MOCK' ? 'MOCK' : 'INTERNAL',
+    exam_category: examCategory,
     exam_period: input.exam_period || '1_MID',
     subject: (input.subject || '공통수학1').trim(),
     raw_score: rawScore,
@@ -404,14 +419,30 @@ export async function POST(req) {
             sc.exam_period === normalized.exam_period &&
             sc.subject === normalized.subject
           ) {
+            const nextMean =
+              normalized.school_mean !== null ? normalized.school_mean : sc.school_mean;
+            const nextStdDev =
+              normalized.school_std_dev !== null ? normalized.school_std_dev : sc.school_std_dev;
+            const nextTotal =
+              normalized.total_students !== null ? normalized.total_students : sc.total_students;
+            const peerGradeSys =
+              Number(store.studentProfiles[sc.student_id]?.grade_system) || 9;
+            const peerAutoGrade = calculateAutoGrade(
+              {
+                ...sc,
+                school_mean: nextMean,
+                school_std_dev: nextStdDev,
+                total_students: nextTotal,
+              },
+              peerGradeSys
+            );
+
             return {
               ...sc,
-              school_mean:
-                normalized.school_mean !== null ? normalized.school_mean : sc.school_mean,
-              school_std_dev:
-                normalized.school_std_dev !== null ? normalized.school_std_dev : sc.school_std_dev,
-              total_students:
-                normalized.total_students !== null ? normalized.total_students : sc.total_students,
+              school_mean: nextMean,
+              school_std_dev: nextStdDev,
+              total_students: nextTotal,
+              grade: peerAutoGrade.grade ?? sc.grade,
             };
           }
           return sc;
@@ -546,3 +577,4 @@ export async function DELETE(req) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+

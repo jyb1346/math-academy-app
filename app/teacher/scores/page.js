@@ -2154,14 +2154,14 @@ export default function TeacherScoresPage() {
         )}
 
         {/* =====================================================================
-            탭 2: ⚡ 시험별 엑셀형 일괄 빠른 입력 (스프레드시트 모드)
+            탭 2: 시험별 엑셀형 일괄 빠른 입력 (스프레드시트 모드)
            ===================================================================== */}
         {mainTab === 'BATCH_INPUT' && (
           <div className="bg-white rounded-3xl border border-slate-200/90 p-4 sm:p-6 shadow-xs space-y-5">
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-slate-100 pb-4">
               <div>
                 <h2 className="text-lg font-black text-slate-900">
-                  ⚡ 시험별 엑셀형 일괄 빠른 입력
+                  시험별 엑셀형 일괄 입력
                 </h2>
                 <p className="text-xs text-slate-500 font-semibold mt-0.5">
                   키보드 <kbd className="bg-slate-100 border border-slate-300 px-1.5 py-0.5 rounded text-[11px] font-black">Tab</kbd> 키로 칸을 이동하며 여러 학생의 성적과 감점 요인을 한 번에 입력할 수 있습니다.
@@ -2171,9 +2171,9 @@ export default function TeacherScoresPage() {
               <button
                 onClick={handleSaveBatch}
                 disabled={saving}
-                className="text-xs sm:text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-black px-5 py-2.5 rounded-2xl shadow-md transition shrink-0"
+                className="text-xs sm:text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-black px-5 py-2.5 rounded-xl shadow-xs transition shrink-0 whitespace-nowrap"
               >
-                {saving ? '일괄 저장 중...' : '💾 입력된 성적 일괄 저장하기'}
+                {saving ? '일괄 저장 중...' : '입력된 성적 일괄 저장'}
               </button>
             </div>
 
@@ -2306,7 +2306,7 @@ export default function TeacherScoresPage() {
                     className="rounded text-indigo-600 focus:ring-indigo-500"
                   />
                   <span>
-                    🏫 스마트 자동 연동: 같은 고등학교 학생끼리는 한 명만 [학교 평균 / 표준편차 / 수강자수]를 입력해도 즉시 자동 공유됩니다.
+                    같은 고등학교 학생끼리는 한 명만 [학교 평균 / 표준편차 / 수강자수]를 입력해도 자동으로 공유됩니다.
                   </span>
                 </label>
               </div>
@@ -2316,69 +2316,69 @@ export default function TeacherScoresPage() {
             <div className="overflow-x-auto border border-slate-200 rounded-2xl">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="bg-slate-100 text-slate-700 font-black border-b border-slate-200">
+                  <tr className="bg-slate-50 text-slate-700 font-black border-b border-slate-200 whitespace-nowrap">
                     <th className="py-2.5 px-2.5 min-w-[90px]">학생명</th>
                     <th className="py-2.5 px-2 min-w-[115px]">고등학교명</th>
-                    <th className="py-2.5 px-2 min-w-[75px] bg-indigo-50/60 text-indigo-900">
+                    <th className="py-2.5 px-2 min-w-[75px] bg-indigo-50/50 text-indigo-900">
                       원점수
                     </th>
                     {batchMeta.exam_category === 'INTERNAL' ? (
                       <>
-                        <th className="py-2.5 px-2 min-w-[72px] bg-indigo-50/60 text-indigo-900">
-                          전교석차(등수)
+                        <th className="py-2.5 px-2 min-w-[75px] bg-indigo-50/50 text-indigo-900">
+                          전교석차
                         </th>
-                        <th className="py-2.5 px-2 min-w-[78px] bg-indigo-50/60 text-indigo-900">
-                          수강자수(전교생)
+                        <th className="py-2.5 px-2 min-w-[78px] bg-indigo-50/50 text-indigo-900">
+                          수강자수
                         </th>
-                        <th className="py-2.5 px-2 min-w-[105px] bg-emerald-50 text-emerald-900 text-center">
-                          ⚡ 자동 등급 (보정)
+                        <th className="py-2.5 px-2 min-w-[115px] bg-emerald-50/60 text-emerald-900 text-center">
+                          산출 등급
                         </th>
                         <th className="py-2.5 px-2 min-w-[75px]">학교평균</th>
                         <th className="py-2.5 px-2 min-w-[75px]">표준편차</th>
                       </>
                     ) : (
                       <>
-                        <th className="py-2.5 px-2 min-w-[78px] bg-indigo-50/60 text-indigo-900">
+                        <th className="py-2.5 px-2 min-w-[78px] bg-indigo-50/50 text-indigo-900">
                           백분위(%)
                         </th>
                         <th className="py-2.5 px-2 min-w-[75px]">표준점수</th>
-                        <th className="py-2.5 px-2 min-w-[105px] bg-emerald-50 text-emerald-900 text-center">
-                          ⚡ 자동 등급 (보정)
+                        <th className="py-2.5 px-2 min-w-[115px] bg-emerald-50/60 text-emerald-900 text-center">
+                          산출 등급
                         </th>
                       </>
                     )}
                     <th
-                      className="py-2.5 px-2 min-w-[68px] bg-rose-50 text-rose-900"
-                      title="아까운 계산/부호 실수 감점 점수"
+                      className="py-2.5 px-2 min-w-[68px] text-slate-700"
+                      title="계산/부호 실수 감점 점수"
                     >
                       계산실수(-)
                     </th>
                     <th
-                      className="py-2.5 px-2 min-w-[68px] bg-rose-50 text-rose-900"
+                      className="py-2.5 px-2 min-w-[68px] text-slate-700"
                       title="문제 조건 누락 감점 점수"
                     >
                       조건누락(-)
                     </th>
                     <th
-                      className="py-2.5 px-2 min-w-[68px] bg-rose-50 text-rose-900"
-                      title="서술형 감점 또는 시간부족 실수 점수"
+                      className="py-2.5 px-2 min-w-[68px] text-slate-700"
+                      title="서술형 감점 또는 시간부족 점수"
                     >
                       서술/시간(-)
                     </th>
                     <th
-                      className="py-2.5 px-2 min-w-[68px] bg-slate-50 text-slate-700"
+                      className="py-2.5 px-2 min-w-[68px] text-slate-700"
                       title="개념/공식 미숙 감점 점수"
                     >
                       개념미숙(-)
                     </th>
                     <th
-                      className="py-2.5 px-2 min-w-[68px] bg-slate-50 text-slate-700"
+                      className="py-2.5 px-2 min-w-[68px] text-slate-700"
                       title="유형/접근법 막힘 감점 점수"
                     >
                       유형막힘(-)
                     </th>
                     <th
-                      className="py-2.5 px-2 min-w-[68px] bg-slate-50 text-slate-700"
+                      className="py-2.5 px-2 min-w-[68px] text-slate-700"
                       title="킬러(고난도) 한계 감점 점수"
                     >
                       킬러문항(-)
@@ -2466,11 +2466,11 @@ export default function TeacherScoresPage() {
                                 className="w-full bg-white border border-indigo-200 rounded-lg px-2 py-1.5 font-semibold text-right focus:outline-indigo-600"
                               />
                             </td>
-                            <td className="py-1.5 px-1.5 bg-emerald-50/40 text-center">
-                              <div className="flex flex-col items-center gap-0.5">
+                            <td className="py-1.5 px-1.5 bg-emerald-50/30 text-center">
+                              <div className="flex flex-col items-center gap-1">
                                 {displayGrade ? (
                                   <span
-                                    className={`font-black px-2 py-0.5 rounded-md text-[11px] ${
+                                    className={`font-black px-2 py-0.5 rounded-md text-[11px] whitespace-nowrap ${
                                       autoGradeInfo.isManualOverride
                                         ? 'bg-amber-600 text-white'
                                         : 'bg-emerald-600 text-white'
@@ -2482,7 +2482,7 @@ export default function TeacherScoresPage() {
                                       : ''}
                                   </span>
                                 ) : (
-                                  <span className="text-[10px] font-bold text-slate-400">
+                                  <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">
                                     등수 입력 시 자동
                                   </span>
                                 )}
@@ -2491,14 +2491,14 @@ export default function TeacherScoresPage() {
                                   onChange={(e) =>
                                     handleBatchRowChange(st.id, 'manual_grade', e.target.value)
                                   }
-                                  className="text-[10px] bg-white/90 border border-slate-200 rounded px-1 py-0.5 font-bold text-slate-600 w-full"
+                                  className="text-[10px] bg-white border border-slate-200 rounded px-1.5 py-0.5 font-bold text-slate-600 w-full"
                                   title="동점자 예외 또는 등수 미발표 시 수동/예상 등급을 지정할 수 있습니다"
                                 >
-                                  <option value="">⚡ 자동산출</option>
+                                  <option value="">자동산출</option>
                                   {Array.from({ length: maxSysGrade }, (_, i) => i + 1).map(
                                     (g) => (
                                       <option key={g} value={g}>
-                                        📌 {g}등급 직접지정
+                                        {g}등급 직접지정
                                       </option>
                                     )
                                   )}
@@ -2555,11 +2555,11 @@ export default function TeacherScoresPage() {
                                 className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 font-semibold text-right"
                               />
                             </td>
-                            <td className="py-1.5 px-1.5 bg-emerald-50/40 text-center">
-                              <div className="flex flex-col items-center gap-0.5">
+                            <td className="py-1.5 px-1.5 bg-emerald-50/30 text-center">
+                              <div className="flex flex-col items-center gap-1">
                                 {displayGrade ? (
                                   <span
-                                    className={`font-black px-2 py-0.5 rounded-md text-[11px] ${
+                                    className={`font-black px-2 py-0.5 rounded-md text-[11px] whitespace-nowrap ${
                                       autoGradeInfo.isManualOverride
                                         ? 'bg-amber-600 text-white'
                                         : 'bg-emerald-600 text-white'
@@ -2568,7 +2568,7 @@ export default function TeacherScoresPage() {
                                     {displayGrade}등급
                                   </span>
                                 ) : (
-                                  <span className="text-[10px] font-bold text-slate-400">
+                                  <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">
                                     백분위 입력 시 자동
                                   </span>
                                 )}
@@ -2577,13 +2577,13 @@ export default function TeacherScoresPage() {
                                   onChange={(e) =>
                                     handleBatchRowChange(st.id, 'manual_grade', e.target.value)
                                   }
-                                  className="text-[10px] bg-white/90 border border-slate-200 rounded px-1 py-0.5 font-bold text-slate-600 w-full"
+                                  className="text-[10px] bg-white border border-slate-200 rounded px-1.5 py-0.5 font-bold text-slate-600 w-full"
                                   title="가채점 등급컷 등 백분위 없이 등급을 직접 지정할 때 사용합니다"
                                 >
-                                  <option value="">⚡ 자동산출</option>
+                                  <option value="">자동산출</option>
                                   {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((g) => (
                                     <option key={g} value={g}>
-                                      📌 {g}등급 직접지정
+                                      {g}등급 직접지정
                                     </option>
                                   ))}
                                 </select>
@@ -2594,12 +2594,7 @@ export default function TeacherScoresPage() {
 
                         {/* 6대 오답 감점 점수 입력 */}
                         {ERROR_REASON_CATEGORIES.map((cat) => (
-                          <td
-                            key={cat.key}
-                            className={`py-1.5 px-1.5 ${
-                              cat.recoverable ? 'bg-rose-50/20' : ''
-                            }`}
-                          >
+                          <td key={cat.key} className="py-1.5 px-1.5">
                             <input
                               type="number"
                               step="0.5"
@@ -2630,7 +2625,7 @@ export default function TeacherScoresPage() {
                             <button
                               type="button"
                               onClick={() => handleClearBatchRow(st.id)}
-                              className="text-[11px] text-rose-500 hover:bg-rose-50 px-2 py-1 rounded-lg font-extrabold"
+                              className="text-[11px] text-rose-500 hover:bg-rose-50 px-2 py-1 rounded-lg font-extrabold whitespace-nowrap"
                               title="이 행의 입력값을 비우고 일괄 저장 시 기존 성적을 삭제합니다"
                             >
                               비우기
@@ -2647,26 +2642,26 @@ export default function TeacherScoresPage() {
         )}
 
         {/* =====================================================================
-            탭 4: ⚙️ 학생별 소속 고등학교 · 학년 · 등급제 1분 일괄 설정
+            탭 4: 학생별 소속 고등학교 · 학년 · 등급제 일괄 설정
            ===================================================================== */}
         {mainTab === 'PROFILE_SETUP' && (
           <div className="bg-white rounded-3xl border border-slate-200/90 p-4 sm:p-6 shadow-xs space-y-5">
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-slate-100 pb-4">
               <div>
                 <h2 className="text-lg font-black text-slate-900">
-                  ⚙️ 학생별 소속 고등학교 · 학년 · 등급제(5등급/9등급) 일괄 설정
+                  학생별 소속 고등학교 · 학년 · 등급제 일괄 설정
                 </h2>
                 <p className="text-xs text-slate-500 font-semibold mt-0.5">
-                  학생을 한 명씩 클릭할 필요 없이, 반별로 학년/등급제를 1초 만에 일괄 적용하고 학교명을 빠르게 정리할 수 있습니다.
+                  학생을 한 명씩 클릭할 필요 없이, 반별로 학년과 내신 등급제를 일괄 적용하고 학교명을 빠르게 정리할 수 있습니다.
                 </p>
               </div>
 
               <button
                 onClick={handleSaveBulkProfiles}
                 disabled={saving}
-                className="text-xs sm:text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-black px-5 py-2.5 rounded-2xl shadow-md transition shrink-0"
+                className="text-xs sm:text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-black px-5 py-2.5 rounded-xl shadow-xs transition shrink-0 whitespace-nowrap"
               >
-                {saving ? '일괄 저장 중...' : '💾 전체 학생 학교·학년 설정 한 번에 저장'}
+                {saving ? '일괄 저장 중...' : '전체 학생 학교·학년 설정 저장'}
               </button>
             </div>
 
@@ -2674,7 +2669,7 @@ export default function TeacherScoresPage() {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200/80 items-end">
               <div className="lg:col-span-3">
                 <label className="block text-[11px] font-extrabold text-slate-500 mb-1">
-                  1️⃣ 대상 반 선택 ({bulkProfileTargetStudents.length}명 표시 중)
+                  대상 반 선택 ({bulkProfileTargetStudents.length}명 표시 중)
                 </label>
                 <select
                   value={bulkProfileClassFilter}
@@ -2705,8 +2700,8 @@ export default function TeacherScoresPage() {
 
               <div className="lg:col-span-7 bg-indigo-50/70 border border-indigo-200/80 p-3 rounded-xl flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-black text-indigo-950">
-                    ⚡ 현재 목록({bulkProfileTargetStudents.length}명) 일괄 채우기:
+                  <span className="text-xs font-black text-indigo-950 whitespace-nowrap">
+                    현재 목록({bulkProfileTargetStudents.length}명) 일괄 채우기:
                   </span>
                   <input
                     type="text"
@@ -2741,14 +2736,14 @@ export default function TeacherScoresPage() {
                   <button
                     type="button"
                     onClick={() => handleApplyBulkProfileToVisible(false)}
-                    className="text-xs bg-white hover:bg-indigo-100 text-indigo-800 border border-indigo-300 font-extrabold px-3 py-1.5 rounded-lg transition"
+                    className="text-xs bg-white hover:bg-indigo-100 text-indigo-800 border border-indigo-300 font-extrabold px-3 py-1.5 rounded-lg transition whitespace-nowrap"
                   >
                     학년·등급제만 일괄 적용
                   </button>
                   <button
                     type="button"
                     onClick={() => handleApplyBulkProfileToVisible(true)}
-                    className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-3 py-1.5 rounded-lg transition"
+                    className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-3 py-1.5 rounded-lg transition whitespace-nowrap"
                   >
                     학교·학년·등급제 모두 적용
                   </button>
@@ -2760,7 +2755,7 @@ export default function TeacherScoresPage() {
             <div className="overflow-x-auto border border-slate-200 rounded-2xl">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="bg-slate-100 text-slate-700 font-black border-b border-slate-200">
+                  <tr className="bg-slate-50 text-slate-700 font-black border-b border-slate-200 whitespace-nowrap">
                     <th className="py-2.5 px-3">학생명</th>
                     <th className="py-2.5 px-3">소속 반</th>
                     <th className="py-2.5 px-3 min-w-[180px]">소속 고등학교명</th>
@@ -2781,10 +2776,10 @@ export default function TeacherScoresPage() {
 
                     return (
                       <tr key={st.id} className="hover:bg-slate-50/80">
-                        <td className="py-2 px-3 font-black text-slate-900 text-sm">
+                        <td className="py-2 px-3 font-black text-slate-900 text-sm whitespace-nowrap">
                           {st.name}
                         </td>
-                        <td className="py-2 px-3 text-slate-600">{stClasses}</td>
+                        <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{stClasses}</td>
                         <td className="py-1.5 px-3">
                           <input
                             type="text"
@@ -2839,7 +2834,7 @@ export default function TeacherScoresPage() {
                             <option value={9}>내신 9등급제 (1등급 4%)</option>
                           </select>
                         </td>
-                        <td className="py-2 px-3 text-center text-slate-500">
+                        <td className="py-2 px-3 text-center text-slate-500 whitespace-nowrap">
                           {stExamCount > 0 ? `${stExamCount}건` : '미입력'}
                         </td>
                       </tr>
@@ -2852,13 +2847,13 @@ export default function TeacherScoresPage() {
         )}
 
         {/* =====================================================================
-            탭 3: 🏫 학교별 내신 난이도 히스토리 DB
+            탭 3: 학교별 내신 난이도 히스토리 DB
            ===================================================================== */}
         {mainTab === 'SCHOOL_STATS' && (
           <div className="bg-white rounded-3xl border border-slate-200/90 p-4 sm:p-6 shadow-xs space-y-4">
             <div>
               <h2 className="text-lg font-black text-slate-900">
-                🏫 학교별 수학 내신 시험 난이도 & 학원 성과 DB
+                학교별 수학 내신 시험 난이도 및 학원 성과 비교
               </h2>
               <p className="text-xs text-slate-500 font-semibold mt-0.5">
                 학생들의 성적 입력 시 기록된 학교별 과목 평균과 표준편차를 기반으로 인근 고등학교의 출제 난이도와 본원 재원생 평균을 자동 비교합니다.
@@ -2873,7 +2868,7 @@ export default function TeacherScoresPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-extrabold">
+                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-extrabold whitespace-nowrap">
                       <th className="py-3 px-3">고등학교</th>
                       <th className="py-3 px-3">연도 · 학년 · 시험</th>
                       <th className="py-3 px-3">과목</th>
@@ -2886,7 +2881,7 @@ export default function TeacherScoresPage() {
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-semibold">
                     {schoolExamStatsList.map((item) => (
-                      <tr key={item.key} className="hover:bg-slate-50">
+                      <tr key={item.key} className="hover:bg-slate-50 whitespace-nowrap">
                         <td className="py-3 px-3 font-black text-slate-900 text-sm">
                           {item.school_name}
                         </td>
@@ -2902,7 +2897,7 @@ export default function TeacherScoresPage() {
                         </td>
                         <td className="py-3 px-3 text-center">
                           <span
-                            className={`text-[11px] font-extrabold px-2.5 py-0.5 rounded-full ${
+                            className={`text-[11px] font-extrabold px-2.5 py-0.5 rounded-full whitespace-nowrap ${
                               item.difficultyColor === 'rose'
                                 ? 'bg-rose-100 text-rose-800'
                                 : item.difficultyColor === 'indigo'
@@ -2942,9 +2937,9 @@ export default function TeacherScoresPage() {
             <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
               <div>
                 <h3 className="text-lg font-black text-slate-900">
-                  {examForm.id ? '✏️ 시험 성적 및 오답 패인 수정' : '➕ 새 고교 시험 성적 등록'}
+                  {examForm.id ? '시험 성적 및 오답 원인 수정' : '새 시험 성적 등록'}
                 </h3>
-                <p className="text-xs text-slate-500 font-semibold">
+                <p className="text-xs text-slate-500 font-semibold mt-0.5">
                   대상: {currentStudent.name} 학생{' '}
                   {profileSchoolName ? `(${profileSchoolName} 고${profileSchoolGrade})` : ''}
                 </p>
@@ -2957,11 +2952,11 @@ export default function TeacherScoresPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSaveSingleScore} className="space-y-4 mt-4">
+            <form onSubmit={handleSaveSingleScore} className="space-y-5 mt-4">
               {/* 1. 시험 기본 분류 */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
                 <div>
-                  <label className="block text-[11px] font-extrabold text-slate-500 mb-1">
+                  <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
                     시행 연도
                   </label>
                   <input
@@ -2970,12 +2965,12 @@ export default function TeacherScoresPage() {
                     onChange={(e) =>
                       setExamForm((p) => ({ ...p, exam_year: Number(e.target.value) || 2026 }))
                     }
-                    className="w-full text-xs bg-white border border-slate-200 rounded-xl px-2.5 py-2 font-black"
+                    className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-black text-slate-900 focus:border-indigo-500 focus:outline-hidden"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-extrabold text-slate-500 mb-1">
+                  <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
                     시험 당시 학년
                   </label>
                   <select
@@ -2983,7 +2978,7 @@ export default function TeacherScoresPage() {
                     onChange={(e) =>
                       setExamForm((p) => ({ ...p, school_grade: Number(e.target.value) }))
                     }
-                    className="w-full text-xs bg-white border border-slate-200 rounded-xl px-2.5 py-2 font-black"
+                    className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-black text-slate-900 focus:border-indigo-500 focus:outline-hidden"
                   >
                     {HIGH_SCHOOL_GRADES.map((g) => (
                       <option key={g.id} value={g.id}>
@@ -2994,7 +2989,7 @@ export default function TeacherScoresPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-extrabold text-slate-500 mb-1">
+                  <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
                     내신 / 모의고사
                   </label>
                   <select
@@ -3008,7 +3003,7 @@ export default function TeacherScoresPage() {
                         subject: cat === 'INTERNAL' ? '공통수학1' : '모의고사 (공통)',
                       }));
                     }}
-                    className="w-full text-xs bg-white border border-slate-200 rounded-xl px-2.5 py-2 font-black"
+                    className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-black text-slate-900 focus:border-indigo-500 focus:outline-hidden"
                   >
                     {EXAM_CATEGORIES.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -3019,7 +3014,7 @@ export default function TeacherScoresPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-extrabold text-slate-500 mb-1">
+                  <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
                     세부 시기
                   </label>
                   <select
@@ -3027,7 +3022,7 @@ export default function TeacherScoresPage() {
                     onChange={(e) =>
                       setExamForm((p) => ({ ...p, exam_period: e.target.value }))
                     }
-                    className="w-full text-xs bg-white border border-slate-200 rounded-xl px-2.5 py-2 font-black"
+                    className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-black text-slate-900 focus:border-indigo-500 focus:outline-hidden"
                   >
                     {(examForm.exam_category === 'INTERNAL'
                       ? INTERNAL_EXAM_PERIODS
@@ -3041,7 +3036,7 @@ export default function TeacherScoresPage() {
                 </div>
 
                 <div className="col-span-2 sm:col-span-4">
-                  <label className="block text-[11px] font-extrabold text-slate-500 mb-1">
+                  <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
                     수학 과목명
                   </label>
                   <input
@@ -3049,7 +3044,7 @@ export default function TeacherScoresPage() {
                     list="math-subjects-list"
                     value={examForm.subject}
                     onChange={(e) => setExamForm((p) => ({ ...p, subject: e.target.value }))}
-                    className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-black"
+                    className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-black text-slate-900 focus:border-indigo-500 focus:outline-hidden"
                     placeholder="예: 공통수학1, 대수, 미적분..."
                   />
                 </div>
@@ -3059,9 +3054,9 @@ export default function TeacherScoresPage() {
               {matchedSchoolStatsForModal && (
                 <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-3 flex items-center justify-between gap-2 text-xs">
                   <span className="font-bold text-indigo-900">
-                    💡 <strong>{profileSchoolName}</strong>의 동일 시험 통계(평균{' '}
+                    <strong>{profileSchoolName}</strong>의 동일 시험 통계(평균{' '}
                     {matchedSchoolStatsForModal.school_mean ?? '-'} / 편차{' '}
-                    {matchedSchoolStatsForModal.school_std_dev ?? '-'})가 이미 등록되어 있습니다.
+                    {matchedSchoolStatsForModal.school_std_dev ?? '-'})가 등록되어 있습니다.
                   </span>
                   <button
                     type="button"
@@ -3076,19 +3071,19 @@ export default function TeacherScoresPage() {
                           matchedSchoolStatsForModal.total_students ?? p.total_students,
                       }))
                     }
-                    className="bg-indigo-600 text-white font-extrabold px-3 py-1.5 rounded-xl shrink-0"
+                    className="bg-indigo-600 text-white font-extrabold px-3 py-1.5 rounded-xl shrink-0 whitespace-nowrap"
                   >
                     자동 채우기
                   </button>
                 </div>
               )}
 
-              {/* 🧮 학기 최종(합산) 선택 시 중간·기말 성적 자동 합산 불러오기 배너 */}
+              {/* 학기 최종(합산) 선택 시 중간·기말 성적 자동 합산 불러오기 배너 */}
               {matchedSemesterMidFinalForModal && (
                 <div className="bg-violet-50 border border-violet-200 rounded-2xl p-3 flex items-center justify-between gap-2 text-xs">
                   <div>
                     <p className="font-black text-violet-950">
-                      🧮 같은 학기 중간·기말고사 기록이 발견되었습니다!
+                      같은 학기 중간·기말고사 기록이 확인되었습니다.
                     </p>
                     <p className="text-[11px] font-bold text-violet-700 mt-0.5">
                       {matchedSemesterMidFinalForModal.mid
@@ -3102,7 +3097,7 @@ export default function TeacherScoresPage() {
                       <strong className="underline">
                         {matchedSemesterMidFinalForModal.avgScore ?? '-'}점
                       </strong>{' '}
-                      및 6대 오답 감점 합산 불러오기 가능
+                      및 오답 감점 합산 불러오기 가능
                     </p>
                   </div>
                   <button
@@ -3123,7 +3118,7 @@ export default function TeacherScoresPage() {
                           p.error_breakdown,
                       }))
                     }
-                    className="bg-violet-600 hover:bg-violet-700 text-white font-extrabold px-3 py-1.5 rounded-xl shrink-0"
+                    className="bg-violet-600 hover:bg-violet-700 text-white font-extrabold px-3 py-1.5 rounded-xl shrink-0 whitespace-nowrap"
                   >
                     중간+기말 합산 채우기
                   </button>
@@ -3131,13 +3126,13 @@ export default function TeacherScoresPage() {
               )}
 
               {/* 2. 점수 · 석차 · 자동 등급 · 표준편차 */}
-              <div className="space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-black text-slate-800">
-                    📊 성적 지표 입력
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="text-xs font-black text-slate-900">
+                    성적 지표 입력
                   </h4>
-                  <span className="text-[11px] font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
-                    ⚡ 등수·전교생 수(또는 백분위) 입력 시 등급 자동 산출
+                  <span className="text-[11px] font-bold text-slate-500">
+                    등수·전교생 수(또는 백분위) 입력 시 등급이 자동으로 계산됩니다
                   </span>
                 </div>
 
@@ -3150,60 +3145,129 @@ export default function TeacherScoresPage() {
                     modalAutoGrade.grade ?? (examForm.grade ? Number(examForm.grade) : null);
 
                   return (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                          원점수 (100점 만점) *
-                        </label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          placeholder="예: 86.5"
-                          value={examForm.raw_score}
-                          onChange={(e) =>
-                            setExamForm((p) => ({ ...p, raw_score: e.target.value }))
-                          }
-                          className="w-full text-sm bg-indigo-50/40 border border-indigo-300 rounded-xl px-3 py-2 font-black text-indigo-950"
-                        />
-                      </div>
-
+                    <div className="space-y-3">
                       {examForm.exam_category === 'INTERNAL' ? (
                         <>
-                          <div>
-                            <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                              전교 석차 (등수) *
-                            </label>
-                            <input
-                              type="number"
-                              placeholder="예: 14"
-                              value={examForm.rank}
-                              onChange={(e) =>
-                                setExamForm((p) => ({ ...p, rank: e.target.value }))
-                              }
-                              className="w-full text-sm bg-indigo-50/40 border border-indigo-300 rounded-xl px-3 py-2 font-black text-indigo-950"
-                            />
+                          {/* 1행: 필수 성적 지표 3칸 (동일한 높이·디자인) */}
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div>
+                              <label className="block text-[11px] font-extrabold text-slate-700 mb-1">
+                                원점수 (100점 만점) <span className="text-indigo-600">*</span>
+                              </label>
+                              <input
+                                type="number"
+                                step="0.1"
+                                placeholder="예: 86.5"
+                                value={examForm.raw_score}
+                                onChange={(e) =>
+                                  setExamForm((p) => ({ ...p, raw_score: e.target.value }))
+                                }
+                                className="w-full text-sm bg-white border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 rounded-xl px-3.5 py-2.5 font-black text-slate-900 focus:outline-hidden tabular-nums"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-extrabold text-slate-700 mb-1">
+                                전교 석차 (등수) <span className="text-indigo-600">*</span>
+                              </label>
+                              <input
+                                type="number"
+                                placeholder="예: 14"
+                                value={examForm.rank}
+                                onChange={(e) =>
+                                  setExamForm((p) => ({ ...p, rank: e.target.value }))
+                                }
+                                className="w-full text-sm bg-white border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 rounded-xl px-3.5 py-2.5 font-black text-slate-900 focus:outline-hidden tabular-nums"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-extrabold text-slate-700 mb-1">
+                                수강자 수 (전교생 수) <span className="text-indigo-600">*</span>
+                              </label>
+                              <input
+                                type="number"
+                                placeholder="예: 260"
+                                value={examForm.total_students}
+                                onChange={(e) =>
+                                  setExamForm((p) => ({ ...p, total_students: e.target.value }))
+                                }
+                                className="w-full text-sm bg-white border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 rounded-xl px-3.5 py-2.5 font-black text-slate-900 focus:outline-hidden tabular-nums"
+                              />
+                            </div>
                           </div>
 
-                          <div>
-                            <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                              수강자 수 (전교생 수) *
-                            </label>
-                            <input
-                              type="number"
-                              placeholder="예: 260"
-                              value={examForm.total_students}
-                              onChange={(e) =>
-                                setExamForm((p) => ({ ...p, total_students: e.target.value }))
-                              }
-                              className="w-full text-sm bg-indigo-50/40 border border-indigo-300 rounded-xl px-3 py-2 font-black text-indigo-950"
-                            />
+                          {/* 2행: 학교 평균 및 표준편차 2칸 (동일한 높이·디자인) */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                                학교 과목 평균 (선택)
+                              </label>
+                              <input
+                                type="number"
+                                step="0.1"
+                                placeholder="예: 54.2"
+                                value={examForm.school_mean}
+                                onChange={(e) =>
+                                  setExamForm((p) => ({ ...p, school_mean: e.target.value }))
+                                }
+                                className="w-full text-sm bg-white border border-slate-200 focus:border-indigo-500 rounded-xl px-3.5 py-2 font-bold text-slate-800 focus:outline-hidden tabular-nums"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                                학교 표준편차 (선택)
+                              </label>
+                              <input
+                                type="number"
+                                step="0.1"
+                                placeholder="예: 18.5"
+                                value={examForm.school_std_dev}
+                                onChange={(e) =>
+                                  setExamForm((p) => ({ ...p, school_std_dev: e.target.value }))
+                                }
+                                className="w-full text-sm bg-white border border-slate-200 focus:border-indigo-500 rounded-xl px-3.5 py-2 font-bold text-slate-800 focus:outline-hidden tabular-nums"
+                              />
+                            </div>
                           </div>
 
-                          {/* ⚡ 자동 산출 등급 표시 카드 (+ 동점자 중간석차/미발표 수동 보정 옵션) */}
-                          <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl px-3 py-2 flex flex-col justify-between">
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="text-[10px] font-extrabold text-emerald-800">
-                                ⚡ 산출 등급 ({profileGradeSystem}등급제)
+                          {/* 3행: 산출 등급 전체 너비 가로 바 (글자 세로 깨짐 방지) */}
+                          <div className="bg-slate-50 border border-slate-200/90 rounded-2xl px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="flex flex-wrap items-center gap-2.5">
+                              <span className="text-xs font-extrabold text-slate-700 whitespace-nowrap">
+                                산출 등급 ({profileGradeSystem}등급제)
+                              </span>
+                              {displayModalGrade ? (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-black text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-0.5 rounded-lg whitespace-nowrap">
+                                    {displayModalGrade}등급
+                                  </span>
+                                  {modalAutoGrade.topPct !== null && (
+                                    <span className="text-xs font-extrabold text-slate-600 whitespace-nowrap">
+                                      상위 {modalAutoGrade.topPct}%
+                                      {modalAutoGrade.source === 'Z_SCORE' ? ' (평균·편차 추정)' : ''}
+                                    </span>
+                                  )}
+                                  {modalAutoGrade.isManualOverride && (
+                                    <span className="text-[11px] font-extrabold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md whitespace-nowrap">
+                                      직접 지정됨
+                                      {modalAutoGrade.autoGrade
+                                        ? ` (석차 기준 ${modalAutoGrade.autoGrade}등급)`
+                                        : ''}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-xs font-semibold text-slate-400">
+                                  등수와 수강자 수를 입력하면 등급이 자동 산출됩니다
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">
+                                등급 보정:
                               </span>
                               <select
                                 value={examForm.manual_grade ?? ''}
@@ -3214,116 +3278,99 @@ export default function TeacherScoresPage() {
                                   }))
                                 }
                                 title="동점자 중간석차로 실제 성적표 등급이 다르거나 등수 미발표 시 직접 지정"
-                                className="text-[10px] bg-white border border-emerald-300 rounded-md px-1.5 py-0.5 font-extrabold text-emerald-900"
+                                className="text-xs bg-white border border-slate-200 rounded-xl px-3 py-1.5 font-extrabold text-slate-700 focus:border-indigo-500 focus:outline-hidden"
                               >
-                                <option value="">⚡ 자동산출 (기본)</option>
+                                <option value="">석차 기준 자동 산출 (기본)</option>
                                 {(profileGradeSystem === 5
                                   ? [1, 2, 3, 4, 5]
                                   : [1, 2, 3, 4, 5, 6, 7, 8, 9]
                                 ).map((g) => (
                                   <option key={g} value={g}>
-                                    📌 {g}등급 직접지정 (동점자/예상)
+                                    {g}등급 직접 지정 (동점자·예외)
                                   </option>
                                 ))}
                               </select>
                             </div>
-                            {displayModalGrade ? (
-                              <div className="flex items-baseline gap-1.5 mt-1">
-                                <span className="text-base font-black text-emerald-950">
-                                  {displayModalGrade}등급
-                                </span>
-                                {modalAutoGrade.isManualOverride && (
-                                  <span className="text-[10px] font-extrabold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
-                                    수동지정
-                                    {modalAutoGrade.autoGrade
-                                      ? ` (자동:${modalAutoGrade.autoGrade}등급)`
-                                      : ''}
-                                  </span>
-                                )}
-                                {modalAutoGrade.topPct !== null && (
-                                  <span className="text-[11px] font-extrabold text-emerald-700">
-                                    (상위 {modalAutoGrade.topPct}%
-                                    {modalAutoGrade.source === 'Z_SCORE' ? ' 추정' : ''})
-                                  </span>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-[11px] font-bold text-slate-400 mt-1">
-                                등수·전교생 입력 시 자동 표시
-                              </span>
-                            )}
-                          </div>
-
-                          <div>
-                            <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                              학교 과목 평균
-                            </label>
-                            <input
-                              type="number"
-                              step="0.1"
-                              placeholder="예: 54.2"
-                              value={examForm.school_mean}
-                              onChange={(e) =>
-                                setExamForm((p) => ({ ...p, school_mean: e.target.value }))
-                              }
-                              className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-bold"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                              학교 표준편차 🌟
-                            </label>
-                            <input
-                              type="number"
-                              step="0.1"
-                              placeholder="예: 18.5"
-                              value={examForm.school_std_dev}
-                              onChange={(e) =>
-                                setExamForm((p) => ({ ...p, school_std_dev: e.target.value }))
-                              }
-                              className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-bold"
-                            />
                           </div>
                         </>
                       ) : (
                         <>
-                          <div>
-                            <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                              백분위 (%) *
-                            </label>
-                            <input
-                              type="number"
-                              step="0.1"
-                              placeholder="예: 94"
-                              value={examForm.percentile}
-                              onChange={(e) =>
-                                setExamForm((p) => ({ ...p, percentile: e.target.value }))
-                              }
-                              className="w-full text-sm bg-indigo-50/40 border border-indigo-300 rounded-xl px-3 py-2 font-black text-indigo-950"
-                            />
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div>
+                              <label className="block text-[11px] font-extrabold text-slate-700 mb-1">
+                                원점수 (100점 만점) <span className="text-indigo-600">*</span>
+                              </label>
+                              <input
+                                type="number"
+                                step="0.1"
+                                placeholder="예: 88"
+                                value={examForm.raw_score}
+                                onChange={(e) =>
+                                  setExamForm((p) => ({ ...p, raw_score: e.target.value }))
+                                }
+                                className="w-full text-sm bg-white border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 rounded-xl px-3.5 py-2.5 font-black text-slate-900 focus:outline-hidden tabular-nums"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-extrabold text-slate-700 mb-1">
+                                백분위 (%) <span className="text-indigo-600">*</span>
+                              </label>
+                              <input
+                                type="number"
+                                step="0.1"
+                                placeholder="예: 94"
+                                value={examForm.percentile}
+                                onChange={(e) =>
+                                  setExamForm((p) => ({ ...p, percentile: e.target.value }))
+                                }
+                                className="w-full text-sm bg-white border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 rounded-xl px-3.5 py-2.5 font-black text-slate-900 focus:outline-hidden tabular-nums"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                                표준점수 (선택)
+                              </label>
+                              <input
+                                type="number"
+                                placeholder="예: 135"
+                                value={examForm.standard_score}
+                                onChange={(e) =>
+                                  setExamForm((p) => ({ ...p, standard_score: e.target.value }))
+                                }
+                                className="w-full text-sm bg-white border border-slate-200 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 font-bold text-slate-800 focus:outline-hidden tabular-nums"
+                              />
+                            </div>
                           </div>
 
-                          <div>
-                            <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                              표준점수 (선택)
-                            </label>
-                            <input
-                              type="number"
-                              placeholder="예: 135"
-                              value={examForm.standard_score}
-                              onChange={(e) =>
-                                setExamForm((p) => ({ ...p, standard_score: e.target.value }))
-                              }
-                              className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-bold"
-                            />
-                          </div>
+                          {/* 모의고사 산출 등급 전체 너비 가로 바 */}
+                          <div className="bg-slate-50 border border-slate-200/90 rounded-2xl px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="flex flex-wrap items-center gap-2.5">
+                              <span className="text-xs font-extrabold text-slate-700 whitespace-nowrap">
+                                모의고사 산출 등급 (9등급제)
+                              </span>
+                              {displayModalGrade ? (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-black text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-0.5 rounded-lg whitespace-nowrap">
+                                    {displayModalGrade}등급
+                                  </span>
+                                  {modalAutoGrade.topPct !== null && (
+                                    <span className="text-xs font-extrabold text-slate-600 whitespace-nowrap">
+                                      상위 {modalAutoGrade.topPct}%
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-xs font-semibold text-slate-400">
+                                  백분위(%)를 입력하면 등급이 자동 산출됩니다
+                                </span>
+                              )}
+                            </div>
 
-                          {/* ⚡ 모의고사 자동 산출 등급 표시 카드 (+ 원점수 등급컷 직접 지정 지원) */}
-                          <div className="col-span-2 sm:col-span-3 bg-emerald-50/80 border border-emerald-200 rounded-xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-extrabold text-emerald-900">
-                                ⚡ 모의고사 산출 등급
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">
+                                등급 보정:
                               </span>
                               <select
                                 value={examForm.manual_grade ?? ''}
@@ -3333,28 +3380,16 @@ export default function TeacherScoresPage() {
                                     manual_grade: e.target.value,
                                   }))
                                 }
-                                className="text-[11px] bg-white border border-emerald-300 rounded-lg px-2 py-1 font-extrabold text-emerald-900"
+                                className="text-xs bg-white border border-slate-200 rounded-xl px-3 py-1.5 font-extrabold text-slate-700 focus:border-indigo-500 focus:outline-hidden"
                               >
-                                <option value="">⚡ 백분위 기준 자동산출 (기본)</option>
+                                <option value="">백분위 기준 자동 산출 (기본)</option>
                                 {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((g) => (
                                   <option key={g} value={g}>
-                                    📌 {g}등급 직접지정 (등급컷/성적표 기준)
+                                    {g}등급 직접 지정 (성적표 기준)
                                   </option>
                                 ))}
                               </select>
                             </div>
-                            {displayModalGrade ? (
-                              <span className="text-sm font-black text-emerald-950 bg-white px-3 py-1 rounded-lg border border-emerald-300">
-                                {displayModalGrade}등급{' '}
-                                {modalAutoGrade.topPct !== null
-                                  ? `(상위 ${modalAutoGrade.topPct}%)`
-                                  : ''}
-                              </span>
-                            ) : (
-                              <span className="text-xs font-bold text-slate-400">
-                                백분위(%) 입력 시 자동 산출됩니다
-                              </span>
-                            )}
                           </div>
                         </>
                       )}
@@ -3364,9 +3399,9 @@ export default function TeacherScoresPage() {
               </div>
 
               {/* 3. 6대 오답 원인(감점 요인) 상세 점수 입력 + 총 감점 대비 자동 검증 바 */}
-              <div className="space-y-2.5 pt-2 border-t border-slate-100">
+              <div className="space-y-3 pt-3 border-t border-slate-100">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h4 className="text-xs font-black text-slate-800">
+                  <h4 className="text-xs font-black text-slate-900">
                     오답 원인별 감점 점수 (선택 입력)
                   </h4>
                   {(() => {
@@ -3402,10 +3437,10 @@ export default function TeacherScoresPage() {
                           총 감점 <strong>-{totalLost}점</strong> 중 현재{' '}
                           <strong>-{recordedSum}점</strong> 분류됨{' '}
                           {diff === 0
-                            ? '(100% 일치)'
+                            ? '(일치)'
                             : diff > 0
-                            ? `(미분류 ${diff}점 남음)`
-                            : `(총 감점보다 ${Math.abs(diff)}점 초과 입력됨)`}
+                            ? `(미분류 ${diff}점)`
+                            : `(${Math.abs(diff)}점 초과)`}
                         </span>
                         {diff > 0 && (
                           <div className="flex items-center gap-1">
@@ -3425,7 +3460,7 @@ export default function TeacherScoresPage() {
                                   },
                                 }))
                               }
-                              className="text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 font-extrabold px-2 py-0.5 rounded-md"
+                              className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-extrabold px-2 py-0.5 rounded-md whitespace-nowrap"
                             >
                               +남은 {diff}점 → 유형막힘
                             </button>
@@ -3445,7 +3480,7 @@ export default function TeacherScoresPage() {
                                   },
                                 }))
                               }
-                              className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-extrabold px-2 py-0.5 rounded-md"
+                              className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-extrabold px-2 py-0.5 rounded-md whitespace-nowrap"
                             >
                               +남은 {diff}점 → 킬러문항
                             </button>
@@ -3465,7 +3500,7 @@ export default function TeacherScoresPage() {
                                   },
                                 }))
                               }
-                              className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-extrabold px-2 py-0.5 rounded-md"
+                              className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-extrabold px-2 py-0.5 rounded-md whitespace-nowrap"
                             >
                               +남은 {diff}점 → 개념미숙
                             </button>
@@ -3480,22 +3515,23 @@ export default function TeacherScoresPage() {
                   {ERROR_REASON_CATEGORIES.map((cat) => (
                     <div
                       key={cat.key}
-                      className={`p-2.5 rounded-xl border ${
-                        cat.recoverable
-                          ? 'bg-rose-50/40 border-rose-200'
-                          : 'bg-slate-50 border-slate-200'
-                      }`}
+                      className="p-3 rounded-xl border bg-slate-50/80 border-slate-200/90"
                     >
-                      <label className="block text-[11px] font-extrabold text-slate-800 mb-1">
-                        {cat.label}
-                      </label>
+                      <div className="flex items-center justify-between gap-1 mb-1.5">
+                        <label className="text-[11px] font-extrabold text-slate-800 whitespace-nowrap">
+                          {cat.label}
+                        </label>
+                        <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">
+                          {cat.recoverable ? '풀이습관' : '개념·심화'}
+                        </span>
+                      </div>
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs font-bold text-slate-400">-</span>
                         <input
                           type="number"
                           step="0.5"
                           min="0"
-                          placeholder="감점 점수 (예: 4.5)"
+                          placeholder="0"
                           value={examForm.error_breakdown?.[cat.key] ?? ''}
                           onChange={(e) =>
                             setExamForm((p) => ({
@@ -3506,9 +3542,9 @@ export default function TeacherScoresPage() {
                               },
                             }))
                           }
-                          className="w-full text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-black text-right"
+                          className="w-full text-xs bg-white border border-slate-200 focus:border-indigo-500 rounded-lg px-2.5 py-1.5 font-black text-right text-slate-900 focus:outline-hidden tabular-nums"
                         />
-                        <span className="text-xs font-bold text-slate-500">점</span>
+                        <span className="text-xs font-bold text-slate-500 shrink-0">점</span>
                       </div>
                     </div>
                   ))}
@@ -3517,15 +3553,15 @@ export default function TeacherScoresPage() {
 
               {/* 4. 시험 총평 코멘트 */}
               <div>
-                <label className="block text-xs font-black text-slate-800 mb-1">
-                  시험 총평 및 향후 학습 처방 메모 (선택)
+                <label className="block text-xs font-black text-slate-900 mb-1.5">
+                  시험 총평 및 학습 처방 메모 (선택)
                 </label>
                 <textarea
                   rows={2}
                   placeholder="예: 개념 이해도는 높으나 서술형 마지막 문항에서 부호 실수로 5점 감점됨. 기말 대비 검산 루틴 훈련 예정."
                   value={examForm.memo}
                   onChange={(e) => setExamForm((p) => ({ ...p, memo: e.target.value }))}
-                  className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl p-3 font-semibold text-slate-800"
+                  className="w-full text-xs bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white rounded-xl p-3 font-semibold text-slate-800 focus:outline-hidden"
                 />
               </div>
 
@@ -3540,7 +3576,7 @@ export default function TeacherScoresPage() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-black px-5 py-2.5 rounded-xl shadow-md"
+                  className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-black px-5 py-2.5 rounded-xl shadow-xs"
                 >
                   {saving ? '저장 중...' : '성적 및 분석 저장'}
                 </button>

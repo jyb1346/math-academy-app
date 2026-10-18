@@ -508,16 +508,17 @@ export default function TeacherScoresPage() {
     const pos = activeGradeAnalysis;
     const trend = activeErrorTrendComparison;
 
+    const resolvedGrade = activeDetailExam.grade || pos?.actualGrade;
     const lines = [];
-    lines.push(`📊 [품수학 학원] ${currentStudent.name} 학생 고교 수학 성적 심층 분석 리포트`);
+    lines.push(`[품수학 학원] ${currentStudent.name} 학생 고교 수학 성적 분석 리포트`);
     if (profileSchoolName) {
-      lines.push(`🏫 소속: ${profileSchoolName} ${profileSchoolGrade}학년`);
+      lines.push(`소속: ${profileSchoolName} ${profileSchoolGrade}학년 (${profileGradeSystem}등급제)`);
     }
     lines.push(`━━━━━━━━━━━━━━━━━━━━`);
-    lines.push(`📌 기준 시험: ${examTitle}`);
+    lines.push(`기준 시험: ${examTitle}`);
     lines.push(
       `• 원점수: ${activeDetailExam.raw_score ?? '-'}점 ${
-        activeDetailExam.grade ? `(${activeDetailExam.grade}등급)` : ''
+        resolvedGrade ? `(${resolvedGrade}등급)` : ''
       }`
     );
 
@@ -546,29 +547,30 @@ export default function TeacherScoresPage() {
     }
 
     if (pos?.statusBadge) {
-      lines.push(`\n🎯 [등급 내 정밀 위치 진단]`);
+      lines.push(`\n[등급 컷 위치 진단]`);
       lines.push(`• 판정: ${pos.statusBadge}`);
       if (pos.message) lines.push(`• 상세: ${pos.message}`);
     }
 
-    if (pot && pot.recoverableLost > 0) {
-      lines.push(`\n🌟 [실수 보정 잠재 실력 분석]`);
-      lines.push(
-        `• 현재 점수 ${pot.rawScore}점 ➔ 아까운 실수(${pot.recoverableLost}점) 보정 시 잠재 실력 【${pot.potentialScore}점${
-          pot.potentialGrade ? ` (${pot.potentialGrade}등급권)` : ''
-        }】`
-      );
+    if (pot && pot.totalRecordedLost > 0) {
+      lines.push(`\n[오답 원인별 감점 분석 (총 -${pot.totalRecordedLost}점)]`);
+      ERROR_REASON_CATEGORIES.forEach((cat) => {
+        const val = Number(activeDetailExam?.error_breakdown?.[cat.key]) || 0;
+        if (val > 0) {
+          lines.push(`• ${cat.label}: -${val}점`);
+        }
+      });
     }
 
     if (trend?.insights?.length > 0) {
-      lines.push(`\n🔍 [전회차 대비 오답 체질 변화]`);
+      lines.push(`\n[직전 시험 대비 감점 변화]`);
       trend.insights.forEach((ins) => {
         lines.push(`• ${ins.text}`);
       });
     }
 
     if (activeDetailExam.memo) {
-      lines.push(`\n👨‍🏫 [담당 선생님 분석 코멘트]`);
+      lines.push(`\n[담당 선생님 종합 의견]`);
       lines.push(`${activeDetailExam.memo}`);
     }
 
@@ -1063,10 +1065,14 @@ export default function TeacherScoresPage() {
                     const prof = studentProfiles[st.id] || {};
                     const stSchool = prof.school_name || st.school_name || '';
                     const stGrade = prof.school_grade || st.school_grade || 1;
+                    const stSystem = Number(prof.grade_system || st.grade_system) === 5 ? 5 : 9;
                     const stScores = scores
                       .filter((sc) => sc.student_id === st.id)
                       .sort((a, b) => getExamSortOrder(a) - getExamSortOrder(b));
                     const latest = stScores[stScores.length - 1] || null;
+                    const latestGrade = latest
+                      ? latest.grade || calculateAutoGrade(latest, stSystem).grade
+                      : null;
 
                     return (
                       <button
@@ -1089,7 +1095,7 @@ export default function TeacherScoresPage() {
                               }`}
                             >
                               {latest.raw_score !== null ? `${latest.raw_score}점` : ''}
-                              {latest.grade ? ` · ${latest.grade}등급` : ''}
+                              {latestGrade ? ` · ${latestGrade}등급` : ''}
                             </span>
                           ) : (
                             <span className="text-[10px] font-medium text-slate-400">
@@ -1285,17 +1291,17 @@ export default function TeacherScoresPage() {
                     </div>
                   ) : (
                     <>
-                      {/* 2. 4대 핵심 요약 지표 카드 (통일된 화이트 톤 & 정갈한 타이포그래피) */}
+                      {/* 2. 3대 핵심 요약 지표 카드 (잠재 성적 제거 → 원점수·등급 / 등급 컷 위치 / 학교 평균 대비 성과) */}
                       {activeDetailExam && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5">
-                          {/* 카드 1: 실전 원점수 및 등급 */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {/* 카드 1: 선택 시험 원점수 및 등급 */}
                           <div className="bg-white rounded-2xl p-5 border border-slate-200/90 shadow-2xs flex flex-col justify-between">
                             <div>
                               <div className="flex items-center justify-between gap-2">
-                                <span className="text-xs font-bold text-slate-500">
+                                <span className="text-xs font-bold text-slate-500 whitespace-nowrap">
                                   선택 시험 성적
                                 </span>
-                                <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
+                                <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-md whitespace-nowrap">
                                   {formatExamShortLabel(activeDetailExam)}
                                 </span>
                               </div>
@@ -1310,15 +1316,15 @@ export default function TeacherScoresPage() {
                                     점
                                   </span>
                                 </div>
-                                {activeDetailExam.grade && (
-                                  <span className="text-sm font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-0.5 rounded-lg tabular-nums">
-                                    {activeDetailExam.grade}등급
+                                {(activeDetailExam.grade || activeGradeAnalysis?.actualGrade) && (
+                                  <span className="text-sm font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2.5 py-0.5 rounded-lg tabular-nums whitespace-nowrap">
+                                    {activeDetailExam.grade || activeGradeAnalysis?.actualGrade}등급
                                   </span>
                                 )}
                               </div>
                             </div>
 
-                            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs gap-2">
                               {previousDetailExam &&
                               previousDetailExam.raw_score !== null &&
                               activeDetailExam.raw_score !== null ? (
@@ -1335,7 +1341,7 @@ export default function TeacherScoresPage() {
                                         직전({formatExamShortLabel(previousDetailExam)}) 대비
                                       </span>
                                       <span
-                                        className={`font-bold tabular-nums ${
+                                        className={`font-bold tabular-nums whitespace-nowrap ${
                                           diff > 0
                                             ? 'text-emerald-600'
                                             : diff < 0
@@ -1360,66 +1366,30 @@ export default function TeacherScoresPage() {
                             </div>
                           </div>
 
-                          {/* 카드 2: 실수 보정 잠재 성적 */}
+                          {/* 카드 2: 등급 컷 위치 및 석차 백분율 진단 */}
                           <div className="bg-white rounded-2xl p-5 border border-slate-200/90 shadow-2xs flex flex-col justify-between">
                             <div>
                               <div className="flex items-center justify-between gap-2">
-                                <span className="text-xs font-bold text-slate-500">
-                                  실수 보정 잠재 성적
-                                </span>
-                                {activePotentialAnalysis?.recoverableLost > 0 ? (
-                                  <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md tabular-nums">
-                                    +{activePotentialAnalysis.recoverableLost}점 회복 가능
-                                  </span>
-                                ) : (
-                                  <span className="text-[11px] font-medium text-slate-400">
-                                    실수 감점 없음
-                                  </span>
-                                )}
-                              </div>
-                              <div className="mt-3 flex items-baseline justify-between gap-2">
-                                <div className="flex items-baseline gap-1">
-                                  <span className="text-3xl font-black text-emerald-700 tabular-nums tracking-tight">
-                                    {activePotentialAnalysis
-                                      ? activePotentialAnalysis.potentialScore
-                                      : '-'}
-                                  </span>
-                                  <span className="text-xs font-semibold text-slate-400">
-                                    점
-                                  </span>
-                                </div>
-                                {activePotentialAnalysis?.potentialGrade && (
-                                  <span className="text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-100 px-2.5 py-0.5 rounded-lg tabular-nums">
-                                    잠재 {activePotentialAnalysis.potentialGrade}등급권
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="mt-4 pt-3 border-t border-slate-100 text-xs text-slate-500 font-medium leading-snug">
-                              {activePotentialAnalysis?.recoverableLost > 0
-                                ? `계산·조건·시간 실수(-${activePotentialAnalysis.recoverableLost}점) 보완 시 기대 점수`
-                                : '단순 실수 없이 현재 실력을 온전히 발휘한 시험'}
-                            </div>
-                          </div>
-
-                          {/* 카드 3: 등급 내 위치 및 상위 누적 비율 */}
-                          <div className="bg-white rounded-2xl p-5 border border-slate-200/90 shadow-2xs flex flex-col justify-between">
-                            <div>
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="text-xs font-bold text-slate-500">
+                                <span className="text-xs font-bold text-slate-500 whitespace-nowrap">
                                   등급 컷 위치 진단
                                 </span>
                                 {activeGradeAnalysis?.topPct !== null && (
-                                  <span className="text-[11px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md tabular-nums">
+                                  <span className="text-[11px] font-bold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-md tabular-nums whitespace-nowrap">
                                     상위 {activeGradeAnalysis.topPct}%
                                   </span>
                                 )}
                               </div>
 
-                              <div className="mt-2.5">
-                                <div className="text-sm font-extrabold text-slate-900">
-                                  {activeGradeAnalysis?.statusBadge || '석차·편차 미입력'}
+                              <div className="mt-3">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-base font-black text-slate-900">
+                                    {activeGradeAnalysis?.statusBadge || '석차·편차 미입력'}
+                                  </span>
+                                  {activeDetailExam.rank && activeDetailExam.total_students && (
+                                    <span className="text-xs font-bold text-slate-500 tabular-nums whitespace-nowrap">
+                                      {activeDetailExam.rank}등 / {activeDetailExam.total_students}명
+                                    </span>
+                                  )}
                                 </div>
                                 {activeGradeAnalysis?.topPct !== null && (
                                   <div className="mt-2.5">
@@ -1444,16 +1414,16 @@ export default function TeacherScoresPage() {
                             </div>
                           </div>
 
-                          {/* 카드 4: 학교 평균 대비 위치 및 표준편차 지수 */}
+                          {/* 카드 3: 학교 평균 및 난이도 (평균만 입력된 경우에도 깔끔하게 표시) */}
                           <div className="bg-white rounded-2xl p-5 border border-slate-200/90 shadow-2xs flex flex-col justify-between">
                             <div>
                               <div className="flex items-center justify-between gap-2">
-                                <span className="text-xs font-bold text-slate-500">
-                                  학교 평균 및 난이도
+                                <span className="text-xs font-bold text-slate-500 whitespace-nowrap">
+                                  학교 평균 및 상대 성취도
                                 </span>
                                 {activeDetailExam.school_mean !== null && (
-                                  <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md tabular-nums">
-                                    평균 {activeDetailExam.school_mean}점
+                                  <span className="text-[11px] font-bold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-md tabular-nums whitespace-nowrap">
+                                    학교 평균 {activeDetailExam.school_mean}점
                                   </span>
                                 )}
                               </div>
@@ -1467,10 +1437,36 @@ export default function TeacherScoresPage() {
                                         ? `+${activeGradeAnalysis.zScore}`
                                         : activeGradeAnalysis.zScore}
                                     </span>
-                                    <span className="text-xs font-bold text-slate-500 tabular-nums">
+                                    <span className="text-xs font-bold text-slate-500 tabular-nums whitespace-nowrap">
                                       정규분포 상위 {zScoreToTopPercent(activeGradeAnalysis.zScore)}%
                                     </span>
                                   </>
+                                ) : activeDetailExam.school_mean !== null &&
+                                  activeDetailExam.raw_score !== null ? (
+                                  (() => {
+                                    const diffMean = Number(
+                                      (
+                                        activeDetailExam.raw_score -
+                                        activeDetailExam.school_mean
+                                      ).toFixed(1)
+                                    );
+                                    return (
+                                      <div className="flex items-baseline justify-between w-full gap-2">
+                                        <span
+                                          className={`text-2xl sm:text-3xl font-black tabular-nums tracking-tight ${
+                                            diffMean >= 0
+                                              ? 'text-indigo-700'
+                                              : 'text-rose-600'
+                                          }`}
+                                        >
+                                          {diffMean >= 0 ? `+${diffMean}점` : `${diffMean}점`}
+                                        </span>
+                                        <span className="text-xs font-bold text-slate-500 whitespace-nowrap">
+                                          학교 평균 대비 격차
+                                        </span>
+                                      </div>
+                                    );
+                                  })()
                                 ) : activeDetailExam.exam_category === 'MOCK' &&
                                   activeDetailExam.percentile !== null ? (
                                   <span className="text-2xl sm:text-3xl font-black text-slate-900 tabular-nums">
@@ -1478,7 +1474,7 @@ export default function TeacherScoresPage() {
                                   </span>
                                 ) : (
                                   <span className="text-sm font-semibold text-slate-400 py-1">
-                                    평균·표준편차 미입력
+                                    학교 평균 미입력
                                   </span>
                                 )}
                               </div>
@@ -1489,7 +1485,9 @@ export default function TeacherScoresPage() {
                               activeDetailExam.raw_score !== null ? (
                                 <>
                                   <span>
-                                    표준편차 {activeDetailExam.school_std_dev || '-'}
+                                    {activeDetailExam.school_std_dev
+                                      ? `표준편차 ${activeDetailExam.school_std_dev}`
+                                      : `학교 과목 평균 ${activeDetailExam.school_mean}점`}
                                   </span>
                                   <strong className="text-slate-800 font-bold">
                                     평균 대비{' '}
@@ -1505,27 +1503,22 @@ export default function TeacherScoresPage() {
                                   </strong>
                                 </>
                               ) : (
-                                <span>시험 난이도를 보정한 상대적 성취 지표</span>
+                                <span>학교 평균·표준편차 입력 시 상대 난이도가 분석됩니다</span>
                               )}
                             </div>
                           </div>
                         </div>
                       )}
 
-                      {/* 3. 📈 시간순 성적 변화 추이 인터랙티브 차트 (Executive Chart Panel) */}
-                      <div className="bg-white rounded-3xl border border-slate-200/90 p-5 sm:p-7 shadow-xs space-y-4">
+                      {/* 3. 시간순 성적 변화 추이 차트 (영어 뱃지 및 잠재점수 제거) */}
+                      <div className="bg-white rounded-2xl border border-slate-200/90 p-5 sm:p-6 shadow-2xs space-y-4">
                         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 border-b border-slate-100 pb-4">
                           <div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-[10px] font-black tracking-widest uppercase bg-indigo-50 text-indigo-700 border border-indigo-200/70 px-2 py-0.5 rounded-md">
-                                TRAJECTORY ANALYTICS
-                              </span>
-                              <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
-                                고교 과정 성적 추이 & 잠재력 시뮬레이션 차트
-                              </h3>
-                            </div>
-                            <p className="text-xs text-slate-500 font-medium mt-1">
-                              차트의 데이터 포인트를 선택하면 하단의 정밀 패인 분석 리포트가 해당 시험으로 즉시 연동됩니다.
+                            <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
+                              고교 과정 성적 추이 차트
+                            </h3>
+                            <p className="text-xs text-slate-500 font-medium mt-0.5">
+                              차트의 시험 지점을 클릭하면 하단의 오답 원인 분석 리포트가 해당 시험으로 전환됩니다.
                             </p>
                           </div>
 
@@ -1540,7 +1533,7 @@ export default function TeacherScoresPage() {
                                 <button
                                   key={tab.id}
                                   onClick={() => setChartCategoryFilter(tab.id)}
-                                  className={`text-xs font-extrabold px-3 py-1.5 rounded-lg transition ${
+                                  className={`text-xs font-extrabold px-3 py-1.5 rounded-lg transition whitespace-nowrap ${
                                     chartCategoryFilter === tab.id
                                       ? 'bg-slate-900 text-white shadow-2xs'
                                       : 'text-slate-600 hover:text-slate-900'
@@ -1557,7 +1550,6 @@ export default function TeacherScoresPage() {
                                 value={chartSubjectFilter}
                                 onChange={(e) => setChartSubjectFilter(e.target.value)}
                                 className="text-xs bg-slate-100 border border-slate-200 rounded-xl px-3 py-2 font-extrabold text-slate-800"
-                                title="고2·고3 복수 선택과목(예: 대수, 확통, 미적분) 중 특정 과목만 모아봅니다"
                               >
                                 <option value="ALL">전체 과목 ({studentSubjects.length}개)</option>
                                 {studentSubjects.map((subj) => (
@@ -1568,19 +1560,19 @@ export default function TeacherScoresPage() {
                               </select>
                             )}
 
-                            <div className="flex bg-indigo-50/80 border border-indigo-200/60 p-1 rounded-xl">
+                            <div className="flex bg-slate-100 border border-slate-200/70 p-1 rounded-xl">
                               {[
-                                { id: 'SCORE', label: '원점수 + 잠재점수' },
+                                { id: 'SCORE', label: '원점수 추이' },
                                 { id: 'GRADE', label: '등급 추이 (1등급 상단)' },
-                                { id: 'PERCENT', label: '상위 누적 % (난이도 보정)' },
+                                { id: 'PERCENT', label: '상위 누적 %' },
                               ].map((m) => (
                                 <button
                                   key={m.id}
                                   onClick={() => setChartMetricMode(m.id)}
-                                  className={`text-xs font-extrabold px-3 py-1.5 rounded-lg transition ${
+                                  className={`text-xs font-extrabold px-3 py-1.5 rounded-lg transition whitespace-nowrap ${
                                     chartMetricMode === m.id
                                       ? 'bg-indigo-600 text-white shadow-2xs'
-                                      : 'text-indigo-800 hover:bg-indigo-100/70'
+                                      : 'text-slate-600 hover:text-slate-900'
                                   }`}
                                 >
                                   {m.label}
@@ -1590,26 +1582,22 @@ export default function TeacherScoresPage() {
                           </div>
                         </div>
 
-                        {/* 범례 (내신 실선과 모의고사 실선을 분리하여 표시) */}
-                        <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50/90 border border-slate-200/70 rounded-2xl px-4 py-2.5 text-xs font-bold text-slate-700">
+                        {/* 범례 (잠재점수 제거 후 깔끔한 실전 지표만 표시) */}
+                        <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50/90 border border-slate-200/70 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700">
                           <div className="flex flex-wrap items-center gap-4">
                             {chartMetricMode === 'SCORE' && (
                               <>
                                 <span className="flex items-center gap-1.5">
                                   <span className="w-3 h-3 rounded-full bg-indigo-600 ring-2 ring-indigo-200 inline-block" />
-                                  <span>내신 원점수 (인디고 실선)</span>
+                                  <span>내신 원점수</span>
                                 </span>
                                 <span className="flex items-center gap-1.5">
                                   <span className="w-3 h-3 rounded-full bg-amber-500 ring-2 ring-amber-200 inline-block" />
-                                  <span>모의고사 원점수 (앰버 실선)</span>
-                                </span>
-                                <span className="flex items-center gap-1.5">
-                                  <span className="w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-emerald-200 inline-block" />
-                                  <span>실수 보정 잠재점수 (에메랄드 점선)</span>
+                                  <span>모의고사 원점수</span>
                                 </span>
                                 <span className="flex items-center gap-1.5">
                                   <span className="w-2.5 h-2.5 rounded-full bg-slate-400 inline-block" />
-                                  <span>학교 과목 평균선</span>
+                                  <span>학교 과목 평균선 (점선)</span>
                                 </span>
                               </>
                             )}
@@ -1617,15 +1605,11 @@ export default function TeacherScoresPage() {
                               <>
                                 <span className="flex items-center gap-1.5">
                                   <span className="w-3 h-3 rounded-full bg-indigo-600 ring-2 ring-indigo-200 inline-block" />
-                                  <span>내신 실전 등급 (상단 1등급)</span>
+                                  <span>내신 산출 등급 (상단 1등급)</span>
                                 </span>
                                 <span className="flex items-center gap-1.5">
                                   <span className="w-3 h-3 rounded-full bg-amber-500 ring-2 ring-amber-200 inline-block" />
-                                  <span>모의고사 등급 (분리선)</span>
-                                </span>
-                                <span className="flex items-center gap-1.5">
-                                  <span className="w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-emerald-200 inline-block" />
-                                  <span>실수 보정 시 잠재 등급</span>
+                                  <span>모의고사 등급</span>
                                 </span>
                               </>
                             )}
@@ -1643,7 +1627,7 @@ export default function TeacherScoresPage() {
                             )}
                           </div>
                           <span className="text-[11px] font-semibold text-slate-400">
-                            내신과 모의고사는 시험 성격이 달라 별도의 추이선으로 분리 분석됩니다
+                            내신과 모의고사는 시험 성격이 달라 별도의 추이선으로 분리 표시됩니다
                           </span>
                         </div>
 
@@ -1657,7 +1641,7 @@ export default function TeacherScoresPage() {
                         />
                       </div>
 
-                      {/* 4. 오답 감점 원인 정밀 분석 (좌측 도넛 차트 + 우측 항목별 수평 바 비교) */}
+                      {/* 4. 오답 감점 원인 정밀 분석 (좌측 컬러 도넛 차트 + 우측 항목별 수평 바 비교) */}
                       {activeDetailExam && (
                         <div className="bg-white rounded-2xl border border-slate-200/90 p-5 sm:p-6 shadow-2xs space-y-5">
                           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-4">
@@ -1666,7 +1650,7 @@ export default function TeacherScoresPage() {
                                 [{formatExamFullLabel(activeDetailExam)}] 오답 원인 및 감점 비중 분석
                               </h3>
                               <p className="text-xs text-slate-500 font-medium mt-0.5">
-                                감점 원인을 &lsquo;즉시 교정 가능한 실수&rsquo;와 &lsquo;개념·심화 보완 영역&rsquo;으로 나누어 다음 시험 대비 우선순위를 확인합니다.
+                                감점 원인을 &lsquo;풀이 습관·실전 운영(계산·조건·시간)&rsquo;과 &lsquo;개념·유형·심화 역량&rsquo;으로 나누어 다음 시험 보완 과제를 점검합니다.
                               </p>
                             </div>
                             {!isConsultMode && (
@@ -1731,7 +1715,7 @@ export default function TeacherScoresPage() {
                                   </span>
                                 </div>
                                 <p className="text-[11px] text-slate-500 mt-0.5">
-                                  실수 영역(코랄·앰버)과 실력 영역(인디고·슬레이트) 비중
+                                  항목별 감점 점수가 전체 감점에서 차지하는 비율
                                 </p>
                               </div>
 
@@ -1740,12 +1724,12 @@ export default function TeacherScoresPage() {
                                 const radius = 58;
                                 const circumference = 2 * Math.PI * radius;
                                 const colorMap = {
-                                  calc_mistake: '#f43f5e',
-                                  misread: '#fb923c',
-                                  time_shortage: '#eab308',
-                                  concept_gap: '#4f46e5',
-                                  pattern_stuck: '#0284c7',
-                                  killer_unsolved: '#475569',
+                                  mistake_calc: '#f43f5e',
+                                  mistake_cond: '#fb923c',
+                                  mistake_essay: '#eab308',
+                                  skill_concept: '#4f46e5',
+                                  skill_approach: '#0ea5e9',
+                                  skill_killer: '#64748b',
                                 };
 
                                 let cumulativeFraction = 0;
@@ -1813,20 +1797,20 @@ export default function TeacherScoresPage() {
                                     </div>
 
                                     {totalLost > 0 ? (
-                                      <div className="w-full space-y-1.5 text-xs">
+                                      <div className="w-full space-y-2 text-xs">
                                         {segments.map((seg) => (
                                           <div
                                             key={seg.key}
                                             className="flex items-center justify-between gap-2"
                                           >
-                                            <span className="flex items-center gap-1.5 font-bold text-slate-700 truncate">
+                                            <span className="flex items-center gap-2 font-bold text-slate-700 whitespace-nowrap">
                                               <span
                                                 className="w-2.5 h-2.5 rounded-xs shrink-0 inline-block"
                                                 style={{ backgroundColor: seg.color }}
                                               />
-                                              <span className="truncate">{seg.label}</span>
+                                              <span>{seg.label}</span>
                                             </span>
-                                            <span className="font-black text-slate-900 tabular-nums shrink-0">
+                                            <span className="font-black text-slate-900 tabular-nums whitespace-nowrap">
                                               -{seg.val}점{' '}
                                               <span className="text-slate-400 font-bold text-[11px]">
                                                 ({seg.pct}%)
@@ -1844,11 +1828,11 @@ export default function TeacherScoresPage() {
                                 );
                               })()}
 
-                              {/* 하단 실수 감점 vs 실력 감점 2분할 요약 */}
+                              {/* 하단 풀이 습관 감점 vs 개념·심화 감점 2분할 요약 */}
                               <div className="grid grid-cols-2 gap-2.5 pt-3 border-t border-slate-200/80 text-xs tabular-nums">
                                 <div className="bg-white rounded-xl p-3 border border-slate-200/80">
                                   <span className="text-[11px] font-bold text-slate-500 block">
-                                    교정 가능 실수 감점
+                                    계산·조건·시간 감점
                                   </span>
                                   <span className="text-base font-black text-rose-600 mt-0.5 block">
                                     -{activePotentialAnalysis?.recoverableLost || 0}점
@@ -1865,7 +1849,7 @@ export default function TeacherScoresPage() {
                               </div>
                             </div>
 
-                            {/* 우측 (7칸): 6대 감점 항목별 수평 막대 비교 표 */}
+                            {/* 우측 (7칸): 6대 감점 항목별 수평 막대 비교 표 (항목명 말줄임 잘림 방지) */}
                             <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200/90 p-5 flex flex-col justify-between">
                               <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
                                 <h4 className="text-xs font-black text-slate-800">
@@ -1890,39 +1874,45 @@ export default function TeacherScoresPage() {
                                       ? Number((currVal - prevVal).toFixed(1))
                                       : null;
                                   const maxRef = Math.max(
-                                    20,
-                                    activePotentialAnalysis?.totalRecordedLost || 20
+                                    15,
+                                    activePotentialAnalysis?.totalRecordedLost || 15
                                   );
                                   const barPct = Math.min(
                                     100,
                                     Math.round((currVal / maxRef) * 100)
                                   );
 
+                                  const barColorMap = {
+                                    mistake_calc: 'bg-rose-500',
+                                    mistake_cond: 'bg-orange-400',
+                                    mistake_essay: 'bg-amber-500',
+                                    skill_concept: 'bg-indigo-600',
+                                    skill_approach: 'bg-sky-500',
+                                    skill_killer: 'bg-slate-600',
+                                  };
+
                                   return (
                                     <div key={cat.key} className="py-3 first:pt-2 last:pb-1">
-                                      <div className="flex items-center justify-between gap-2 text-xs">
+                                      <div className="flex items-center justify-between gap-3 text-xs">
                                         <div className="flex items-center gap-2 min-w-0">
                                           <span
-                                            className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md shrink-0 ${
+                                            className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md shrink-0 whitespace-nowrap ${
                                               cat.recoverable
                                                 ? 'bg-rose-50 text-rose-700 border border-rose-200/80'
                                                 : 'bg-slate-100 text-slate-700 border border-slate-200/80'
                                             }`}
                                           >
-                                            {cat.recoverable ? '실수' : '실력'}
+                                            {cat.recoverable ? '풀이습관' : '개념·심화'}
                                           </span>
-                                          <span className="font-black text-slate-900 truncate">
+                                          <span className="font-black text-slate-900 whitespace-nowrap">
                                             {cat.label}
-                                          </span>
-                                          <span className="hidden sm:inline text-[11px] text-slate-400 font-medium truncate">
-                                            · {cat.description}
                                           </span>
                                         </div>
 
                                         <div className="flex items-center gap-2 shrink-0 tabular-nums">
                                           {prevVal !== null && (
                                             <span
-                                              className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${
+                                              className={`text-[11px] font-bold px-2 py-0.5 rounded-md whitespace-nowrap ${
                                                 diff < 0
                                                   ? 'bg-emerald-50 text-emerald-700'
                                                   : diff > 0
@@ -1939,7 +1929,7 @@ export default function TeacherScoresPage() {
                                             </span>
                                           )}
                                           <span
-                                            className={`text-sm font-black w-14 text-right ${
+                                            className={`text-sm font-black w-12 text-right whitespace-nowrap ${
                                               currVal > 0
                                                 ? cat.recoverable
                                                   ? 'text-rose-600'
@@ -1957,9 +1947,7 @@ export default function TeacherScoresPage() {
                                         <div
                                           className={`h-full rounded-full transition-all ${
                                             currVal > 0
-                                              ? cat.recoverable
-                                                ? 'bg-rose-500'
-                                                : 'bg-indigo-600'
+                                              ? barColorMap[cat.key] || 'bg-indigo-600'
                                               : 'bg-transparent'
                                           }`}
                                           style={{ width: `${barPct}%` }}
@@ -1972,7 +1960,7 @@ export default function TeacherScoresPage() {
                             </div>
                           </div>
 
-                          {/* 담당 선생님 시험 총평 및 학습 처방 코멘트 (깔끔한 화이트·슬레이트 콜아웃 카드) */}
+                          {/* 담당 선생님 시험 총평 및 학습 처방 코멘트 */}
                           {activeDetailExam.memo && (
                             <div className="bg-slate-50 rounded-2xl p-4 sm:p-5 border border-slate-200/90 border-l-4 border-l-indigo-600">
                               <div className="flex items-center gap-2 mb-1.5">
@@ -1988,7 +1976,7 @@ export default function TeacherScoresPage() {
                         </div>
                       )}
 
-                      {/* 5. 학생 누적 성적 전체 이력 표 */}
+                      {/* 5. 학생 누적 성적 전체 이력 표 (잠재 점수 열 제거 & 줄바꿈 깨짐 방지 & 자동 산출 등급 표시) */}
                       <div className="bg-white rounded-2xl border border-slate-200/90 p-5 sm:p-6 shadow-2xs space-y-4">
                         <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
                           <div>
@@ -2004,18 +1992,15 @@ export default function TeacherScoresPage() {
                         <div className="overflow-x-auto rounded-xl border border-slate-200/80">
                           <table className="w-full text-left border-collapse text-xs tabular-nums">
                             <thead>
-                              <tr className="border-b border-slate-200 text-slate-600 font-black bg-slate-50">
+                              <tr className="border-b border-slate-200 text-slate-600 font-black bg-slate-50 whitespace-nowrap">
                                 <th className="py-3 px-3.5">시험 구분</th>
                                 <th className="py-3 px-3">과목명</th>
-                                <th className="py-3 px-3 text-right">실전 원점수</th>
-                                <th className="py-3 px-3 text-right text-emerald-700">
-                                  실수 보정 점수
-                                </th>
+                                <th className="py-3 px-3 text-right">원점수</th>
                                 <th className="py-3 px-3 text-center">산출 등급</th>
                                 <th className="py-3 px-3 text-right">석차 / 백분위</th>
-                                <th className="py-3 px-3 text-right">학교평균 (편차)</th>
-                                <th className="py-3 px-3 text-center">상대 위치 (상위%)</th>
-                                <th className="py-3 px-3">주요 감점 요인 및 메모</th>
+                                <th className="py-3 px-3 text-right">학교 평균 (편차)</th>
+                                <th className="py-3 px-3 text-center">상위 누적 %</th>
+                                <th className="py-3 px-3">오답 감점 내역 및 메모</th>
                                 {!isConsultMode && (
                                   <th className="py-3 px-3 text-center print:hidden">관리</th>
                                 )}
@@ -2024,8 +2009,8 @@ export default function TeacherScoresPage() {
                             <tbody className="divide-y divide-slate-100 font-semibold">
                               {filteredStudentExams.map((exam) => {
                                 const isSelectedRow = activeDetailExam?.id === exam.id;
-                                const pot = analyzePotentialPerformance(exam, profileGradeSystem);
                                 const pos = analyzeGradePosition(exam, profileGradeSystem);
+                                const resolvedGrade = exam.grade || pos?.actualGrade;
                                 const activeErrors = ERROR_REASON_CATEGORIES.filter(
                                   (c) => Number(exam.error_breakdown?.[c.key]) > 0
                                 );
@@ -2062,23 +2047,16 @@ export default function TeacherScoresPage() {
                                     <td className="py-3.5 px-3 text-right font-black text-slate-900 text-sm whitespace-nowrap">
                                       {exam.raw_score !== null ? `${exam.raw_score}점` : '-'}
                                     </td>
-                                    <td className="py-3.5 px-3 text-right font-black text-emerald-700 whitespace-nowrap">
-                                      {pot && pot.recoverableLost > 0
-                                        ? `${pot.potentialScore}점 (+${pot.recoverableLost})`
-                                        : exam.raw_score !== null
-                                        ? `${exam.raw_score}점`
-                                        : '-'}
-                                    </td>
                                     <td className="py-3.5 px-3 text-center whitespace-nowrap">
-                                      {exam.grade ? (
+                                      {resolvedGrade ? (
                                         <span
-                                          className={`font-black px-2.5 py-1 rounded-lg text-xs ${
-                                            Number(exam.grade) <= 2
+                                          className={`font-black px-2.5 py-1 rounded-lg text-xs inline-block ${
+                                            Number(resolvedGrade) <= 2
                                               ? 'bg-indigo-600 text-white'
                                               : 'bg-slate-100 text-slate-800 border border-slate-200'
                                           }`}
                                         >
-                                          {exam.grade}등급
+                                          {resolvedGrade}등급
                                         </span>
                                       ) : (
                                         '-'
@@ -2107,7 +2085,7 @@ export default function TeacherScoresPage() {
                                         <span className="text-indigo-700 font-black">
                                           상위 {pos.topPct}%{' '}
                                           <span className="text-slate-400 font-bold text-[11px]">
-                                            ({pos.zScore > 0 ? `+${pos.zScore}` : pos.zScore})
+                                            (Z {pos.zScore > 0 ? `+${pos.zScore}` : pos.zScore})
                                           </span>
                                         </span>
                                       ) : pos?.topPct !== null ? (
@@ -2118,18 +2096,18 @@ export default function TeacherScoresPage() {
                                         '-'
                                       )}
                                     </td>
-                                    <td className="py-3.5 px-3 max-w-[240px]">
-                                      <div className="flex flex-wrap gap-1">
+                                    <td className="py-3.5 px-3 min-w-[260px] max-w-[360px]">
+                                      <div className="flex flex-wrap gap-1.5">
                                         {activeErrors.map((cat) => (
                                           <span
                                             key={cat.key}
-                                            className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
+                                            className={`text-[11px] font-bold px-2 py-0.5 rounded-md whitespace-nowrap ${
                                               cat.recoverable
-                                                ? 'bg-rose-50 text-rose-800 border border-rose-200'
-                                                : 'bg-slate-100 text-slate-700 border border-slate-200'
+                                                ? 'bg-rose-50 text-rose-700 border border-rose-200/80'
+                                                : 'bg-slate-100 text-slate-700 border border-slate-200/80'
                                             }`}
                                           >
-                                            {cat.shortLabel} -{exam.error_breakdown[cat.key]}
+                                            {cat.shortLabel} -{exam.error_breakdown[cat.key]}점
                                           </span>
                                         ))}
                                       </div>
@@ -3385,11 +3363,11 @@ export default function TeacherScoresPage() {
                 })()}
               </div>
 
-              {/* 3. 🔍 6대 오답 패인(감점 요인) 상세 점수 입력 + 총 감점 대비 자동 검증 바 */}
+              {/* 3. 6대 오답 원인(감점 요인) 상세 점수 입력 + 총 감점 대비 자동 검증 바 */}
               <div className="space-y-2.5 pt-2 border-t border-slate-100">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h4 className="text-xs font-black text-slate-800">
-                    🔍 오답 패인별 감점 점수 (선택 입력 · 잠재 실력 점수 자동 산출)
+                    오답 원인별 감점 점수 (선택 입력)
                   </h4>
                   {(() => {
                     const rawVal = Number(examForm.raw_score);
@@ -3424,10 +3402,10 @@ export default function TeacherScoresPage() {
                           총 감점 <strong>-{totalLost}점</strong> 중 현재{' '}
                           <strong>-{recordedSum}점</strong> 분류됨{' '}
                           {diff === 0
-                            ? '✅ (100% 일치)'
+                            ? '(100% 일치)'
                             : diff > 0
                             ? `(미분류 ${diff}점 남음)`
-                            : `(⚠️ 총 감점보다 ${Math.abs(diff)}점 초과 입력됨)`}
+                            : `(총 감점보다 ${Math.abs(diff)}점 초과 입력됨)`}
                         </span>
                         {diff > 0 && (
                           <div className="flex items-center gap-1">
@@ -3438,9 +3416,9 @@ export default function TeacherScoresPage() {
                                   ...p,
                                   error_breakdown: {
                                     ...(p.error_breakdown || {}),
-                                    TYPE_UNFAMILIAR: Number(
+                                    skill_approach: Number(
                                       (
-                                        (Number(p.error_breakdown?.TYPE_UNFAMILIAR) || 0) +
+                                        (Number(p.error_breakdown?.skill_approach) || 0) +
                                         diff
                                       ).toFixed(1)
                                     ),
@@ -3458,9 +3436,9 @@ export default function TeacherScoresPage() {
                                   ...p,
                                   error_breakdown: {
                                     ...(p.error_breakdown || {}),
-                                    KILLER_DIFFICULTY: Number(
+                                    skill_killer: Number(
                                       (
-                                        (Number(p.error_breakdown?.KILLER_DIFFICULTY) ||
+                                        (Number(p.error_breakdown?.skill_killer) ||
                                           0) + diff
                                       ).toFixed(1)
                                     ),
@@ -3478,9 +3456,9 @@ export default function TeacherScoresPage() {
                                   ...p,
                                   error_breakdown: {
                                     ...(p.error_breakdown || {}),
-                                    CONCEPT_LACK: Number(
+                                    skill_concept: Number(
                                       (
-                                        (Number(p.error_breakdown?.CONCEPT_LACK) || 0) +
+                                        (Number(p.error_breakdown?.skill_concept) || 0) +
                                         diff
                                       ).toFixed(1)
                                     ),
@@ -3509,7 +3487,7 @@ export default function TeacherScoresPage() {
                       }`}
                     >
                       <label className="block text-[11px] font-extrabold text-slate-800 mb-1">
-                        {cat.label} {cat.recoverable ? '🌟' : ''}
+                        {cat.label}
                       </label>
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs font-bold text-slate-400">-</span>
@@ -3540,7 +3518,7 @@ export default function TeacherScoresPage() {
               {/* 4. 시험 총평 코멘트 */}
               <div>
                 <label className="block text-xs font-black text-slate-800 mb-1">
-                  👨‍🏫 시험 총평 및 향후 처방 메모 (선택)
+                  시험 총평 및 향후 학습 처방 메모 (선택)
                 </label>
                 <textarea
                   rows={2}
@@ -3564,7 +3542,7 @@ export default function TeacherScoresPage() {
                   disabled={saving}
                   className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-black px-5 py-2.5 rounded-xl shadow-md"
                 >
-                  {saving ? '저장 중...' : '💾 성적 및 분석 저장'}
+                  {saving ? '저장 중...' : '성적 및 분석 저장'}
                 </button>
               </div>
             </form>
@@ -3576,8 +3554,8 @@ export default function TeacherScoresPage() {
 }
 
 /**
- * 📈 시간순 성적 추이 SVG 차트 컴포넌트
- * - 원점수 + 잠재점수(실수보정) + 학교평균
+ * 시간순 성적 추이 SVG 차트 컴포넌트
+ * - 원점수 + 학교평균
  * - 등급 추이 (1등급이 상단에 오도록 반전 Y축)
  * - 상위 누적 백분율(%) 추이
  */
@@ -3597,18 +3575,22 @@ function ScoreTimelineChart({
   }
 
   const width = 860;
-  const height = 296;
-  const padLeft = 58;
-  const padRight = 42;
+  const height = 284;
+  const padLeft = 64;
+  const padRight = 56;
   const padTop = 36;
-  const padBottom = 60;
+  const padBottom = 58;
   const plotW = width - padLeft - padRight;
   const plotH = height - padTop - padBottom;
   const bottomY = padTop + plotH;
 
+  // 첫 번째·마지막 포인트가 좌우 Y축 눈금 글씨와 겹치지 않도록 안쪽 여백 확보
+  const innerInsetX = 48;
+  const usableW = Math.max(100, plotW - innerInsetX * 2);
+
   const getX = (idx) => {
     if (exams.length === 1) return padLeft + plotW / 2;
-    return padLeft + (idx / (exams.length - 1)) * plotW;
+    return padLeft + innerInsetX + (idx / (exams.length - 1)) * usableW;
   };
 
   const getYForScore = (val) => {
@@ -3617,8 +3599,9 @@ function ScoreTimelineChart({
   };
 
   const getYForGrade = (gradeVal) => {
-    const g = Math.max(1, Math.min(9, Number(gradeVal) || 5));
-    return padTop + ((g - 1) / 8) * plotH;
+    const maxG = Number(gradeSystem) === 5 ? 5 : 9;
+    const g = Math.max(1, Math.min(maxG, Number(gradeVal) || 3));
+    return padTop + ((g - 1) / (maxG - 1)) * plotH;
   };
 
   const getYForTopPercent = (pctVal) => {
@@ -3626,26 +3609,19 @@ function ScoreTimelineChart({
     return padTop + (p / 100) * plotH;
   };
 
-  // 데이터 포인트 생성
+  // 데이터 포인트 생성 (잠재점수 제거, 실제 성취 지표만 표시)
   const points = exams.map((exam, idx) => {
     const x = getX(idx);
-    const pot = analyzePotentialPerformance(exam, gradeSystem);
     const pos = analyzeGradePosition(exam, gradeSystem);
 
     let primaryY = null;
     let primaryLabel = '';
-    let secondaryY = null;
-    let secondaryLabel = '';
     let meanY = null;
 
     if (metricMode === 'SCORE') {
       if (exam.raw_score !== null && !isNaN(Number(exam.raw_score))) {
         primaryY = getYForScore(exam.raw_score);
         primaryLabel = `${exam.raw_score}점`;
-      }
-      if (pot && pot.potentialScore !== null) {
-        secondaryY = getYForScore(pot.potentialScore);
-        secondaryLabel = `잠재 ${pot.potentialScore}점`;
       }
       if (exam.school_mean !== null && !isNaN(Number(exam.school_mean))) {
         meanY = getYForScore(exam.school_mean);
@@ -3655,10 +3631,6 @@ function ScoreTimelineChart({
       if (actualG) {
         primaryY = getYForGrade(actualG);
         primaryLabel = `${actualG}등급`;
-      }
-      if (pot?.potentialGrade) {
-        secondaryY = getYForGrade(pot.potentialGrade);
-        secondaryLabel = `잠재 ${pot.potentialGrade}등급`;
       }
     } else if (metricMode === 'PERCENT') {
       if (pos?.topPct !== null && pos?.topPct !== undefined) {
@@ -3672,8 +3644,6 @@ function ScoreTimelineChart({
       x,
       primaryY,
       primaryLabel,
-      secondaryY,
-      secondaryLabel,
       meanY,
     };
   });
@@ -3710,7 +3680,6 @@ function ScoreTimelineChart({
   const internalAreaPath = buildAreaPath(internalPoints, 'primaryY');
   const mockPath = buildSmoothPath(mockPoints, 'primaryY');
   const mockAreaPath = buildAreaPath(mockPoints, 'primaryY');
-  const secondaryPath = buildSmoothPath(points, 'secondaryY');
   const meanPath = buildSmoothPath(internalPoints, 'meanY');
 
   // 배경 가로 가이드라인
@@ -3718,7 +3687,10 @@ function ScoreTimelineChart({
     metricMode === 'SCORE'
       ? [100, 90, 80, 60, 40].map((v) => ({ y: getYForScore(v), label: `${v}점` }))
       : metricMode === 'GRADE'
-      ? [1, 2, 3, 4, 5, 7, 9].map((g) => ({ y: getYForGrade(g), label: `${g}등급` }))
+      ? (Number(gradeSystem) === 5 ? [1, 2, 3, 4, 5] : [1, 2, 3, 4, 5, 7, 9]).map((g) => ({
+          y: getYForGrade(g),
+          label: `${g}등급`,
+        }))
       : [4, 11, 23, 40, 60, 85].map((pct) => ({
           y: getYForTopPercent(pct),
           label: `상위 ${pct}%`,
@@ -3736,22 +3708,22 @@ function ScoreTimelineChart({
     <div className="w-full overflow-x-auto">
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        className="w-full min-w-[580px] h-auto select-none bg-gradient-to-b from-slate-50/90 to-white rounded-2xl border border-slate-200/90 shadow-2xs"
+        className="w-full min-w-[580px] h-auto select-none bg-gradient-to-b from-slate-50/70 to-white rounded-2xl border border-slate-200/90"
       >
         <defs>
           <linearGradient id="internalAreaGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#4f46e5" stopOpacity="0.20" />
+            <stop offset="0%" stopColor="#4f46e5" stopOpacity="0.16" />
             <stop offset="85%" stopColor="#4f46e5" stopOpacity="0.02" />
             <stop offset="100%" stopColor="#4f46e5" stopOpacity="0.0" />
           </linearGradient>
           <linearGradient id="mockAreaGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#d97706" stopOpacity="0.16" />
+            <stop offset="0%" stopColor="#d97706" stopOpacity="0.14" />
             <stop offset="85%" stopColor="#d97706" stopOpacity="0.02" />
             <stop offset="100%" stopColor="#d97706" stopOpacity="0.0" />
           </linearGradient>
           <linearGradient id="topZoneGrad" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#eef2ff" stopOpacity="0.7" />
-            <stop offset="100%" stopColor="#ecfdf5" stopOpacity="0.7" />
+            <stop offset="0%" stopColor="#eef2ff" stopOpacity="0.65" />
+            <stop offset="100%" stopColor="#f8fafc" stopOpacity="0.65" />
           </linearGradient>
         </defs>
 
@@ -3765,10 +3737,10 @@ function ScoreTimelineChart({
           rx="6"
         />
         <text
-          x={width - padRight - 8}
+          x={width - padRight - 10}
           y={padTop + 14}
           textAnchor="end"
-          className="fill-indigo-500/80 text-[10px] font-extrabold"
+          className="fill-indigo-500/80 text-[10px] font-bold"
         >
           {metricMode === 'SCORE'
             ? '최상위권 목표 구간 (88점 이상)'
@@ -3790,7 +3762,7 @@ function ScoreTimelineChart({
               strokeWidth="1"
             />
             <text
-              x={padLeft - 10}
+              x={padLeft - 12}
               y={gl.y + 3.5}
               textAnchor="end"
               className="fill-slate-400 text-[10px] font-extrabold tabular-nums"
@@ -3815,19 +3787,7 @@ function ScoreTimelineChart({
             fill="none"
             stroke="#94a3b8"
             strokeWidth="2"
-            strokeDasharray="3 3"
-          />
-        )}
-
-        {/* 잠재 점수 / 잠재 등급 점선 */}
-        {(metricMode === 'SCORE' || metricMode === 'GRADE') && secondaryPath && (
-          <path
-            d={secondaryPath}
-            fill="none"
-            stroke="#10b981"
-            strokeWidth="2.5"
-            strokeDasharray="6 4"
-            strokeLinecap="round"
+            strokeDasharray="4 4"
           />
         )}
 
@@ -3837,7 +3797,7 @@ function ScoreTimelineChart({
             d={internalPath}
             fill="none"
             stroke={metricMode === 'PERCENT' ? '#7c3aed' : '#4f46e5'}
-            strokeWidth="3.5"
+            strokeWidth="3.2"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
@@ -3849,13 +3809,13 @@ function ScoreTimelineChart({
             d={mockPath}
             fill="none"
             stroke="#d97706"
-            strokeWidth="3.2"
+            strokeWidth="3"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
         )}
 
-        {/* 각 시험 포인트 및 플로팅 데이터 뱃지 */}
+        {/* 각 시험 포인트 및 데이터 라벨 */}
         {points.map((pt) => {
           const isSelected = pt.exam.id === selectedExamId;
           const isMock = pt.exam.exam_category === 'MOCK';
@@ -3892,87 +3852,55 @@ function ScoreTimelineChart({
                   r="3.5"
                   fill="#94a3b8"
                   stroke="#ffffff"
-                  strokeWidth="1"
+                  strokeWidth="1.2"
                 />
               )}
 
-              {/* 잠재 점수 포인트 & 미니 뱃지 */}
-              {(metricMode === 'SCORE' || metricMode === 'GRADE') &&
-                pt.secondaryY !== null &&
-                Math.abs(pt.secondaryY - (pt.primaryY ?? 0)) > 4 && (
-                  <g>
-                    <line
-                      x1={pt.x}
-                      y1={pt.primaryY ?? pt.secondaryY}
-                      x2={pt.x}
-                      y2={pt.secondaryY}
-                      stroke="#10b981"
-                      strokeWidth="1.5"
-                      strokeDasharray="2 2"
-                    />
-                    <circle
-                      cx={pt.x}
-                      cy={pt.secondaryY}
-                      r="5"
-                      fill="#10b981"
-                      stroke="#ffffff"
-                      strokeWidth="1.8"
-                    />
-                    <text
-                      x={pt.x}
-                      y={pt.secondaryY - 9}
-                      textAnchor="middle"
-                      className="fill-emerald-700 text-[10px] font-black tabular-nums"
-                    >
-                      {pt.secondaryLabel}
-                    </text>
-                  </g>
-                )}
-
-              {/* 메인 데이터 포인트 + 선택 시 Outer Glow 링 + 알약형 라벨 */}
+              {/* 메인 데이터 포인트 + 알약형 배경 라벨 */}
               {pt.primaryY !== null && (
                 <g>
                   {isSelected && (
                     <circle
                       cx={pt.x}
                       cy={pt.primaryY}
-                      r="12"
+                      r="11"
                       fill={pointColor}
-                      fillOpacity="0.16"
+                      fillOpacity="0.15"
                     />
                   )}
                   <circle
                     cx={pt.x}
                     cy={pt.primaryY}
-                    r={isSelected ? '6.5' : '5'}
+                    r={isSelected ? '6' : '4.8'}
                     fill={pointColor}
                     stroke="#ffffff"
-                    strokeWidth="2.2"
+                    strokeWidth="2"
                   />
-                  {(() => {
-                    const labelOffsetY =
-                      pt.secondaryY !== null &&
-                      Math.abs(pt.secondaryY - pt.primaryY) > 4 &&
-                      pt.secondaryY < pt.primaryY
-                        ? 19
-                        : -13;
-                    return (
-                      <text
-                        x={pt.x}
-                        y={pt.primaryY + labelOffsetY}
-                        textAnchor="middle"
-                        className={`text-[11px] font-black tabular-nums ${
-                          isSelected
-                            ? isMock
-                              ? 'fill-amber-900'
-                              : 'fill-indigo-950'
-                            : 'fill-slate-800'
-                        }`}
-                      >
-                        {pt.primaryLabel}
-                      </text>
-                    );
-                  })()}
+                  <rect
+                    x={pt.x - 24}
+                    y={pt.primaryY - 26}
+                    width="48"
+                    height="17"
+                    rx="5"
+                    fill="#ffffff"
+                    fillOpacity="0.92"
+                    stroke={isSelected ? pointColor : '#e2e8f0'}
+                    strokeWidth="1"
+                  />
+                  <text
+                    x={pt.x}
+                    y={pt.primaryY - 14}
+                    textAnchor="middle"
+                    className={`text-[10px] font-black tabular-nums ${
+                      isSelected
+                        ? isMock
+                          ? 'fill-amber-800'
+                          : 'fill-indigo-900'
+                        : 'fill-slate-800'
+                    }`}
+                  >
+                    {pt.primaryLabel}
+                  </text>
                 </g>
               )}
 

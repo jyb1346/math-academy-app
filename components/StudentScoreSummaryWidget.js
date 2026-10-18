@@ -85,7 +85,7 @@ export default function StudentScoreSummaryWidget({
             )}
           </div>
           <p className="text-xs text-slate-500 font-medium mt-0.5">
-            시험별 성취도와 6대 감점 원인(실수 보정 잠재 점수)을 점검하고 다음 시험 대비 전략을 확인하세요.
+            시험별 성취도와 6대 오답 감점 원인을 점검하고 다음 시험 대비 보완 과제를 확인하세요.
           </p>
         </div>
 
@@ -116,6 +116,8 @@ export default function StudentScoreSummaryWidget({
           {filteredExams.map((ex) => {
             const isSel = activeExam?.id === ex.id;
             const isMock = ex.exam_category === 'MOCK';
+            const exGrade =
+              ex.grade || analyzeGradePosition(ex, gradeSystem)?.actualGrade;
             return (
               <button
                 key={ex.id}
@@ -140,7 +142,7 @@ export default function StudentScoreSummaryWidget({
                     }`}
                   >
                     {ex.raw_score !== null ? `${ex.raw_score}점` : '-'}
-                    {ex.grade ? ` · ${ex.grade}등급` : ''}
+                    {exGrade ? ` · ${exGrade}등급` : ''}
                   </span>
                 </div>
                 <div
@@ -155,16 +157,16 @@ export default function StudentScoreSummaryWidget({
           })}
         </div>
 
-        {/* 선택된 시험 상세 지표 카드 3종 (통일된 화이트 카드 디자인) */}
+        {/* 선택된 시험 상세 지표 카드 3종 (잠재 점수 제거 → 원점수·등급 / 등급 컷 위치 / 학교 평균 대비 성취도) */}
         {activeExam && (
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-              {/* 카드 1: 실전 원점수 및 산출 등급 */}
+              {/* 카드 1: 원점수 및 산출 등급 */}
               <div className="bg-slate-50/70 border border-slate-200/90 rounded-2xl p-4 flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-bold text-slate-500">
-                      실전 원점수 및 등급
+                    <span className="text-xs font-bold text-slate-500 whitespace-nowrap">
+                      선택 시험 성적
                     </span>
                     <span className="text-[11px] font-bold text-slate-400 truncate">
                       {formatExamShortLabel(activeExam)}
@@ -175,7 +177,7 @@ export default function StudentScoreSummaryWidget({
                       {activeExam.raw_score !== null ? `${activeExam.raw_score}점` : '-'}
                     </span>
                     {(activeExam.grade || posInfo?.actualGrade) && (
-                      <span className="bg-indigo-600 text-white text-xs font-black px-2.5 py-1 rounded-lg tabular-nums">
+                      <span className="bg-indigo-600 text-white text-xs font-black px-2.5 py-1 rounded-lg tabular-nums whitespace-nowrap">
                         {activeExam.grade || posInfo?.actualGrade}등급
                       </span>
                     )}
@@ -192,48 +194,15 @@ export default function StudentScoreSummaryWidget({
                 </p>
               </div>
 
-              {/* 카드 2: 실수 보정 시 잠재 점수 */}
+              {/* 카드 2: 등급 컷 상세 위치 진단 */}
               <div className="bg-slate-50/70 border border-slate-200/90 rounded-2xl p-4 flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-bold text-slate-500">
-                      실수 보정 잠재 점수
-                    </span>
-                    {potInfo?.recoverableLost > 0 && (
-                      <span className="text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-black px-2 py-0.5 rounded-md tabular-nums">
-                        +{potInfo.recoverableLost}점 회복 가능
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-2.5 flex items-baseline justify-between gap-2">
-                    <span className="text-2xl sm:text-3xl font-black text-emerald-700 tabular-nums tracking-tight">
-                      {potInfo?.potentialScore !== null && potInfo?.potentialScore !== undefined
-                        ? `${potInfo.potentialScore}점`
-                        : '-'}
-                    </span>
-                    {potInfo?.potentialGrade && (
-                      <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-black px-2.5 py-1 rounded-lg tabular-nums">
-                        잠재 {potInfo.potentialGrade}등급권
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <p className="text-[11px] font-medium text-slate-500 mt-3 pt-2.5 border-t border-slate-200/70">
-                  {potInfo?.recoverableLost > 0
-                    ? '계산·발문·시간 실수만 줄여도 즉시 도달 가능한 성적입니다.'
-                    : '아까운 실수 감점 없이 본인의 실력을 발휘한 시험입니다.'}
-                </p>
-              </div>
-
-              {/* 카드 3: 등급 컷 여유도 및 상세 위치 */}
-              <div className="bg-slate-50/70 border border-slate-200/90 rounded-2xl p-4 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-bold text-slate-500">
-                      등급 컷 상세 위치 진단
+                    <span className="text-xs font-bold text-slate-500 whitespace-nowrap">
+                      등급 컷 위치 진단
                     </span>
                     {posInfo?.statusBadge && (
-                      <span className="text-[11px] bg-indigo-50 border border-indigo-200/80 text-indigo-700 font-black px-2 py-0.5 rounded-md">
+                      <span className="text-[11px] bg-indigo-50 border border-indigo-200/80 text-indigo-700 font-black px-2 py-0.5 rounded-md whitespace-nowrap">
                         {posInfo.statusBadge}
                       </span>
                     )}
@@ -244,6 +213,63 @@ export default function StudentScoreSummaryWidget({
                 </div>
                 <p className="text-[11px] font-medium text-slate-400 mt-3 pt-2.5 border-t border-slate-200/70">
                   {gradeSystem}등급제 기준 상대적 석차 위치 분석
+                </p>
+              </div>
+
+              {/* 카드 3: 학교 평균 및 상대 성취도 */}
+              <div className="bg-slate-50/70 border border-slate-200/90 rounded-2xl p-4 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-slate-500 whitespace-nowrap">
+                      학교 평균 및 상대 성취도
+                    </span>
+                    {activeExam.school_mean !== null && (
+                      <span className="text-[11px] bg-white border border-slate-200 text-slate-700 font-bold px-2 py-0.5 rounded-md tabular-nums whitespace-nowrap">
+                        평균 {activeExam.school_mean}점
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-2.5 flex items-baseline justify-between gap-2">
+                    {activeExam.school_mean !== null && activeExam.raw_score !== null ? (
+                      (() => {
+                        const diffMean = Number(
+                          (activeExam.raw_score - activeExam.school_mean).toFixed(1)
+                        );
+                        return (
+                          <>
+                            <span
+                              className={`text-2xl sm:text-3xl font-black tabular-nums tracking-tight ${
+                                diffMean >= 0 ? 'text-indigo-700' : 'text-rose-600'
+                              }`}
+                            >
+                              {diffMean >= 0 ? `+${diffMean}점` : `${diffMean}점`}
+                            </span>
+                            <span className="text-xs font-bold text-slate-500 whitespace-nowrap">
+                              학교 평균 대비
+                            </span>
+                          </>
+                        );
+                      })()
+                    ) : activeExam.exam_category === 'MOCK' &&
+                      activeExam.percentile !== null ? (
+                      <span className="text-2xl sm:text-3xl font-black text-slate-900 tabular-nums">
+                        백분위 {activeExam.percentile}%
+                      </span>
+                    ) : (
+                      <span className="text-sm font-semibold text-slate-400 py-1">
+                        학교 평균 미입력
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <p className="text-[11px] font-medium text-slate-500 mt-3 pt-2.5 border-t border-slate-200/70 tabular-nums">
+                  {posInfo?.zScore !== null && posInfo?.zScore !== undefined
+                    ? `표준편차 ${activeExam.school_std_dev} · Z점수 ${
+                        posInfo.zScore > 0 ? `+${posInfo.zScore}` : posInfo.zScore
+                      }`
+                    : activeExam.school_mean !== null
+                    ? `과목 평균 ${activeExam.school_mean}점 기준 비교`
+                    : '과목 평균 입력 시 시험 난이도 대비 위치가 표시됩니다'}
                 </p>
               </div>
             </div>

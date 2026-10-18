@@ -19,7 +19,10 @@ async function loadScoreStore(db) {
     const parsed = JSON.parse(text);
     return {
       scores: Array.isArray(parsed.scores) ? parsed.scores : [],
-      studentProfiles: parsed.studentProfiles && typeof parsed.studentProfiles === 'object' ? parsed.studentProfiles : {},
+      studentProfiles:
+        parsed.studentProfiles && typeof parsed.studentProfiles === 'object'
+          ? parsed.studentProfiles
+          : {},
     };
   } catch (err) {
     return { scores: [], studentProfiles: {} };
@@ -48,7 +51,12 @@ async function saveScoreStore(db, storeData) {
   });
 
   // 만약 테스트 DB에 버킷이 아직 없다면 자동 생성 후 재시도
-  if (error && (error.message?.includes('Bucket not found') || error.statusCode === '404' || error.status === 404)) {
+  if (
+    error &&
+    (error.message?.includes('Bucket not found') ||
+      error.statusCode === '404' ||
+      error.status === 404)
+  ) {
     await db.storage.createBucket(BUCKET_NAME, { public: true }).catch(() => {});
     const retry = await db.storage.from(BUCKET_NAME).upload(STORE_PATH, buffer, {
       contentType: 'application/json',
@@ -154,11 +162,27 @@ async function fetchAccessibleStudentsAndClasses(db, user) {
  * GET /api/scores — 고교 성적 데이터 및 학생 학교/학년 프로필 일괄 조회
  */
 export async function GET(req) {
-  const { user, error } = requireRole(req, ['TEACHER', 'HEAD_TEACHER', 'ADMIN']);
+  const { user, error } = requireRole(req, ['TEACHER', 'HEAD_TEACHER', 'ADMIN', 'STUDENT']);
   if (error) return error;
 
   try {
     const db = getSupabaseAdmin(req);
+
+    // 학생 본인 로그인 시 본인의 성적과 학교 프로필만 반환
+    if (user.role === 'STUDENT') {
+      const { scores, studentProfiles } = await loadScoreStore(db);
+      const myScores = scores.filter((sc) => String(sc.student_id) === String(user.id));
+      const myProfile = studentProfiles[user.id] || {
+        school_name: '',
+        school_grade: 1,
+        grade_system: 9,
+      };
+      return NextResponse.json({
+        scores: myScores,
+        profile: myProfile,
+      });
+    }
+
     const [{ scores, studentProfiles }, roster] = await Promise.all([
       loadScoreStore(db),
       fetchAccessibleStudentsAndClasses(db, user),
@@ -204,7 +228,8 @@ export async function GET(req) {
  */
 function normalizeScoreRecord(input, existingId, teacherId) {
   const now = new Date().toISOString();
-  const id = existingId || input.id || `score_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const id =
+    existingId || input.id || `score_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   const rawScore =
     input.raw_score !== '' && input.raw_score !== null && input.raw_score !== undefined
@@ -212,7 +237,9 @@ function normalizeScoreRecord(input, existingId, teacherId) {
       : null;
 
   const objScore =
-    input.objective_score !== '' && input.objective_score !== null && input.objective_score !== undefined
+    input.objective_score !== '' &&
+    input.objective_score !== null &&
+    input.objective_score !== undefined
       ? Number(input.objective_score)
       : null;
 
@@ -227,7 +254,9 @@ function normalizeScoreRecord(input, existingId, teacherId) {
       : null;
 
   const totalStudents =
-    input.total_students !== '' && input.total_students !== null && input.total_students !== undefined
+    input.total_students !== '' &&
+    input.total_students !== null &&
+    input.total_students !== undefined
       ? Number(input.total_students)
       : null;
 
@@ -237,7 +266,9 @@ function normalizeScoreRecord(input, existingId, teacherId) {
       : null;
 
   const schoolStdDev =
-    input.school_std_dev !== '' && input.school_std_dev !== null && input.school_std_dev !== undefined
+    input.school_std_dev !== '' &&
+    input.school_std_dev !== null &&
+    input.school_std_dev !== undefined
       ? Number(input.school_std_dev)
       : null;
 
@@ -247,14 +278,21 @@ function normalizeScoreRecord(input, existingId, teacherId) {
       : null;
 
   const standardScore =
-    input.standard_score !== '' && input.standard_score !== null && input.standard_score !== undefined
+    input.standard_score !== '' &&
+    input.standard_score !== null &&
+    input.standard_score !== undefined
       ? Number(input.standard_score)
+      : null;
+
+  const manualGrade =
+    input.manual_grade !== '' && input.manual_grade !== null && input.manual_grade !== undefined
+      ? Number(input.manual_grade)
       : null;
 
   const examCategory = input.exam_category === 'MOCK' ? 'MOCK' : 'INTERNAL';
   const gradeSystem = Number(input.grade_system) === 5 ? 5 : 9;
 
-  // 🎯 등수/수강자수 또는 백분위/Z점수 기반으로 등급 자동 산출
+  // 🎯 등수/수강자수 또는 백분위/Z점수 기반 자동 산출 (+ 수동/예상 등급 보정값 반영)
   const autoGradeRes = calculateAutoGrade(
     {
       exam_category: examCategory,
@@ -264,6 +302,7 @@ function normalizeScoreRecord(input, existingId, teacherId) {
       school_mean: schoolMean,
       school_std_dev: schoolStdDev,
       percentile,
+      manual_grade: manualGrade,
       grade: input.grade,
     },
     gradeSystem
@@ -293,6 +332,7 @@ function normalizeScoreRecord(input, existingId, teacherId) {
     objective_score: objScore,
     essay_score: essayScore,
     grade,
+    manual_grade: manualGrade,
     rank,
     total_students: totalStudents,
     school_mean: schoolMean,
@@ -323,17 +363,22 @@ export async function POST(req) {
 
     // 1. 학생 학교/학년 프로필만 단독 저장
     if (action === 'SAVE_PROFILE') {
-      const { student_id, school_name, school_grade, grade_system, target_grade, target_score } = body;
+      const { student_id, school_name, school_grade, grade_system, target_grade, target_score } =
+        body;
       if (!student_id) {
         return NextResponse.json({ error: '학생 ID가 필요합니다.' }, { status: 400 });
       }
       store.studentProfiles[student_id] = {
         ...(store.studentProfiles[student_id] || {}),
         school_name: (school_name ?? store.studentProfiles[student_id]?.school_name ?? '').trim(),
-        school_grade: Number(school_grade) || store.studentProfiles[student_id]?.school_grade || 1,
-        grade_system: Number(grade_system) || store.studentProfiles[student_id]?.grade_system || 9,
-        target_grade: target_grade !== undefined && target_grade !== '' ? Number(target_grade) : null,
-        target_score: target_score !== undefined && target_score !== '' ? Number(target_score) : null,
+        school_grade:
+          Number(school_grade) || store.studentProfiles[student_id]?.school_grade || 1,
+        grade_system:
+          Number(grade_system) || store.studentProfiles[student_id]?.grade_system || 9,
+        target_grade:
+          target_grade !== undefined && target_grade !== '' ? Number(target_grade) : null,
+        target_score:
+          target_score !== undefined && target_score !== '' ? Number(target_score) : null,
         updated_at: new Date().toISOString(),
       };
 
@@ -351,6 +396,56 @@ export async function POST(req) {
       return NextResponse.json({
         success: true,
         profile: store.studentProfiles[student_id],
+        studentProfiles: store.studentProfiles,
+      });
+    }
+
+    // 1-2. 여러 학생의 학교/학년/등급제 일괄 저장 (BATCH_SAVE_PROFILES)
+    if (action === 'BATCH_SAVE_PROFILES') {
+      const { profiles = [] } = body;
+      if (!Array.isArray(profiles) || profiles.length === 0) {
+        return NextResponse.json({ error: '저장할 학생 프로필 목록이 없습니다.' }, { status: 400 });
+      }
+
+      const now = new Date().toISOString();
+      let updatedCount = 0;
+
+      profiles.forEach((p) => {
+        if (!p.student_id) return;
+        const prev = store.studentProfiles[p.student_id] || {};
+        const cleanSchool =
+          p.school_name !== undefined ? String(p.school_name).trim() : prev.school_name || '';
+        const nextGrade = Number(p.school_grade) || prev.school_grade || 1;
+        const nextSys = Number(p.grade_system) === 5 ? 5 : 9;
+
+        store.studentProfiles[p.student_id] = {
+          ...prev,
+          school_name: cleanSchool,
+          school_grade: nextGrade,
+          grade_system: nextSys,
+          updated_at: now,
+        };
+        updatedCount++;
+
+        // 기존 성적 레코드의 학교명이 비어있으면 채워주고, 등급제 변경 시 자동등급 재계산 반영
+        store.scores = store.scores.map((sc) => {
+          if (String(sc.student_id) !== String(p.student_id)) return sc;
+          const mergedSchool = sc.school_name || cleanSchool;
+          const autoRes = calculateAutoGrade(sc, nextSys);
+          return {
+            ...sc,
+            school_name: mergedSchool,
+            grade: autoRes.grade ?? sc.grade,
+          };
+        });
+      });
+
+      await saveScoreStore(db, store);
+      return NextResponse.json({
+        success: true,
+        updatedCount,
+        studentProfiles: store.studentProfiles,
+        scores: store.scores,
       });
     }
 
@@ -462,10 +557,14 @@ export async function POST(req) {
     if (action === 'BATCH_SAVE') {
       const { examMeta, rows = [] } = body;
       if (!examMeta || !Array.isArray(rows)) {
-        return NextResponse.json({ error: '일괄 저장할 데이터가 올바르지 않습니다.' }, { status: 400 });
+        return NextResponse.json(
+          { error: '일괄 저장할 데이터가 올바르지 않습니다.' },
+          { status: 400 }
+        );
       }
 
       let savedCount = 0;
+      let deletedCount = 0;
 
       for (const row of rows) {
         if (!row.student_id) continue;
@@ -485,24 +584,6 @@ export async function POST(req) {
           };
         }
 
-        // 점수가 입력되지 않은 빈 행은 프로필만 갱신하고 성적 레코드 생성은 건너뜀
-        const hasScoreData =
-          (row.raw_score !== '' && row.raw_score !== null && row.raw_score !== undefined) ||
-          (row.grade !== '' && row.grade !== null && row.grade !== undefined) ||
-          (row.rank !== '' && row.rank !== null && row.rank !== undefined);
-
-        if (!hasScoreData) continue;
-
-        const mergedInput = {
-          ...examMeta,
-          ...row,
-          school_name: (
-            row.school_name ??
-            store.studentProfiles[row.student_id]?.school_name ??
-            ''
-          ).trim(),
-        };
-
         const existingIdx = store.scores.findIndex(
           (sc) =>
             (row.id && sc.id === row.id) ||
@@ -513,6 +594,34 @@ export async function POST(req) {
               sc.exam_period === examMeta.exam_period &&
               sc.subject === examMeta.subject)
         );
+
+        const hasScoreData =
+          !row.delete_row &&
+          ((row.raw_score !== '' && row.raw_score !== null && row.raw_score !== undefined) ||
+            (row.manual_grade !== '' &&
+              row.manual_grade !== null &&
+              row.manual_grade !== undefined) ||
+            (row.rank !== '' && row.rank !== null && row.rank !== undefined) ||
+            (row.percentile !== '' && row.percentile !== null && row.percentile !== undefined));
+
+        // 기존에 성적이 있던 행인데 점수를 모두 비웠거나 삭제 표시한 경우 기존 성적 레코드 삭제
+        if (!hasScoreData) {
+          if (existingIdx >= 0) {
+            store.scores.splice(existingIdx, 1);
+            deletedCount++;
+          }
+          continue;
+        }
+
+        const mergedInput = {
+          ...examMeta,
+          ...row,
+          school_name: (
+            row.school_name ??
+            store.studentProfiles[row.student_id]?.school_name ??
+            ''
+          ).trim(),
+        };
 
         const normalized = normalizeScoreRecord(
           mergedInput,
@@ -532,6 +641,7 @@ export async function POST(req) {
       return NextResponse.json({
         success: true,
         savedCount,
+        deletedCount,
         scores: store.scores,
         studentProfiles: store.studentProfiles,
       });
@@ -577,4 +687,3 @@ export async function DELETE(req) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
-

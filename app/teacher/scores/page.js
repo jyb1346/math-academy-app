@@ -14,6 +14,7 @@ import {
   calculateAutoGrade,
   analyzePotentialPerformance,
   analyzeGradePosition,
+  findPreviousComparableExam,
   compareErrorTrends,
   getExamSortOrder,
   formatExamShortLabel,
@@ -32,6 +33,7 @@ const INITIAL_EXAM_FORM = {
   objective_score: '',
   essay_score: '',
   grade: '',
+  manual_grade: '',
   rank: '',
   total_students: '',
   school_mean: '',
@@ -63,7 +65,7 @@ export default function TeacherScoresPage() {
   const [scores, setScores] = useState([]);
   const [studentProfiles, setStudentProfiles] = useState({});
 
-  // 상단 메인 탭: 'STUDENT_ANALYSIS' (학생별 심층 추이) | 'BATCH_INPUT' (엑셀형 일괄 입력) | 'SCHOOL_STATS' (학교별 난이도 DB)
+  // 상단 메인 탭: 'STUDENT_ANALYSIS' | 'BATCH_INPUT' | 'PROFILE_SETUP' | 'SCHOOL_STATS'
   const [mainTab, setMainTab] = useState('STUDENT_ANALYSIS');
 
   // 좌측 학생 필터 및 선택 상태
@@ -80,7 +82,8 @@ export default function TeacherScoresPage() {
 
   // 차트 필터 및 모드 상태
   const [chartCategoryFilter, setChartCategoryFilter] = useState('ALL'); // 'ALL' | 'INTERNAL' | 'MOCK'
-  const [chartMetricMode, setChartMetricMode] = useState('SCORE'); // 'SCORE' (원점수+잠재점수) | 'GRADE' (등급 반전축) | 'PERCENT' (상위% 추이)
+  const [chartSubjectFilter, setChartSubjectFilter] = useState('ALL'); // 'ALL' 또는 특정 수학 과목명
+  const [chartMetricMode, setChartMetricMode] = useState('SCORE'); // 'SCORE' | 'GRADE' | 'PERCENT'
   const [selectedExamIdForDetail, setSelectedExamIdForDetail] = useState(null);
 
   // 성적 등록/수정 모달 상태
@@ -101,6 +104,14 @@ export default function TeacherScoresPage() {
   const [batchClassFilter, setBatchClassFilter] = useState('ALL');
   const [batchRows, setBatchRows] = useState({});
   const [autoSyncSchoolStatsInBatch, setAutoSyncSchoolStatsInBatch] = useState(true);
+
+  // ⚙️ 탭 4: 학생별 학교·학년·등급제 일괄 세팅 상태
+  const [bulkProfileClassFilter, setBulkProfileClassFilter] = useState('ALL');
+  const [bulkProfileSearch, setBulkProfileSearch] = useState('');
+  const [bulkProfileRows, setBulkProfileRows] = useState({});
+  const [bulkApplySchool, setBulkApplySchool] = useState('');
+  const [bulkApplyGrade, setBulkApplyGrade] = useState(1);
+  const [bulkApplySystem, setBulkApplySystem] = useState(5);
 
   // 초기 세션 및 성적 데이터 로드
   useEffect(() => {
@@ -175,6 +186,7 @@ export default function TeacherScoresPage() {
     setProfileSchoolGrade(Number(prof.school_grade || currentStudent.school_grade) || 1);
     setProfileGradeSystem(Number(prof.grade_system || currentStudent.grade_system) || 9);
     setSelectedExamIdForDetail(null);
+    setChartSubjectFilter('ALL');
   }, [currentStudent?.id, studentProfiles]);
 
   // 등록된 학교명 목록 (필터 및 자동완성용)
@@ -238,11 +250,27 @@ export default function TeacherScoresPage() {
     return [...list].sort((a, b) => getExamSortOrder(a) - getExamSortOrder(b));
   }, [scores, currentStudent]);
 
-  // 차트 필터가 적용된 시험 목록
+  // 현재 학생이 응시한 수학 과목 목록 (고2·고3 복수 선택과목 분리 조회용)
+  const studentSubjects = useMemo(() => {
+    const set = new Set();
+    studentExams.forEach((sc) => {
+      if (sc.subject?.trim()) set.add(sc.subject.trim());
+    });
+    return Array.from(set);
+  }, [studentExams]);
+
+  // 차트 필터(내신/모의 + 과목)가 적용된 시험 목록
   const filteredStudentExams = useMemo(() => {
-    if (chartCategoryFilter === 'ALL') return studentExams;
-    return studentExams.filter((sc) => sc.exam_category === chartCategoryFilter);
-  }, [studentExams, chartCategoryFilter]);
+    return studentExams.filter((sc) => {
+      if (chartCategoryFilter !== 'ALL' && sc.exam_category !== chartCategoryFilter) {
+        return false;
+      }
+      if (chartSubjectFilter !== 'ALL' && (sc.subject || '').trim() !== chartSubjectFilter) {
+        return false;
+      }
+      return true;
+    });
+  }, [studentExams, chartCategoryFilter, chartSubjectFilter]);
 
   // 현재 상세 분석에 표시할 대상 시험 (선택된 시험이 없으면 가장 최근 시험)
   const activeDetailExam = useMemo(() => {
@@ -254,13 +282,11 @@ export default function TeacherScoresPage() {
     return filteredStudentExams[filteredStudentExams.length - 1];
   }, [filteredStudentExams, selectedExamIdForDetail]);
 
-  // activeDetailExam 바로 이전 시험 (전회차 비교용)
+  // 🎯 activeDetailExam 바로 이전 '동종 시험' (내신↔내신, 모의↔모의, 복수과목 시 동일과목 우선 매칭)
   const previousDetailExam = useMemo(() => {
-    if (!activeDetailExam || filteredStudentExams.length < 2) return null;
-    const idx = filteredStudentExams.findIndex((e) => e.id === activeDetailExam.id);
-    if (idx > 0) return filteredStudentExams[idx - 1];
-    return null;
-  }, [filteredStudentExams, activeDetailExam]);
+    if (!activeDetailExam) return null;
+    return findPreviousComparableExam(studentExams, activeDetailExam);
+  }, [studentExams, activeDetailExam]);
 
   // 현재 선택 시험의 정밀 분석 데이터
   const activeGradeAnalysis = useMemo(() => {
@@ -342,6 +368,7 @@ export default function TeacherScoresPage() {
       objective_score: exam.objective_score ?? '',
       essay_score: exam.essay_score ?? '',
       grade: exam.grade ?? '',
+      manual_grade: exam.manual_grade ?? '',
       rank: exam.rank ?? '',
       total_students: exam.total_students ?? '',
       school_mean: exam.school_mean ?? '',
@@ -372,13 +399,42 @@ export default function TeacherScoresPage() {
         sc.exam_category === 'INTERNAL' &&
         sc.school_name === schoolName &&
         Number(sc.exam_year) === Number(examForm.exam_year) &&
-        Number(sc.school_grade) === Number(examForm.school_grade) &&
+        Number(sc.school_grade) === Number(examForm.exam_grade || examForm.school_grade) &&
         sc.exam_period === examForm.exam_period &&
         sc.subject === examForm.subject &&
         (sc.school_mean !== null || sc.school_std_dev !== null || sc.total_students !== null)
     );
     return match || null;
   }, [scores, profileSchoolName, examForm.exam_category, examForm.exam_year, examForm.school_grade, examForm.exam_period, examForm.subject]);
+
+  // 🧮 모달에서 '1학기 최종(합산)' 또는 '2학기 최종(합산)' 선택 시 해당 학기 중간+기말 성적 자동 합산 매칭
+  const matchedSemesterMidFinalForModal = useMemo(() => {
+    if (examForm.exam_category !== 'INTERNAL') return null;
+    if (examForm.exam_period !== '1_SEMESTER' && examForm.exam_period !== '2_SEMESTER') return null;
+    const targetPrefix = examForm.exam_period === '1_SEMESTER' ? '1_' : '2_';
+    const midPeriod = `${targetPrefix}MID`;
+    const finalPeriod = `${targetPrefix}FINAL`;
+
+    const midExam = studentExams.find(
+      (sc) =>
+        sc.exam_category === 'INTERNAL' &&
+        Number(sc.exam_year) === Number(examForm.exam_year) &&
+        Number(sc.school_grade) === Number(examForm.school_grade) &&
+        sc.exam_period === midPeriod &&
+        (sc.subject || '').trim() === (examForm.subject || '').trim()
+    );
+    const finalExam = studentExams.find(
+      (sc) =>
+        sc.exam_category === 'INTERNAL' &&
+        Number(sc.exam_year) === Number(examForm.exam_year) &&
+        Number(sc.school_grade) === Number(examForm.school_grade) &&
+        sc.exam_period === finalPeriod &&
+        (sc.subject || '').trim() === (examForm.subject || '').trim()
+    );
+
+    if (!midExam && !finalExam) return null;
+    return { midExam, finalExam };
+  }, [studentExams, examForm.exam_category, examForm.exam_period, examForm.exam_year, examForm.school_grade, examForm.subject]);
 
   // 단건 성적 저장 핸들러
   const handleSaveSingleScore = async (e) => {
@@ -550,6 +606,7 @@ export default function TeacherScoresPage() {
         grade_system: prof.grade_system || 9,
         raw_score: existing?.raw_score ?? '',
         grade: existing?.grade ?? '',
+        manual_grade: existing?.manual_grade ?? '',
         rank: existing?.rank ?? '',
         total_students: existing?.total_students ?? '',
         school_mean: existing?.school_mean ?? '',
@@ -565,6 +622,7 @@ export default function TeacherScoresPage() {
           skill_killer: eb.skill_killer || '',
         },
         memo: existing?.memo || '',
+        delete_row: false,
       };
     });
 
@@ -590,6 +648,7 @@ export default function TeacherScoresPage() {
       if (isBreakdownField) {
         updatedRow = {
           ...targetRow,
+          delete_row: false,
           error_breakdown: {
             ...(targetRow.error_breakdown || {}),
             [field]: value,
@@ -598,6 +657,7 @@ export default function TeacherScoresPage() {
       } else {
         updatedRow = {
           ...targetRow,
+          delete_row: false,
           [field]: value,
         };
       }
@@ -642,14 +702,52 @@ export default function TeacherScoresPage() {
         if (donor) {
           next[studentId] = {
             ...next[studentId],
-            school_mean: next[studentId].school_mean !== '' ? next[studentId].school_mean : donor.school_mean,
-            school_std_dev: next[studentId].school_std_dev !== '' ? next[studentId].school_std_dev : donor.school_std_dev,
-            total_students: next[studentId].total_students !== '' ? next[studentId].total_students : donor.total_students,
+            school_mean:
+              next[studentId].school_mean !== ''
+                ? next[studentId].school_mean
+                : donor.school_mean,
+            school_std_dev:
+              next[studentId].school_std_dev !== ''
+                ? next[studentId].school_std_dev
+                : donor.school_std_dev,
+            total_students:
+              next[studentId].total_students !== ''
+                ? next[studentId].total_students
+                : donor.total_students,
           };
         }
       }
 
       return next;
+    });
+  };
+
+  // 일괄 입력 행 성적 비우기/삭제 표시 핸들러
+  const handleClearBatchRow = (studentId) => {
+    setBatchRows((prev) => {
+      const targetRow = prev[studentId] || { student_id: studentId };
+      return {
+        ...prev,
+        [studentId]: {
+          ...targetRow,
+          raw_score: '',
+          grade: '',
+          manual_grade: '',
+          rank: '',
+          percentile: '',
+          standard_score: '',
+          error_breakdown: {
+            mistake_calc: '',
+            mistake_cond: '',
+            mistake_essay: '',
+            skill_concept: '',
+            skill_approach: '',
+            skill_killer: '',
+          },
+          memo: '',
+          delete_row: true,
+        },
+      };
     });
   };
 
@@ -684,9 +782,92 @@ export default function TeacherScoresPage() {
 
       setScores(data.scores || []);
       if (data.studentProfiles) setStudentProfiles(data.studentProfiles);
-      alert(`🎉 총 ${data.savedCount}명의 시험 성적 및 학교 프로필이 일괄 저장되었습니다!`);
+      const delMsg = data.deletedCount > 0 ? ` (비운 성적 ${data.deletedCount}건 삭제됨)` : '';
+      alert(`🎉 총 ${data.savedCount}명의 시험 성적 및 학교 프로필이 일괄 저장되었습니다!${delMsg}`);
     } catch (err) {
       alert(`일괄 저장 실패: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ⚙️ 탭 4 (학생별 학교·학년·등급제 일괄 설정) 초기화
+  useEffect(() => {
+    if (mainTab !== 'PROFILE_SETUP') return;
+    const next = {};
+    students.forEach((st) => {
+      const prof = studentProfiles[st.id] || {};
+      next[st.id] = {
+        student_id: st.id,
+        school_name: prof.school_name || st.school_name || '',
+        school_grade: Number(prof.school_grade || st.school_grade) || 1,
+        grade_system: Number(prof.grade_system || st.grade_system) || 9,
+      };
+    });
+    setBulkProfileRows(next);
+  }, [mainTab, students, studentProfiles]);
+
+  // 일괄 프로필 설정 대상 학생 리스트
+  const bulkProfileTargetStudents = useMemo(() => {
+    return students.filter((st) => {
+      if (bulkProfileClassFilter !== 'ALL') {
+        const inClass = classStudents.some(
+          (cs) => String(cs.class_id) === String(bulkProfileClassFilter) && cs.student_id === st.id
+        );
+        if (!inClass) return false;
+      }
+      if (bulkProfileSearch.trim()) {
+        const kw = bulkProfileSearch.trim().toLowerCase();
+        const rowSchool = (bulkProfileRows[st.id]?.school_name || '').toLowerCase();
+        if (!st.name?.toLowerCase().includes(kw) && !rowSchool.includes(kw)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [students, classStudents, bulkProfileClassFilter, bulkProfileSearch, bulkProfileRows]);
+
+  // 현재 표시된 학생 전체에게 학교/학년/등급제 일괄 채우기
+  const handleApplyBulkProfileToVisible = (applySchool = false) => {
+    setBulkProfileRows((prev) => {
+      const next = { ...prev };
+      bulkProfileTargetStudents.forEach((st) => {
+        const curr = next[st.id] || { student_id: st.id };
+        next[st.id] = {
+          ...curr,
+          school_name:
+            applySchool && bulkApplySchool.trim()
+              ? bulkApplySchool.trim()
+              : curr.school_name || '',
+          school_grade: Number(bulkApplyGrade) || 1,
+          grade_system: Number(bulkApplySystem) === 5 ? 5 : 9,
+        };
+      });
+      return next;
+    });
+  };
+
+  // 일괄 프로필 서버 저장 실행
+  const handleSaveBulkProfiles = async () => {
+    try {
+      setSaving(true);
+      const payload = Object.values(bulkProfileRows);
+      const res = await fetch('/api/scores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'BATCH_SAVE_PROFILES',
+          profiles: payload,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '일괄 프로필 저장 실패');
+
+      if (data.studentProfiles) setStudentProfiles(data.studentProfiles);
+      if (data.scores) setScores(data.scores);
+      alert(`✅ 총 ${data.updatedCount}명의 소속 고등학교·학년·등급제 설정이 한 번에 저장되었습니다!`);
+    } catch (err) {
+      alert(`저장 실패: ${err.message}`);
     } finally {
       setSaving(false);
     }
@@ -770,9 +951,9 @@ export default function TeacherScoresPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100/80 pb-28 font-sans text-slate-800">
-      {/* 상단 고정 헤더 */}
-      <header className="bg-white/95 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30 px-4 sm:px-6 py-3 shadow-xs">
+    <div className="min-h-screen bg-slate-100/80 print:bg-white pb-28 print:pb-4 font-sans text-slate-800">
+      {/* 상단 고정 헤더 (인쇄 시 숨김) */}
+      <header className="bg-white/95 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30 px-4 sm:px-6 py-3 shadow-xs print:hidden">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <div className="flex items-center gap-3">
             <button
@@ -819,6 +1000,16 @@ export default function TeacherScoresPage() {
               ⚡ 시험별 엑셀 일괄 입력
             </button>
             <button
+              onClick={() => setMainTab('PROFILE_SETUP')}
+              className={`text-xs font-extrabold px-3.5 py-2 rounded-xl transition whitespace-nowrap flex-1 sm:flex-initial ${
+                mainTab === 'PROFILE_SETUP'
+                  ? 'bg-white text-indigo-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              ⚙️ 학생 학교·학년 일괄 설정
+            </button>
+            <button
               onClick={() => setMainTab('SCHOOL_STATS')}
               className={`text-xs font-extrabold px-3.5 py-2 rounded-xl transition whitespace-nowrap flex-1 sm:flex-initial ${
                 mainTab === 'SCHOOL_STATS'
@@ -832,19 +1023,26 @@ export default function TeacherScoresPage() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-3 sm:px-6 mt-5">
+      <main className="max-w-7xl mx-auto px-3 sm:px-6 mt-5 print:mt-0 print:px-0">
         {/* =====================================================================
             탭 1: 📊 학생별 심층 성적 추이 & 패인 분석
            ===================================================================== */}
         {mainTab === 'STUDENT_ANALYSIS' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-            {/* 좌측 사이드바: 학생 필터 및 선택 리스트 (상담 모드일 때는 축소/숨김 가능) */}
+            {/* 좌측 사이드바: 학생 필터 및 선택 리스트 (상담 모드 또는 인쇄 시 숨김) */}
             {!isConsultMode && (
-              <aside className="lg:col-span-3 bg-white rounded-3xl border border-slate-200/90 p-4 shadow-xs lg:sticky lg:top-20 space-y-3">
-                <div className="flex items-center justify-between">
+              <aside className="lg:col-span-3 bg-white rounded-3xl border border-slate-200/90 p-4 shadow-xs lg:sticky lg:top-20 space-y-3 print:hidden">
+                <div className="flex items-center justify-between gap-2">
                   <h2 className="text-sm font-black text-slate-800">
                     🎯 분석 대상 학생 ({filteredStudents.length}명)
                   </h2>
+                  <button
+                    onClick={() => setMainTab('PROFILE_SETUP')}
+                    className="text-[11px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold px-2.5 py-1 rounded-lg transition shrink-0"
+                    title="학생들의 소속 고등학교·학년·등급제를 한 번에 설정합니다"
+                  >
+                    ⚙️ 학교 일괄설정
+                  </button>
                 </div>
 
                 {/* 반 필터 & 학교 필터 */}
@@ -946,7 +1144,11 @@ export default function TeacherScoresPage() {
             )}
 
             {/* 우측 메인 분석 대시보드 */}
-            <section className={`${isConsultMode ? 'lg:col-span-12' : 'lg:col-span-9'} space-y-5`}>
+            <section
+              className={`${
+                isConsultMode ? 'lg:col-span-12' : 'lg:col-span-9'
+              } print:col-span-12 space-y-5`}
+            >
               {!currentStudent ? (
                 <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 font-bold text-slate-400">
                   좌측 목록에서 학생을 선택해 주세요.
@@ -982,8 +1184,8 @@ export default function TeacherScoresPage() {
                         </p>
                       </div>
 
-                      {/* 우측 액션 버튼들 */}
-                      <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
+                      {/* 우측 액션 버튼들 (인쇄 시 숨김) */}
+                      <div className="flex items-center gap-2 flex-wrap w-full md:w-auto print:hidden">
                         <button
                           onClick={() => setIsConsultMode(!isConsultMode)}
                           className={`text-xs font-extrabold px-3.5 py-2 rounded-xl border transition ${
@@ -996,12 +1198,22 @@ export default function TeacherScoresPage() {
                         </button>
 
                         {activeDetailExam && (
-                          <button
-                            onClick={handleCopyConsultSummary}
-                            className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-3.5 py-2 rounded-xl shadow-xs transition"
-                          >
-                            📋 카톡 상담용 분석 요약 복사
-                          </button>
+                          <>
+                            <button
+                              onClick={handleCopyConsultSummary}
+                              className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-3.5 py-2 rounded-xl shadow-xs transition"
+                            >
+                              📋 카톡 상담용 요약 복사
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => window.print()}
+                              className="text-xs bg-slate-800 hover:bg-slate-900 text-white font-extrabold px-3.5 py-2 rounded-xl shadow-xs transition"
+                              title="그래프와 게이지바가 포함된 시각 분석 리포트를 인쇄하거나 PDF로 저장합니다"
+                            >
+                              🖨️ 시각 리포트 인쇄 / PDF
+                            </button>
+                          </>
                         )}
 
                         {!isConsultMode && (
@@ -1015,9 +1227,9 @@ export default function TeacherScoresPage() {
                       </div>
                     </div>
 
-                    {/* 학교 · 학년 · 등급제 설정 바 (일반 관리 모드에서만 표시) */}
+                    {/* 학교 · 학년 · 등급제 설정 바 (일반 관리 모드에서만 표시, 인쇄 시 숨김) */}
                     {!isConsultMode && (
-                      <div className="mt-4 pt-3.5 border-t border-slate-100 flex flex-wrap items-center gap-2">
+                      <div className="mt-4 pt-3.5 border-t border-slate-100 flex flex-wrap items-center gap-2 print:hidden">
                         <span className="text-xs font-extrabold text-slate-600 mr-1">
                           🏫 소속 고등학교 설정:
                         </span>
@@ -1304,7 +1516,7 @@ export default function TeacherScoresPage() {
                           <div className="flex flex-wrap items-center gap-2">
                             <div className="flex bg-slate-100 p-1 rounded-xl">
                               {[
-                                { id: 'ALL', label: '전체' },
+                                { id: 'ALL', label: '전체 (내신+모의)' },
                                 { id: 'INTERNAL', label: '내신만' },
                                 { id: 'MOCK', label: '모의고사만' },
                               ].map((tab) => (
@@ -1321,6 +1533,23 @@ export default function TeacherScoresPage() {
                                 </button>
                               ))}
                             </div>
+
+                            {/* 고2·고3 등 2개 이상 수학 과목 응시 시 과목별 분리 필터 표시 */}
+                            {studentSubjects.length >= 2 && (
+                              <select
+                                value={chartSubjectFilter}
+                                onChange={(e) => setChartSubjectFilter(e.target.value)}
+                                className="text-xs bg-slate-100 border border-slate-200 rounded-xl px-2.5 py-1.5 font-extrabold text-slate-800"
+                                title="고2·고3 복수 선택과목(예: 대수, 확통, 미적분) 중 특정 과목만 모아봅니다"
+                              >
+                                <option value="ALL">📚 전체 과목 ({studentSubjects.length}개)</option>
+                                {studentSubjects.map((subj) => (
+                                  <option key={subj} value={subj}>
+                                    📘 {subj}만 보기
+                                  </option>
+                                ))}
+                              </select>
+                            )}
 
                             <div className="flex bg-indigo-50 p-1 rounded-xl">
                               {[
@@ -1344,13 +1573,17 @@ export default function TeacherScoresPage() {
                           </div>
                         </div>
 
-                        {/* 범례 */}
+                        {/* 범례 (내신 실선과 모의고사 실선을 분리하여 표시) */}
                         <div className="flex flex-wrap items-center gap-4 text-xs font-bold text-slate-600 px-1">
                           {chartMetricMode === 'SCORE' && (
                             <>
                               <span className="flex items-center gap-1.5">
                                 <span className="w-3 h-3 rounded-full bg-indigo-600 inline-block"></span>
-                                실제 원점수
+                                내신 원점수 (실선)
+                              </span>
+                              <span className="flex items-center gap-1.5">
+                                <span className="w-3 h-3 rounded-full bg-amber-500 inline-block"></span>
+                                모의고사 원점수 (분리선)
                               </span>
                               <span className="flex items-center gap-1.5">
                                 <span className="w-3 h-3 rounded-full bg-emerald-500 inline-block"></span>
@@ -1366,19 +1599,27 @@ export default function TeacherScoresPage() {
                             <>
                               <span className="flex items-center gap-1.5">
                                 <span className="w-3 h-3 rounded-full bg-indigo-600 inline-block"></span>
-                                실제 등급 (위로 갈수록 1등급)
+                                내신 등급 (위로 갈수록 1등급)
+                              </span>
+                              <span className="flex items-center gap-1.5">
+                                <span className="w-3 h-3 rounded-full bg-amber-500 inline-block"></span>
+                                모의고사 등급 (분리선)
                               </span>
                               <span className="flex items-center gap-1.5">
                                 <span className="w-3 h-3 rounded-full bg-emerald-500 inline-block"></span>
-                                실수 보정 잠재 등급
+                                실수 보정 잠재 등급 (점선)
                               </span>
                             </>
                           )}
                           {chartMetricMode === 'PERCENT' && (
                             <>
                               <span className="flex items-center gap-1.5">
-                                <span className="w-3 h-3 rounded-full bg-purple-600 inline-block"></span>
-                                상위 누적 백분율 (위로 갈수록 상위 1%)
+                                <span className="w-3 h-3 rounded-full bg-indigo-600 inline-block"></span>
+                                내신 상위 누적 % (위로 갈수록 상위 1%)
+                              </span>
+                              <span className="flex items-center gap-1.5">
+                                <span className="w-3 h-3 rounded-full bg-amber-500 inline-block"></span>
+                                모의고사 상위 누적 % (분리선)
                               </span>
                             </>
                           )}
@@ -1877,8 +2118,8 @@ export default function TeacherScoresPage() {
                         <th className="py-2.5 px-2 min-w-[78px] bg-indigo-50/60 text-indigo-900">
                           수강자수(전교생)
                         </th>
-                        <th className="py-2.5 px-2 min-w-[92px] bg-emerald-50 text-emerald-900 text-center">
-                          ⚡ 자동 등급
+                        <th className="py-2.5 px-2 min-w-[105px] bg-emerald-50 text-emerald-900 text-center">
+                          ⚡ 자동 등급 (보정)
                         </th>
                         <th className="py-2.5 px-2 min-w-[75px]">학교평균</th>
                         <th className="py-2.5 px-2 min-w-[75px]">표준편차</th>
@@ -1889,8 +2130,8 @@ export default function TeacherScoresPage() {
                           백분위(%)
                         </th>
                         <th className="py-2.5 px-2 min-w-[75px]">표준점수</th>
-                        <th className="py-2.5 px-2 min-w-[92px] bg-emerald-50 text-emerald-900 text-center">
-                          ⚡ 자동 등급
+                        <th className="py-2.5 px-2 min-w-[105px] bg-emerald-50 text-emerald-900 text-center">
+                          ⚡ 자동 등급 (보정)
                         </th>
                       </>
                     )}
@@ -1930,20 +2171,37 @@ export default function TeacherScoresPage() {
                     >
                       킬러문항(-)
                     </th>
-                    <th className="py-2.5 px-2 min-w-[160px]">시험 한줄 코멘트</th>
+                    <th className="py-2.5 px-2 min-w-[150px]">시험 한줄 코멘트</th>
+                    <th className="py-2.5 px-2 min-w-[54px] text-center">비우기</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200/70">
                   {batchTargetStudents.map((st) => {
                     const row = batchRows[st.id] || { error_breakdown: {} };
+                    const maxSysGrade =
+                      batchMeta.exam_category === 'INTERNAL' && Number(row.grade_system) === 5
+                        ? 5
+                        : 9;
                     const autoGradeInfo = calculateAutoGrade(
                       { ...row, exam_category: batchMeta.exam_category },
-                      batchMeta.exam_category === 'INTERNAL' ? Number(row.grade_system) || 9 : 9
+                      maxSysGrade
                     );
-                    const displayGrade = autoGradeInfo.grade ?? (row.grade ? Number(row.grade) : null);
+                    const displayGrade =
+                      autoGradeInfo.grade ?? (row.grade ? Number(row.grade) : null);
+                    const hasAnyValue =
+                      row.raw_score !== '' ||
+                      row.rank !== '' ||
+                      row.percentile !== '' ||
+                      row.manual_grade !== '' ||
+                      row.id;
 
                     return (
-                      <tr key={st.id} className="hover:bg-slate-50/80">
+                      <tr
+                        key={st.id}
+                        className={`hover:bg-slate-50/80 ${
+                          row.delete_row ? 'bg-rose-50/40 opacity-60' : ''
+                        }`}
+                      >
                         <td className="py-2 px-2.5 font-black text-slate-900 whitespace-nowrap">
                           {st.name}
                         </td>
@@ -1997,22 +2255,43 @@ export default function TeacherScoresPage() {
                               />
                             </td>
                             <td className="py-1.5 px-1.5 bg-emerald-50/40 text-center">
-                              {displayGrade ? (
-                                <div className="flex flex-col items-center leading-tight">
-                                  <span className="bg-emerald-600 text-white font-black px-2 py-0.5 rounded-md text-xs">
+                              <div className="flex flex-col items-center gap-0.5">
+                                {displayGrade ? (
+                                  <span
+                                    className={`font-black px-2 py-0.5 rounded-md text-[11px] ${
+                                      autoGradeInfo.isManualOverride
+                                        ? 'bg-amber-600 text-white'
+                                        : 'bg-emerald-600 text-white'
+                                    }`}
+                                  >
                                     {displayGrade}등급
+                                    {autoGradeInfo.topPct !== null
+                                      ? ` (${autoGradeInfo.topPct}%)`
+                                      : ''}
                                   </span>
-                                  {autoGradeInfo.topPct !== null && (
-                                    <span className="text-[10px] font-bold text-emerald-800 mt-0.5">
-                                      상위 {autoGradeInfo.topPct}%
-                                    </span>
+                                ) : (
+                                  <span className="text-[10px] font-bold text-slate-400">
+                                    등수 입력 시 자동
+                                  </span>
+                                )}
+                                <select
+                                  value={row.manual_grade ?? ''}
+                                  onChange={(e) =>
+                                    handleBatchRowChange(st.id, 'manual_grade', e.target.value)
+                                  }
+                                  className="text-[10px] bg-white/90 border border-slate-200 rounded px-1 py-0.5 font-bold text-slate-600 w-full"
+                                  title="동점자 예외 또는 등수 미발표 시 수동/예상 등급을 지정할 수 있습니다"
+                                >
+                                  <option value="">⚡ 자동산출</option>
+                                  {Array.from({ length: maxSysGrade }, (_, i) => i + 1).map(
+                                    (g) => (
+                                      <option key={g} value={g}>
+                                        📌 {g}등급 직접지정
+                                      </option>
+                                    )
                                   )}
-                                </div>
-                              ) : (
-                                <span className="text-[10px] font-bold text-slate-400">
-                                  등수 입력 시 자동
-                                </span>
-                              )}
+                                </select>
+                              </div>
                             </td>
                             <td className="py-1.5 px-1.5">
                               <input
@@ -2065,15 +2344,38 @@ export default function TeacherScoresPage() {
                               />
                             </td>
                             <td className="py-1.5 px-1.5 bg-emerald-50/40 text-center">
-                              {displayGrade ? (
-                                <span className="bg-emerald-600 text-white font-black px-2 py-0.5 rounded-md text-xs">
-                                  {displayGrade}등급
-                                </span>
-                              ) : (
-                                <span className="text-[10px] font-bold text-slate-400">
-                                  백분위 입력 시 자동
-                                </span>
-                              )}
+                              <div className="flex flex-col items-center gap-0.5">
+                                {displayGrade ? (
+                                  <span
+                                    className={`font-black px-2 py-0.5 rounded-md text-[11px] ${
+                                      autoGradeInfo.isManualOverride
+                                        ? 'bg-amber-600 text-white'
+                                        : 'bg-emerald-600 text-white'
+                                    }`}
+                                  >
+                                    {displayGrade}등급
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-bold text-slate-400">
+                                    백분위 입력 시 자동
+                                  </span>
+                                )}
+                                <select
+                                  value={row.manual_grade ?? ''}
+                                  onChange={(e) =>
+                                    handleBatchRowChange(st.id, 'manual_grade', e.target.value)
+                                  }
+                                  className="text-[10px] bg-white/90 border border-slate-200 rounded px-1 py-0.5 font-bold text-slate-600 w-full"
+                                  title="가채점 등급컷 등 백분위 없이 등급을 직접 지정할 때 사용합니다"
+                                >
+                                  <option value="">⚡ 자동산출</option>
+                                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((g) => (
+                                    <option key={g} value={g}>
+                                      📌 {g}등급 직접지정
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
                             </td>
                           </>
                         )}
@@ -2109,6 +2411,224 @@ export default function TeacherScoresPage() {
                             }
                             className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 font-semibold text-slate-700"
                           />
+                        </td>
+
+                        <td className="py-1.5 px-1.5 text-center">
+                          {hasAnyValue && (
+                            <button
+                              type="button"
+                              onClick={() => handleClearBatchRow(st.id)}
+                              className="text-[11px] text-rose-500 hover:bg-rose-50 px-2 py-1 rounded-lg font-extrabold"
+                              title="이 행의 입력값을 비우고 일괄 저장 시 기존 성적을 삭제합니다"
+                            >
+                              비우기
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* =====================================================================
+            탭 4: ⚙️ 학생별 소속 고등학교 · 학년 · 등급제 1분 일괄 설정
+           ===================================================================== */}
+        {mainTab === 'PROFILE_SETUP' && (
+          <div className="bg-white rounded-3xl border border-slate-200/90 p-4 sm:p-6 shadow-xs space-y-5">
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-slate-100 pb-4">
+              <div>
+                <h2 className="text-lg font-black text-slate-900">
+                  ⚙️ 학생별 소속 고등학교 · 학년 · 등급제(5등급/9등급) 일괄 설정
+                </h2>
+                <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                  학생을 한 명씩 클릭할 필요 없이, 반별로 학년/등급제를 1초 만에 일괄 적용하고 학교명을 빠르게 정리할 수 있습니다.
+                </p>
+              </div>
+
+              <button
+                onClick={handleSaveBulkProfiles}
+                disabled={saving}
+                className="text-xs sm:text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-black px-5 py-2.5 rounded-2xl shadow-md transition shrink-0"
+              >
+                {saving ? '일괄 저장 중...' : '💾 전체 학생 학교·학년 설정 한 번에 저장'}
+              </button>
+            </div>
+
+            {/* 상단 필터 및 1클릭 일괄 채우기 도구 바 */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200/80 items-end">
+              <div className="lg:col-span-3">
+                <label className="block text-[11px] font-extrabold text-slate-500 mb-1">
+                  1️⃣ 대상 반 선택 ({bulkProfileTargetStudents.length}명 표시 중)
+                </label>
+                <select
+                  value={bulkProfileClassFilter}
+                  onChange={(e) => setBulkProfileClassFilter(e.target.value)}
+                  className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-black text-slate-800"
+                >
+                  <option value="ALL">전체 학생 ({students.length}명)</option>
+                  {classes.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="lg:col-span-2">
+                <label className="block text-[11px] font-extrabold text-slate-500 mb-1">
+                  학생/학교 검색
+                </label>
+                <input
+                  type="text"
+                  placeholder="이름 또는 학교..."
+                  value={bulkProfileSearch}
+                  onChange={(e) => setBulkProfileSearch(e.target.value)}
+                  className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-bold"
+                />
+              </div>
+
+              <div className="lg:col-span-7 bg-indigo-50/70 border border-indigo-200/80 p-3 rounded-xl flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-black text-indigo-950">
+                    ⚡ 현재 목록({bulkProfileTargetStudents.length}명) 일괄 채우기:
+                  </span>
+                  <input
+                    type="text"
+                    list="known-schools-datalist"
+                    placeholder="학교명 (선택)"
+                    value={bulkApplySchool}
+                    onChange={(e) => setBulkApplySchool(e.target.value)}
+                    className="text-xs bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 font-bold w-32"
+                  />
+                  <select
+                    value={bulkApplyGrade}
+                    onChange={(e) => setBulkApplyGrade(Number(e.target.value))}
+                    className="text-xs bg-white border border-indigo-200 rounded-lg px-2 py-1.5 font-black text-slate-800"
+                  >
+                    {HIGH_SCHOOL_GRADES.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={bulkApplySystem}
+                    onChange={(e) => setBulkApplySystem(Number(e.target.value))}
+                    className="text-xs bg-white border border-indigo-200 rounded-lg px-2 py-1.5 font-black text-slate-800"
+                  >
+                    <option value={5}>5등급제 (2028 개편)</option>
+                    <option value={9}>9등급제 (기존)</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleApplyBulkProfileToVisible(false)}
+                    className="text-xs bg-white hover:bg-indigo-100 text-indigo-800 border border-indigo-300 font-extrabold px-3 py-1.5 rounded-lg transition"
+                  >
+                    학년·등급제만 일괄 적용
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyBulkProfileToVisible(true)}
+                    className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-3 py-1.5 rounded-lg transition"
+                  >
+                    학교·학년·등급제 모두 적용
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* 학생 프로필 일괄 편집 테이블 */}
+            <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-700 font-black border-b border-slate-200">
+                    <th className="py-2.5 px-3">학생명</th>
+                    <th className="py-2.5 px-3">소속 반</th>
+                    <th className="py-2.5 px-3 min-w-[180px]">소속 고등학교명</th>
+                    <th className="py-2.5 px-3 min-w-[120px]">현재 학년</th>
+                    <th className="py-2.5 px-3 min-w-[160px]">내신 등급 산출 체계</th>
+                    <th className="py-2.5 px-3 text-center">누적 성적 기록</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200/70 font-semibold">
+                  {bulkProfileTargetStudents.map((st) => {
+                    const row = bulkProfileRows[st.id] || {
+                      school_name: '',
+                      school_grade: 1,
+                      grade_system: 9,
+                    };
+                    const stClasses = (studentClassNamesMap[st.id] || []).join(', ') || '-';
+                    const stExamCount = scores.filter((sc) => sc.student_id === st.id).length;
+
+                    return (
+                      <tr key={st.id} className="hover:bg-slate-50/80">
+                        <td className="py-2 px-3 font-black text-slate-900 text-sm">
+                          {st.name}
+                        </td>
+                        <td className="py-2 px-3 text-slate-600">{stClasses}</td>
+                        <td className="py-1.5 px-3">
+                          <input
+                            type="text"
+                            list="known-schools-datalist"
+                            placeholder="예: 숙명여고, 단대부고..."
+                            value={row.school_name ?? ''}
+                            onChange={(e) =>
+                              setBulkProfileRows((prev) => ({
+                                ...prev,
+                                [st.id]: { ...row, school_name: e.target.value },
+                              }))
+                            }
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 font-bold text-slate-800 focus:outline-indigo-500"
+                          />
+                        </td>
+                        <td className="py-1.5 px-3">
+                          <select
+                            value={row.school_grade || 1}
+                            onChange={(e) => {
+                              const g = Number(e.target.value);
+                              setBulkProfileRows((prev) => ({
+                                ...prev,
+                                [st.id]: {
+                                  ...row,
+                                  school_grade: g,
+                                  // 고1로 바꾸면 기본 5등급제 추천, 고3은 9등급제 추천
+                                  grade_system: g === 1 ? 5 : row.grade_system || 9,
+                                },
+                              }));
+                            }}
+                            className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 font-black text-slate-800"
+                          >
+                            {HIGH_SCHOOL_GRADES.map((g) => (
+                              <option key={g.id} value={g.id}>
+                                {g.label}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="py-1.5 px-3">
+                          <select
+                            value={row.grade_system || 9}
+                            onChange={(e) =>
+                              setBulkProfileRows((prev) => ({
+                                ...prev,
+                                [st.id]: { ...row, grade_system: Number(e.target.value) },
+                              }))
+                            }
+                            className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 font-black text-slate-800"
+                          >
+                            <option value={5}>내신 5등급제 (1등급 10%)</option>
+                            <option value={9}>내신 9등급제 (1등급 4%)</option>
+                          </select>
+                        </td>
+                        <td className="py-2 px-3 text-center text-slate-500">
+                          {stExamCount > 0 ? `${stExamCount}건` : '미입력'}
                         </td>
                       </tr>
                     );
@@ -2351,6 +2871,53 @@ export default function TeacherScoresPage() {
                 </div>
               )}
 
+              {/* 🧮 학기 최종(합산) 선택 시 중간·기말 성적 자동 합산 불러오기 배너 */}
+              {matchedSemesterMidFinalForModal && (
+                <div className="bg-violet-50 border border-violet-200 rounded-2xl p-3 flex items-center justify-between gap-2 text-xs">
+                  <div>
+                    <p className="font-black text-violet-950">
+                      🧮 같은 학기 중간·기말고사 기록이 발견되었습니다!
+                    </p>
+                    <p className="text-[11px] font-bold text-violet-700 mt-0.5">
+                      {matchedSemesterMidFinalForModal.mid
+                        ? `중간 ${matchedSemesterMidFinalForModal.mid.raw_score ?? '-'}점`
+                        : '중간 미입력'}{' '}
+                      ·{' '}
+                      {matchedSemesterMidFinalForModal.fin
+                        ? `기말 ${matchedSemesterMidFinalForModal.fin.raw_score ?? '-'}점`
+                        : '기말 미입력'}{' '}
+                      → 평균{' '}
+                      <strong className="underline">
+                        {matchedSemesterMidFinalForModal.avgScore ?? '-'}점
+                      </strong>{' '}
+                      및 6대 오답 감점 합산 불러오기 가능
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExamForm((p) => ({
+                        ...p,
+                        raw_score:
+                          matchedSemesterMidFinalForModal.avgScore ?? p.raw_score,
+                        school_mean:
+                          matchedSemesterMidFinalForModal.avgMean ?? p.school_mean,
+                        school_std_dev:
+                          matchedSemesterMidFinalForModal.avgStd ?? p.school_std_dev,
+                        total_students:
+                          matchedSemesterMidFinalForModal.totalStudents ?? p.total_students,
+                        error_breakdown:
+                          matchedSemesterMidFinalForModal.combinedBreakdown ||
+                          p.error_breakdown,
+                      }))
+                    }
+                    className="bg-violet-600 hover:bg-violet-700 text-white font-extrabold px-3 py-1.5 rounded-xl shrink-0"
+                  >
+                    중간+기말 합산 채우기
+                  </button>
+                </div>
+              )}
+
               {/* 2. 점수 · 석차 · 자동 등급 · 표준편차 */}
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
@@ -2420,16 +2987,47 @@ export default function TeacherScoresPage() {
                             />
                           </div>
 
-                          {/* ⚡ 자동 산출 등급 표시 카드 */}
-                          <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl px-3 py-2 flex flex-col justify-center">
-                            <span className="text-[10px] font-extrabold text-emerald-800">
-                              ⚡ 자동 산출 등급 ({profileGradeSystem}등급제)
-                            </span>
+                          {/* ⚡ 자동 산출 등급 표시 카드 (+ 동점자 중간석차/미발표 수동 보정 옵션) */}
+                          <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl px-3 py-2 flex flex-col justify-between">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-[10px] font-extrabold text-emerald-800">
+                                ⚡ 산출 등급 ({profileGradeSystem}등급제)
+                              </span>
+                              <select
+                                value={examForm.manual_grade ?? ''}
+                                onChange={(e) =>
+                                  setExamForm((p) => ({
+                                    ...p,
+                                    manual_grade: e.target.value,
+                                  }))
+                                }
+                                title="동점자 중간석차로 실제 성적표 등급이 다르거나 등수 미발표 시 직접 지정"
+                                className="text-[10px] bg-white border border-emerald-300 rounded-md px-1.5 py-0.5 font-extrabold text-emerald-900"
+                              >
+                                <option value="">⚡ 자동산출 (기본)</option>
+                                {(profileGradeSystem === 5
+                                  ? [1, 2, 3, 4, 5]
+                                  : [1, 2, 3, 4, 5, 6, 7, 8, 9]
+                                ).map((g) => (
+                                  <option key={g} value={g}>
+                                    📌 {g}등급 직접지정 (동점자/예상)
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
                             {displayModalGrade ? (
-                              <div className="flex items-baseline gap-1.5 mt-0.5">
+                              <div className="flex items-baseline gap-1.5 mt-1">
                                 <span className="text-base font-black text-emerald-950">
                                   {displayModalGrade}등급
                                 </span>
+                                {modalAutoGrade.isManualOverride && (
+                                  <span className="text-[10px] font-extrabold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
+                                    수동지정
+                                    {modalAutoGrade.autoGrade
+                                      ? ` (자동:${modalAutoGrade.autoGrade}등급)`
+                                      : ''}
+                                  </span>
+                                )}
                                 {modalAutoGrade.topPct !== null && (
                                   <span className="text-[11px] font-extrabold text-emerald-700">
                                     (상위 {modalAutoGrade.topPct}%
@@ -2438,7 +3036,7 @@ export default function TeacherScoresPage() {
                                 )}
                               </div>
                             ) : (
-                              <span className="text-[11px] font-bold text-slate-400 mt-0.5">
+                              <span className="text-[11px] font-bold text-slate-400 mt-1">
                                 등수·전교생 입력 시 자동 표시
                               </span>
                             )}
@@ -2509,11 +3107,30 @@ export default function TeacherScoresPage() {
                             />
                           </div>
 
-                          {/* ⚡ 모의고사 자동 산출 등급 표시 카드 */}
-                          <div className="col-span-2 sm:col-span-3 bg-emerald-50/80 border border-emerald-200 rounded-xl px-3.5 py-2.5 flex items-center justify-between">
-                            <span className="text-xs font-extrabold text-emerald-900">
-                              ⚡ 백분위 기준 자동 산출 등급
-                            </span>
+                          {/* ⚡ 모의고사 자동 산출 등급 표시 카드 (+ 원점수 등급컷 직접 지정 지원) */}
+                          <div className="col-span-2 sm:col-span-3 bg-emerald-50/80 border border-emerald-200 rounded-xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-extrabold text-emerald-900">
+                                ⚡ 모의고사 산출 등급
+                              </span>
+                              <select
+                                value={examForm.manual_grade ?? ''}
+                                onChange={(e) =>
+                                  setExamForm((p) => ({
+                                    ...p,
+                                    manual_grade: e.target.value,
+                                  }))
+                                }
+                                className="text-[11px] bg-white border border-emerald-300 rounded-lg px-2 py-1 font-extrabold text-emerald-900"
+                              >
+                                <option value="">⚡ 백분위 기준 자동산출 (기본)</option>
+                                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((g) => (
+                                  <option key={g} value={g}>
+                                    📌 {g}등급 직접지정 (등급컷/성적표 기준)
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
                             {displayModalGrade ? (
                               <span className="text-sm font-black text-emerald-950 bg-white px-3 py-1 rounded-lg border border-emerald-300">
                                 {displayModalGrade}등급{' '}
@@ -2534,12 +3151,117 @@ export default function TeacherScoresPage() {
                 })()}
               </div>
 
-              {/* 3. 🔍 6대 오답 패인(감점 요인) 상세 점수 입력 */}
+              {/* 3. 🔍 6대 오답 패인(감점 요인) 상세 점수 입력 + 총 감점 대비 자동 검증 바 */}
               <div className="space-y-2.5 pt-2 border-t border-slate-100">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <h4 className="text-xs font-black text-slate-800">
                     🔍 오답 패인별 감점 점수 (선택 입력 · 잠재 실력 점수 자동 산출)
                   </h4>
+                  {(() => {
+                    const rawVal = Number(examForm.raw_score);
+                    if (
+                      examForm.raw_score === '' ||
+                      examForm.raw_score === null ||
+                      isNaN(rawVal)
+                    ) {
+                      return null;
+                    }
+                    const totalLost = Math.max(0, Number((100 - rawVal).toFixed(1)));
+                    const recordedSum = Number(
+                      ERROR_REASON_CATEGORIES.reduce(
+                        (acc, cat) =>
+                          acc + (Number(examForm.error_breakdown?.[cat.key]) || 0),
+                        0
+                      ).toFixed(1)
+                    );
+                    const diff = Number((totalLost - recordedSum).toFixed(1));
+
+                    return (
+                      <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                        <span
+                          className={`px-2.5 py-1 rounded-lg font-extrabold border ${
+                            diff === 0
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                              : diff > 0
+                              ? 'bg-amber-50 text-amber-800 border-amber-200'
+                              : 'bg-rose-50 text-rose-800 border-rose-200'
+                          }`}
+                        >
+                          총 감점 <strong>-{totalLost}점</strong> 중 현재{' '}
+                          <strong>-{recordedSum}점</strong> 분류됨{' '}
+                          {diff === 0
+                            ? '✅ (100% 일치)'
+                            : diff > 0
+                            ? `(미분류 ${diff}점 남음)`
+                            : `(⚠️ 총 감점보다 ${Math.abs(diff)}점 초과 입력됨)`}
+                        </span>
+                        {diff > 0 && (
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExamForm((p) => ({
+                                  ...p,
+                                  error_breakdown: {
+                                    ...(p.error_breakdown || {}),
+                                    TYPE_UNFAMILIAR: Number(
+                                      (
+                                        (Number(p.error_breakdown?.TYPE_UNFAMILIAR) || 0) +
+                                        diff
+                                      ).toFixed(1)
+                                    ),
+                                  },
+                                }))
+                              }
+                              className="text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 font-extrabold px-2 py-0.5 rounded-md"
+                            >
+                              +남은 {diff}점 → 유형막힘
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExamForm((p) => ({
+                                  ...p,
+                                  error_breakdown: {
+                                    ...(p.error_breakdown || {}),
+                                    KILLER_DIFFICULTY: Number(
+                                      (
+                                        (Number(p.error_breakdown?.KILLER_DIFFICULTY) ||
+                                          0) + diff
+                                      ).toFixed(1)
+                                    ),
+                                  },
+                                }))
+                              }
+                              className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-extrabold px-2 py-0.5 rounded-md"
+                            >
+                              +남은 {diff}점 → 킬러문항
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExamForm((p) => ({
+                                  ...p,
+                                  error_breakdown: {
+                                    ...(p.error_breakdown || {}),
+                                    CONCEPT_LACK: Number(
+                                      (
+                                        (Number(p.error_breakdown?.CONCEPT_LACK) || 0) +
+                                        diff
+                                      ).toFixed(1)
+                                    ),
+                                  },
+                                }))
+                              }
+                              className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-extrabold px-2 py-0.5 rounded-md"
+                            >
+                              +남은 {diff}점 → 개념미숙
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
@@ -2734,9 +3456,13 @@ function ScoreTimelineChart({
       .join(' ');
   };
 
-  const primaryPath = buildPath(points, 'primaryY');
+  const internalPoints = points.filter((p) => p.exam.exam_category === 'INTERNAL');
+  const mockPoints = points.filter((p) => p.exam.exam_category === 'MOCK');
+
+  const internalPath = buildPath(internalPoints, 'primaryY');
+  const mockPath = buildPath(mockPoints, 'primaryY');
   const secondaryPath = buildPath(points, 'secondaryY');
-  const meanPath = buildPath(points, 'meanY');
+  const meanPath = buildPath(internalPoints, 'meanY');
 
   // 배경 가로 가이드라인
   const gridLines =
@@ -2778,7 +3504,7 @@ function ScoreTimelineChart({
           </g>
         ))}
 
-        {/* 학교 평균선 (원점수 모드) */}
+        {/* 학교 평균선 (원점수 모드 · 내신 시험끼리 연결) */}
         {metricMode === 'SCORE' && meanPath && (
           <path
             d={meanPath}
@@ -2800,10 +3526,10 @@ function ScoreTimelineChart({
           />
         )}
 
-        {/* 메인 실선 (실제 원점수 / 실제 등급 / 상위 %) */}
-        {primaryPath && (
+        {/* 내신(INTERNAL) 실선 */}
+        {internalPath && (
           <path
-            d={primaryPath}
+            d={internalPath}
             fill="none"
             stroke={metricMode === 'PERCENT' ? '#7c3aed' : '#4f46e5'}
             strokeWidth="3.5"
@@ -2812,9 +3538,28 @@ function ScoreTimelineChart({
           />
         )}
 
+        {/* 모의고사(MOCK) 실선 (내신과 분리된 별도 라인) */}
+        {mockPath && (
+          <path
+            d={mockPath}
+            fill="none"
+            stroke="#d97706"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
+
         {/* 각 시험 포인트 및 라벨 */}
         {points.map((pt) => {
           const isSelected = pt.exam.id === selectedExamId;
+          const isMock = pt.exam.exam_category === 'MOCK';
+          const pointColor = isMock
+            ? '#d97706'
+            : metricMode === 'PERCENT'
+            ? '#7c3aed'
+            : '#4f46e5';
+
           return (
             <g
               key={pt.exam.id}
@@ -2828,7 +3573,7 @@ function ScoreTimelineChart({
                   y1={padTop}
                   x2={pt.x}
                   y2={height - padBottom}
-                  stroke="#6366f1"
+                  stroke={isMock ? '#d97706' : '#6366f1'}
                   strokeWidth="1.5"
                   strokeDasharray="2 2"
                 />
@@ -2870,15 +3615,20 @@ function ScoreTimelineChart({
                     cx={pt.x}
                     cy={pt.primaryY}
                     r={isSelected ? '7' : '5.5'}
-                    fill={metricMode === 'PERCENT' ? '#7c3aed' : '#4f46e5'}
+                    fill={pointColor}
                     stroke="#ffffff"
                     strokeWidth="2"
                   />
                   <text
                     x={pt.x}
-                    y={pt.primaryY + (pt.secondaryY !== null && pt.secondaryY < pt.primaryY ? 16 : -11)}
+                    y={
+                      pt.primaryY +
+                      (pt.secondaryY !== null && pt.secondaryY < pt.primaryY ? 16 : -11)
+                    }
                     textAnchor="middle"
-                    className="fill-slate-900 text-[11px] font-black"
+                    className={`text-[11px] font-black ${
+                      isMock ? 'fill-amber-900' : 'fill-slate-900'
+                    }`}
                   >
                     {pt.primaryLabel}
                   </text>
@@ -2891,7 +3641,11 @@ function ScoreTimelineChart({
                 y={height - padBottom + 18}
                 textAnchor="middle"
                 className={`text-[10px] ${
-                  isSelected ? 'fill-indigo-700 font-black' : 'fill-slate-600 font-bold'
+                  isSelected
+                    ? isMock
+                      ? 'fill-amber-700 font-black'
+                      : 'fill-indigo-700 font-black'
+                    : 'fill-slate-600 font-bold'
                 }`}
               >
                 {formatExamShortLabel(pt.exam)}
@@ -2911,4 +3665,5 @@ function ScoreTimelineChart({
     </div>
   );
 }
+
 

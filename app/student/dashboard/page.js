@@ -6,12 +6,15 @@ import PushNotificationManager from '@/components/PushNotificationManager';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import StudentHomeworkTable from '@/components/StudentHomeworkTable';
 import StudentClinicModal from '@/components/StudentClinicModal';
+import StudentScoreSummaryWidget from '@/components/StudentScoreSummaryWidget';
 import { logout } from '@/lib/useSession';
 import { getClientCache, setClientCache } from '@/lib/clientCache';
 
 export default function StudentDashboard() {
   const [user, setUser] = useState(null);
   const [evaluations, setEvaluations] = useState([]);
+  const [studentScores, setStudentScores] = useState([]);
+  const [studentScoreProfile, setStudentScoreProfile] = useState({});
   const [qnaStats, setQnaStats] = useState({ pending: 0, answered: 0, resolved: 0, total: 0 });
   const [clinicInfo, setClinicInfo] = useState({ hasActive: false, activeDate: '', myBooking: null, bookingTimeLabel: '', activeScheduleId: null });
   const [loadingEvals, setLoadingEvals] = useState(true);
@@ -21,6 +24,8 @@ export default function StudentDashboard() {
 
   const applyCachedStudentData = (cached) => {
     if (cached.evaluations) setEvaluations(cached.evaluations);
+    if (cached.studentScores) setStudentScores(cached.studentScores);
+    if (cached.studentScoreProfile) setStudentScoreProfile(cached.studentScoreProfile);
     if (cached.clinicInfo) setClinicInfo(cached.clinicInfo);
     if (cached.qnaStats) setQnaStats(cached.qnaStats);
   };
@@ -28,7 +33,7 @@ export default function StudentDashboard() {
   const fetchStudentData = async (studentId, showLoading = false) => {
     if (showLoading) setLoadingEvals(true);
     try {
-      // ⚡ 과제표, 클리닉, QnA를 3개 동시 병렬 요청 (직렬 대기 완전 제거)
+      // ⚡ 과제표, 성적추이, 클리닉, QnA를 4개 동시 병렬 요청 (직렬 대기 완전 제거)
       const evalPromise = fetch(`/api/eval?studentId=${encodeURIComponent(studentId)}`)
         .then(async (res) => {
           if (!res.ok) return [];
@@ -39,6 +44,19 @@ export default function StudentDashboard() {
           return list;
         })
         .catch(() => []);
+
+      // 📈 내 고교 수학 성적 추이 & 패인 분석 데이터 조회
+      const scorePromise = fetch(`/api/scores?studentId=${encodeURIComponent(studentId)}`)
+        .then(async (res) => {
+          if (!res.ok) return { scores: [], profile: {} };
+          const sJson = await res.json();
+          const myScores = (sJson.scores || []).filter((sc) => sc.student_id === studentId);
+          const myProf = (sJson.studentProfiles && sJson.studentProfiles[studentId]) || {};
+          setStudentScores(myScores);
+          setStudentScoreProfile(myProf);
+          return { scores: myScores, profile: myProf };
+        })
+        .catch(() => ({ scores: [], profile: {} }));
 
       // ⏰ 클리닉 일정 및 내 예약 상태 조회
       const clinicPromise = fetch('/api/clinic/schedules')
@@ -104,11 +122,18 @@ export default function StudentDashboard() {
         })
         .catch(() => ({ pending: 0, answered: 0, resolved: 0, total: 0 }));
 
-      const [evList, cInfo, qStats] = await Promise.all([evalPromise, clinicPromise, qnaPromise]);
+      const [evList, scData, cInfo, qStats] = await Promise.all([
+        evalPromise,
+        scorePromise,
+        clinicPromise,
+        qnaPromise,
+      ]);
 
       // 캐시 저장 (새로고침/재방문 시 0.0초 즉시 복원)
       setClientCache(`student_dashboard_${studentId}`, {
         evaluations: evList,
+        studentScores: scData.scores,
+        studentScoreProfile: scData.profile,
         clinicInfo: cInfo,
         qnaStats: qStats,
       });
@@ -231,6 +256,12 @@ export default function StudentDashboard() {
             />
           )}
         </div>
+
+        {/* 📈 1-2. 나의 고교 수학 성적 추이 & 패인 분석 리포트 (등록된 성적이 있을 때 자동 표시) */}
+        <StudentScoreSummaryWidget
+          scores={studentScores}
+          profile={studentScoreProfile}
+        />
 
         {/* ⏰ 주말 클리닉 시간 선택 배너 */}
         {clinicInfo.hasActive && (

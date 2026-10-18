@@ -364,20 +364,22 @@ export default function StudentScoreSummaryWidget({
               </div>
             </div>
 
-            {/* 6대 오답 감점 원인 및 직전 동종 시험 대비 변화 바 */}
-            {potInfo?.totalRecordedLost > 0 && (
-              <div className="bg-slate-50/60 rounded-2xl p-4 sm:p-5 border border-slate-200/80 space-y-3.5">
+            {/* 7대 오답 감점 원인 및 직전 동종 시험 대비 변화 + 학생 맞춤 학습 처방 */}
+            {(potInfo?.totalRecordedLost > 0 || errorTrend?.insights?.length > 0) && (
+              <div className="bg-slate-50/60 rounded-2xl p-4 sm:p-5 border border-slate-200/80 space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/70 pb-2.5">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-xs font-black text-slate-900">
-                      오답 감점 원인별 비중 분석
+                      7대 오답 감점 원인 및 맞춤 학습 처방
                     </h3>
-                    <span className="text-[11px] font-bold text-slate-600 tabular-nums">
-                      {potInfo.totalActualLost > 0 &&
-                      potInfo.totalActualLost !== potInfo.totalRecordedLost
-                        ? `(전체 감점 -${potInfo.totalActualLost}점 중 -${potInfo.totalRecordedLost}점 분류됨)`
-                        : `(분류된 감점 총 -${potInfo.totalRecordedLost}점)`}
-                    </span>
+                    {potInfo?.totalRecordedLost > 0 && (
+                      <span className="text-[11px] font-bold text-slate-600 tabular-nums">
+                        {potInfo.totalActualLost > 0 &&
+                        potInfo.totalActualLost !== potInfo.totalRecordedLost
+                          ? `(전체 감점 -${potInfo.totalActualLost}점 중 -${potInfo.totalRecordedLost}점 분류됨)`
+                          : `(분류된 감점 총 -${potInfo.totalRecordedLost}점)`}
+                      </span>
+                    )}
                   </div>
                   {prevComparableExam && (
                     <span className="text-[11px] font-bold text-slate-500">
@@ -386,84 +388,149 @@ export default function StudentScoreSummaryWidget({
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {ERROR_REASON_CATEGORIES.map((cat) => {
-                    const val = Number(activeExam.error_breakdown?.[cat.key]) || 0;
-                    if (val <= 0) return null;
-                    const prevVal = prevComparableExam
-                      ? Number(prevComparableExam.error_breakdown?.[cat.key]) || 0
-                      : null;
-                    const diff =
-                      prevVal !== null ? Number((val - prevVal).toFixed(1)) : null;
-                    const barPct = Math.min(
-                      100,
-                      Math.round((val / Math.max(15, potInfo.totalRecordedLost)) * 100)
-                    );
+                {potInfo?.totalRecordedLost > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {ERROR_REASON_CATEGORIES.map((cat) => {
+                      const val = Number(activeExam.error_breakdown?.[cat.key]) || 0;
+                      if (val <= 0) return null;
+                      const prevVal = prevComparableExam
+                        ? Number(prevComparableExam.error_breakdown?.[cat.key]) || 0
+                        : null;
+                      const diff =
+                        prevVal !== null ? Number((val - prevVal).toFixed(1)) : null;
+                      const barPct = Math.min(
+                        100,
+                        Math.round((val / Math.max(15, potInfo.totalRecordedLost)) * 100)
+                      );
 
-                    return (
-                      <div
-                        key={cat.key}
-                        className="bg-white px-3.5 py-3 rounded-xl border border-slate-200/80 space-y-1.5"
-                      >
-                        <div className="flex items-center justify-between gap-2 text-xs">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span
-                              className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded shrink-0 whitespace-nowrap ${
-                                cat.recoverable
-                                  ? 'bg-rose-50 text-rose-700 border border-rose-200/80'
-                                  : 'bg-slate-100 text-slate-700 border border-slate-200/80'
-                              }`}
-                            >
-                              {cat.recoverable ? '풀이습관' : '개념·심화'}
-                            </span>
-                            <span className="font-black text-slate-800 whitespace-nowrap">
-                              {cat.label}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0 tabular-nums">
-                            {diff !== null && diff !== 0 && (
+                      return (
+                        <div
+                          key={cat.key}
+                          className="bg-white px-3.5 py-3 rounded-xl border border-slate-200/80 space-y-1.5"
+                        >
+                          <div className="flex items-center justify-between gap-2 text-xs">
+                            <div className="flex items-center gap-1.5 min-w-0">
                               <span
-                                className={`text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${
-                                  diff < 0
-                                    ? 'bg-emerald-50 text-emerald-700'
-                                    : 'bg-rose-50 text-rose-700'
+                                className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded shrink-0 whitespace-nowrap ${
+                                  cat.recoverable
+                                    ? 'bg-rose-50 text-rose-700 border border-rose-200/80'
+                                    : 'bg-slate-100 text-slate-700 border border-slate-200/80'
                                 }`}
                               >
-                                {diff > 0 ? `+${diff}점` : `${diff}점`}
+                                {cat.recoverable ? '풀이습관' : '개념·심화'}
                               </span>
-                            )}
-                            <span
-                              className={`font-black whitespace-nowrap ${
-                                cat.recoverable ? 'text-rose-600' : 'text-indigo-900'
+                              <span className="font-black text-slate-800 whitespace-nowrap">
+                                {cat.label}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0 tabular-nums">
+                              {diff !== null && diff !== 0 && (
+                                <span
+                                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${
+                                    diff < 0
+                                      ? 'bg-emerald-50 text-emerald-700'
+                                      : 'bg-rose-50 text-rose-700'
+                                  }`}
+                                >
+                                  {diff > 0 ? `+${diff}점` : `${diff}점`}
+                                </span>
+                              )}
+                              <span
+                                className={`font-black whitespace-nowrap ${
+                                  cat.recoverable ? 'text-rose-600' : 'text-indigo-900'
+                                }`}
+                              >
+                                -{val}점
+                              </span>
+                            </div>
+                          </div>
+                          <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${
+                                cat.recoverable ? 'bg-rose-500' : 'bg-indigo-600'
                               }`}
-                            >
-                              -{val}점
-                            </span>
+                              style={{ width: `${barPct}%` }}
+                            />
                           </div>
                         </div>
-                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full ${
-                              cat.recoverable ? 'bg-rose-500' : 'bg-indigo-600'
-                            }`}
-                            style={{ width: `${barPct}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {errorTrend?.insights && errorTrend.insights.length > 0 && (
-                  <div className="space-y-1.5 pt-1">
-                    {errorTrend.insights.map((ins, i) => (
-                      <p
-                        key={i}
-                        className="text-xs font-bold text-slate-800 bg-white border border-slate-200/90 px-3.5 py-2.5 rounded-xl"
-                      >
-                        {ins.text}
-                      </p>
-                    ))}
+                  <div className="space-y-2.5 pt-1">
+                    {errorTrend.insights.map((ins, i) => {
+                      const isPositive = ins.type === 'POSITIVE';
+                      const isWarn = ins.type === 'WARNING' || ins.type === 'NEGATIVE';
+                      const isAction = ins.type === 'ACTION';
+
+                      return (
+                        <div
+                          key={i}
+                          className={`p-4 rounded-2xl border text-xs space-y-2.5 ${
+                            isPositive
+                              ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
+                              : isWarn
+                              ? 'bg-rose-50/70 border-rose-200 text-rose-950'
+                              : isAction
+                              ? 'bg-indigo-50/60 border-indigo-200 text-slate-900'
+                              : 'bg-white border-slate-200/90 text-slate-900'
+                          }`}
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={`text-[11px] font-black px-2.5 py-0.5 rounded-md shrink-0 whitespace-nowrap ${
+                                isPositive
+                                  ? 'bg-emerald-600 text-white'
+                                  : isWarn
+                                  ? 'bg-rose-600 text-white'
+                                  : isAction
+                                  ? 'bg-indigo-600 text-white'
+                                  : 'bg-slate-700 text-white'
+                              }`}
+                            >
+                              {ins.badge ||
+                                (isPositive ? '개선' : isWarn ? '주의' : '핵심 처방')}
+                            </span>
+                            <span className="font-black text-xs sm:text-[13px] leading-snug">
+                              {ins.title || ins.text}
+                            </span>
+                          </div>
+
+                          {ins.detail && (
+                            <p className="font-semibold text-slate-700 leading-relaxed pl-0.5">
+                              {ins.detail}
+                            </p>
+                          )}
+
+                          {(ins.studyAction || ins.examAction) && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1">
+                              {ins.studyAction && (
+                                <div className="bg-white/95 border border-slate-200/80 rounded-xl px-3.5 py-2.5 space-y-1">
+                                  <span className="text-[10px] font-black text-indigo-700 block">
+                                    나의 평소 공부 실천법
+                                  </span>
+                                  <p className="text-[11px] font-semibold text-slate-700 leading-relaxed">
+                                    {ins.studyAction}
+                                  </p>
+                                </div>
+                              )}
+                              {ins.examAction && (
+                                <div className="bg-white/95 border border-slate-200/80 rounded-xl px-3.5 py-2.5 space-y-1">
+                                  <span className="text-[10px] font-black text-rose-700 block">
+                                    다음 시험장 실전 행동 루틴
+                                  </span>
+                                  <p className="text-[11px] font-semibold text-slate-700 leading-relaxed">
+                                    {ins.examAction}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

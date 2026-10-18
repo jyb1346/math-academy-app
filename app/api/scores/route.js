@@ -314,6 +314,7 @@ function normalizeScoreRecord(input, existingId, teacherId) {
     mistake_calc: Number(eb.mistake_calc) || 0,
     mistake_cond: Number(eb.mistake_cond) || 0,
     mistake_essay: Number(eb.mistake_essay) || 0,
+    mistake_time: Number(eb.mistake_time) || 0,
     skill_concept: Number(eb.skill_concept) || 0,
     skill_approach: Number(eb.skill_approach) || 0,
     skill_killer: Number(eb.skill_killer) || 0,

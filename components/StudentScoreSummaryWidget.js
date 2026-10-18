@@ -102,7 +102,7 @@ export default function StudentScoreSummaryWidget({
             )}
           </div>
           <p className="text-xs text-slate-500 font-medium mt-0.5">
-            시험별 성취도와 6대 오답 감점 원인을 점검하고 다음 시험 대비 보완 과제를 확인하세요.
+            시험별 성취도와 7대 오답 감점 원인을 점검하고 다음 시험 대비 보완 과제를 확인하세요.
           </p>
         </div>
 

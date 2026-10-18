@@ -44,6 +44,7 @@ const INITIAL_EXAM_FORM = {
     mistake_calc: '',
     mistake_cond: '',
     mistake_essay: '',
+    mistake_time: '',
     skill_concept: '',
     skill_approach: '',
     skill_killer: '',
@@ -412,6 +413,7 @@ export default function TeacherScoresPage() {
         mistake_calc: eb.mistake_calc || '',
         mistake_cond: eb.mistake_cond || '',
         mistake_essay: eb.mistake_essay || '',
+        mistake_time: eb.mistake_time || '',
         skill_concept: eb.skill_concept || '',
         skill_approach: eb.skill_approach || '',
         skill_killer: eb.skill_killer || '',
@@ -711,6 +713,7 @@ export default function TeacherScoresPage() {
           mistake_calc: eb.mistake_calc || '',
           mistake_cond: eb.mistake_cond || '',
           mistake_essay: eb.mistake_essay || '',
+          mistake_time: eb.mistake_time || '',
           skill_concept: eb.skill_concept || '',
           skill_approach: eb.skill_approach || '',
           skill_killer: eb.skill_killer || '',
@@ -1935,7 +1938,8 @@ export default function TeacherScoresPage() {
                                 const colorMap = {
                                   mistake_calc: '#f43f5e',
                                   mistake_cond: '#fb923c',
-                                  mistake_essay: '#eab308',
+                                  mistake_essay: '#f59e0b',
+                                  mistake_time: '#eab308',
                                   skill_concept: '#4f46e5',
                                   skill_approach: '#0ea5e9',
                                   skill_killer: '#64748b',
@@ -2041,7 +2045,7 @@ export default function TeacherScoresPage() {
                               <div className="grid grid-cols-2 gap-2.5 pt-3 border-t border-slate-200/80 text-xs tabular-nums">
                                 <div className="bg-white rounded-xl p-3 border border-slate-200/80">
                                   <span className="text-[11px] font-bold text-slate-500 block">
-                                    계산·조건·시간 감점
+                                    계산·조건·서술·시간 감점
                                   </span>
                                   <span className="text-base font-black text-rose-600 mt-0.5 block">
                                     -{activePotentialAnalysis?.recoverableLost || 0}점
@@ -2049,7 +2053,7 @@ export default function TeacherScoresPage() {
                                 </div>
                                 <div className="bg-white rounded-xl p-3 border border-slate-200/80">
                                   <span className="text-[11px] font-bold text-slate-500 block">
-                                    개념·유형·심화 감점
+                                    개념·유형·최고난도 감점
                                   </span>
                                   <span className="text-base font-black text-indigo-900 mt-0.5 block">
                                     -{activePotentialAnalysis?.skillLost || 0}점
@@ -2058,11 +2062,11 @@ export default function TeacherScoresPage() {
                               </div>
                             </div>
 
-                            {/* 우측 (7칸): 6대 감점 항목별 수평 막대 비교 표 (항목명 말줄임 잘림 방지) */}
+                            {/* 우측 (7칸): 7대 감점 항목별 수평 막대 비교 표 (항목명 말줄임 잘림 방지) */}
                             <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200/90 p-5 flex flex-col justify-between">
                               <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
                                 <h4 className="text-xs font-black text-slate-800">
-                                  6대 오답 원인별 감점 점수 및 직전 시험 대비 변화
+                                  7대 오답 원인별 감점 점수 및 직전 시험 대비 변화
                                 </h4>
                                 {previousDetailExam && (
                                   <span className="text-[11px] font-bold text-slate-400">
@@ -2095,13 +2099,14 @@ export default function TeacherScoresPage() {
                                     mistake_calc: 'bg-rose-500',
                                     mistake_cond: 'bg-orange-400',
                                     mistake_essay: 'bg-amber-500',
+                                    mistake_time: 'bg-yellow-500',
                                     skill_concept: 'bg-indigo-600',
                                     skill_approach: 'bg-sky-500',
                                     skill_killer: 'bg-slate-600',
                                   };
 
                                   return (
-                                    <div key={cat.key} className="py-3 first:pt-2 last:pb-1">
+                                    <div key={cat.key} className="py-2.5 first:pt-1.5 last:pb-1">
                                       <div className="flex items-center justify-between gap-3 text-xs">
                                         <div className="flex items-center gap-2 min-w-0">
                                           <span
@@ -2152,7 +2157,7 @@ export default function TeacherScoresPage() {
                                       </div>
 
                                       {/* 수평 막대 바 */}
-                                      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden mt-2">
+                                      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden mt-1.5">
                                         <div
                                           className={`h-full rounded-full transition-all ${
                                             currVal > 0
@@ -2558,9 +2563,9 @@ export default function TeacherScoresPage() {
                     )}
                     <th
                       className="py-2.5 px-2 min-w-[68px] text-slate-700"
-                      title="계산/부호 실수 감점 점수"
+                      title="계산·부호 실수 감점 점수"
                     >
-                      계산실수(-)
+                      계산·부호(-)
                     </th>
                     <th
                       className="py-2.5 px-2 min-w-[68px] text-slate-700"
@@ -2570,31 +2575,37 @@ export default function TeacherScoresPage() {
                     </th>
                     <th
                       className="py-2.5 px-2 min-w-[68px] text-slate-700"
-                      title="서술형 감점 또는 시간부족 점수"
+                      title="서술형 답안 작성 과정 감점 점수"
                     >
-                      서술/시간(-)
+                      서술형(-)
                     </th>
                     <th
                       className="py-2.5 px-2 min-w-[68px] text-slate-700"
-                      title="개념/공식 미숙 감점 점수"
+                      title="충분히 맞힐 수 있었으나 시간 배분 실패로 못 푼 문항 감점 점수"
+                    >
+                      시간배분(-)
+                    </th>
+                    <th
+                      className="py-2.5 px-2 min-w-[68px] text-slate-700"
+                      title="기본 개념·공식 미숙 감점 점수"
                     >
                       개념미숙(-)
                     </th>
                     <th
                       className="py-2.5 px-2 min-w-[68px] text-slate-700"
-                      title="유형/접근법 막힘 감점 점수"
+                      title="기본 유형 접근법 막힘 감점 점수"
                     >
                       유형막힘(-)
                     </th>
                     <th
                       className="py-2.5 px-2 min-w-[68px] text-slate-700"
-                      title="킬러(고난도) 한계 감점 점수"
+                      title="최고난도 문제 한계 감점 점수"
                     >
-                      킬러문항(-)
+                      최고난도(-)
                     </th>
                     <th
                       className="py-2.5 px-2 min-w-[92px] text-center text-slate-700"
-                      title="100점 - 원점수와 6대 오답 감점 합계의 일치 여부"
+                      title="100점 - 원점수와 7대 오답 감점 합계의 일치 여부"
                     >
                       감점검증
                     </th>
@@ -3706,12 +3717,17 @@ export default function TeacherScoresPage() {
                 })()}
               </div>
 
-              {/* 3. 6대 오답 원인(감점 요인) 상세 점수 입력 + 총 감점 대비 자동 검증 바 */}
+              {/* 3. 7대 오답 원인(감점 요인) 상세 점수 입력 + 총 감점 대비 자동 검증 바 */}
               <div className="space-y-3 pt-3 border-t border-slate-100">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h4 className="text-xs font-black text-slate-900">
-                    오답 원인별 감점 점수 (선택 입력)
-                  </h4>
+                  <div>
+                    <h4 className="text-xs font-black text-slate-900">
+                      7대 오답 원인별 감점 점수 (선택 입력)
+                    </h4>
+                    <p className="text-[11px] font-semibold text-slate-500 mt-0.5">
+                      시간 부족 미해결 문항은 재풀이 후 <strong className="text-slate-700">풀 수 있었던 문항만 &lsquo;시간 배분 실패&rsquo;</strong>에, 시간을 줘도 못 푼 문항은 <strong className="text-slate-700">&lsquo;기본 유형 접근법 막힘 / 최고난도 문제 한계&rsquo;</strong>에 분류하세요.
+                    </p>
+                  </div>
                   {(() => {
                     const rawVal = Number(examForm.raw_score);
                     if (
@@ -3751,7 +3767,7 @@ export default function TeacherScoresPage() {
                             : `(${Math.abs(diff)}점 초과)`}
                         </span>
                         {diff > 0 && (
-                          <div className="flex items-center gap-1">
+                          <div className="flex flex-wrap items-center gap-1">
                             <button
                               type="button"
                               onClick={() =>
@@ -3770,7 +3786,7 @@ export default function TeacherScoresPage() {
                               }
                               className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-extrabold px-2 py-0.5 rounded-md whitespace-nowrap"
                             >
-                              +남은 {diff}점 → 유형막힘
+                              +남은 {diff}점 → 기본유형막힘
                             </button>
                             <button
                               type="button"
@@ -3790,7 +3806,27 @@ export default function TeacherScoresPage() {
                               }
                               className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-extrabold px-2 py-0.5 rounded-md whitespace-nowrap"
                             >
-                              +남은 {diff}점 → 킬러문항
+                              +남은 {diff}점 → 최고난도한계
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExamForm((p) => ({
+                                  ...p,
+                                  error_breakdown: {
+                                    ...(p.error_breakdown || {}),
+                                    mistake_time: Number(
+                                      (
+                                        (Number(p.error_breakdown?.mistake_time) || 0) +
+                                        diff
+                                      ).toFixed(1)
+                                    ),
+                                  },
+                                }))
+                              }
+                              className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-extrabold px-2 py-0.5 rounded-md whitespace-nowrap"
+                            >
+                              +남은 {diff}점 → 시간배분실패
                             </button>
                             <button
                               type="button"
@@ -3810,7 +3846,7 @@ export default function TeacherScoresPage() {
                               }
                               className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-extrabold px-2 py-0.5 rounded-md whitespace-nowrap"
                             >
-                              +남은 {diff}점 → 개념미숙
+                              +남은 {diff}점 → 기본개념미숙
                             </button>
                           </div>
                         )}
@@ -3819,19 +3855,26 @@ export default function TeacherScoresPage() {
                   })()}
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                   {ERROR_REASON_CATEGORIES.map((cat) => (
                     <div
                       key={cat.key}
-                      className="p-3 rounded-xl border bg-slate-50/80 border-slate-200/90"
+                      className="p-3 rounded-xl border bg-slate-50/80 border-slate-200/90 flex flex-col justify-between"
                     >
-                      <div className="flex items-center justify-between gap-1 mb-1.5">
-                        <label className="text-[11px] font-extrabold text-slate-800 whitespace-nowrap">
-                          {cat.label}
-                        </label>
-                        <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">
-                          {cat.recoverable ? '풀이습관' : '개념·심화'}
-                        </span>
+                      <div className="mb-1.5">
+                        <div className="flex items-center justify-between gap-1">
+                          <label className="text-[11px] font-extrabold text-slate-800 whitespace-nowrap">
+                            {cat.shortLabel || cat.label}
+                          </label>
+                          <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">
+                            {cat.recoverable ? '풀이습관' : '개념·심화'}
+                          </span>
+                        </div>
+                        {cat.description && (
+                          <p className="text-[10px] font-medium text-slate-400 mt-0.5 truncate" title={cat.description}>
+                            {cat.description}
+                          </p>
+                        )}
                       </div>
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs font-bold text-slate-400">-</span>

@@ -458,79 +458,73 @@ export default function StudentScoreSummaryWidget({
                   </div>
                 )}
 
-                {errorTrend?.insights && errorTrend.insights.length > 0 && (
-                  <div className="space-y-2.5 pt-1">
-                    {errorTrend.insights.map((ins, i) => {
-                      const isPositive = ins.type === 'POSITIVE';
-                      const isWarn = ins.type === 'WARNING' || ins.type === 'NEGATIVE';
-                      const isAction = ins.type === 'ACTION';
+                {(errorTrend?.topPriorities?.length > 0 ||
+                  errorTrend?.insights?.length > 0) && (
+                  <div className="pt-2 border-t border-slate-200/70 space-y-2.5">
+                    {(() => {
+                      const trendInsight = errorTrend?.insights?.find(
+                        (ins) => ins.type !== 'ACTION'
+                      );
+                      const priorities = errorTrend?.topPriorities || [];
 
                       return (
-                        <div
-                          key={i}
-                          className={`p-4 rounded-2xl border text-xs space-y-2.5 ${
-                            isPositive
-                              ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
-                              : isWarn
-                              ? 'bg-rose-50/70 border-rose-200 text-rose-950'
-                              : isAction
-                              ? 'bg-indigo-50/60 border-indigo-200 text-slate-900'
-                              : 'bg-white border-slate-200/90 text-slate-900'
-                          }`}
-                        >
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span
-                              className={`text-[11px] font-black px-2.5 py-0.5 rounded-md shrink-0 whitespace-nowrap ${
-                                isPositive
-                                  ? 'bg-emerald-600 text-white'
-                                  : isWarn
-                                  ? 'bg-rose-600 text-white'
-                                  : isAction
-                                  ? 'bg-indigo-600 text-white'
-                                  : 'bg-slate-700 text-white'
-                              }`}
-                            >
-                              {ins.badge ||
-                                (isPositive ? '개선' : isWarn ? '주의' : '핵심 처방')}
-                            </span>
-                            <span className="font-black text-xs sm:text-[13px] leading-snug">
-                              {ins.title || ins.text}
-                            </span>
+                        <>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="bg-slate-900 text-white text-[11px] font-extrabold px-2.5 py-0.5 rounded-md whitespace-nowrap">
+                                최우선 보완 과제
+                              </span>
+                              <span className="text-xs font-extrabold text-slate-800">
+                                {priorities.length > 0
+                                  ? `이번 시험 집중 교정 대상 ${priorities
+                                      .map((p) => `[${p.shortLabel} -${p.currVal}점]`)
+                                      .join(' · ')}`
+                                  : trendInsight?.title}
+                              </span>
+                            </div>
+                            {trendInsight && priorities.length > 0 && (
+                              <span className="text-[11px] font-bold text-slate-500">
+                                {trendInsight.title}
+                              </span>
+                            )}
                           </div>
 
-                          {ins.detail && (
-                            <p className="font-semibold text-slate-700 leading-relaxed pl-0.5">
-                              {ins.detail}
-                            </p>
-                          )}
-
-                          {(ins.studyAction || ins.examAction) && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1">
-                              {ins.studyAction && (
-                                <div className="bg-white/95 border border-slate-200/80 rounded-xl px-3.5 py-2.5 space-y-1">
-                                  <span className="text-[10px] font-black text-indigo-700 block">
-                                    나의 평소 공부 실천법
-                                  </span>
-                                  <p className="text-[11px] font-semibold text-slate-700 leading-relaxed">
-                                    {ins.studyAction}
+                          {priorities.length > 0 && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                              {priorities.map((p) => (
+                                <div
+                                  key={p.key}
+                                  className="bg-white border border-slate-200/90 rounded-xl px-3.5 py-3 space-y-1"
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-1.5">
+                                      <span
+                                        className={`text-[10px] font-black px-2 py-0.5 rounded whitespace-nowrap ${
+                                          p.rank === 1
+                                            ? 'bg-indigo-600 text-white'
+                                            : 'bg-slate-200 text-slate-800'
+                                        }`}
+                                      >
+                                        {p.rank}순위 과제
+                                      </span>
+                                      <span className="text-xs font-black text-slate-900 whitespace-nowrap">
+                                        {p.label}
+                                      </span>
+                                    </div>
+                                    <span className="text-xs font-black text-rose-600 tabular-nums whitespace-nowrap">
+                                      -{p.currVal}점
+                                    </span>
+                                  </div>
+                                  <p className="text-xs font-medium text-slate-600 leading-relaxed pt-0.5">
+                                    {p.action}
                                   </p>
                                 </div>
-                              )}
-                              {ins.examAction && (
-                                <div className="bg-white/95 border border-slate-200/80 rounded-xl px-3.5 py-2.5 space-y-1">
-                                  <span className="text-[10px] font-black text-rose-700 block">
-                                    다음 시험장 실전 행동 루틴
-                                  </span>
-                                  <p className="text-[11px] font-semibold text-slate-700 leading-relaxed">
-                                    {ins.examAction}
-                                  </p>
-                                </div>
-                              )}
+                              ))}
                             </div>
                           )}
-                        </div>
+                        </>
                       );
-                    })}
+                    })()}
                   </div>
                 )}
               </div>

@@ -656,13 +656,14 @@ export default function TeacherScoresPage() {
       });
     }
 
-    if (trend?.insights?.length > 0) {
-      lines.push(`\n[정밀 오답 진단 및 맞춤 학습 처방]`);
-      trend.insights.forEach((ins) => {
-        lines.push(`• [${ins.badge || '핵심 진단'}] ${ins.title || ins.text}`);
-        if (ins.detail) lines.push(`  - 원인 진단: ${ins.detail}`);
-        if (ins.studyAction) lines.push(`  - 평소 학습법: ${ins.studyAction}`);
-        if (ins.examAction) lines.push(`  - 시험장 루틴: ${ins.examAction}`);
+    if (trend?.topPriorities?.length > 0 || trend?.insights?.length > 0) {
+      lines.push(`\n[핵심 요약 및 최우선 보완 과제]`);
+      const trendInsight = trend?.insights?.find((ins) => ins.type !== 'ACTION');
+      if (trendInsight) {
+        lines.push(`• ${trendInsight.title}`);
+      }
+      (trend?.topPriorities || []).forEach((p) => {
+        lines.push(`• [${p.rank}순위 과제 · ${p.label} (-${p.currVal}점)] ${p.action}`);
       });
     }
 
@@ -1860,84 +1861,75 @@ export default function TeacherScoresPage() {
                             )}
                           </div>
 
-                          {/* 직전 동종 시험 대비 핵심 변화 진단 및 학생 맞춤형 학습 처방 */}
-                          {activeErrorTrendComparison?.insights?.length > 0 && (
-                            <div className="space-y-3">
-                              {activeErrorTrendComparison.insights.map((ins, i) => {
-                                const isPositive = ins.type === 'POSITIVE';
-                                const isWarn = ins.type === 'WARNING' || ins.type === 'NEGATIVE';
-                                const isAction = ins.type === 'ACTION';
+                          {/* 한눈에 들어오는 핵심 요약 및 최우선 보완 과제 (단일 통합 박스) */}
+                          {(activeErrorTrendComparison?.topPriorities?.length > 0 ||
+                            activeErrorTrendComparison?.insights?.length > 0) && (
+                            <div className="bg-slate-50/90 border border-slate-200/90 rounded-2xl p-4 space-y-3">
+                              {(() => {
+                                const trendInsight = activeErrorTrendComparison?.insights?.find(
+                                  (ins) => ins.type !== 'ACTION'
+                                );
+                                const priorities =
+                                  activeErrorTrendComparison?.topPriorities || [];
 
                                 return (
-                                  <div
-                                    key={i}
-                                    className={`p-4 rounded-2xl border text-xs space-y-2.5 ${
-                                      isPositive
-                                        ? 'bg-emerald-50/60 border-emerald-200/90 text-emerald-950'
-                                        : isWarn
-                                        ? 'bg-rose-50/60 border-rose-200/90 text-rose-950'
-                                        : isAction
-                                        ? 'bg-indigo-50/50 border-indigo-200/90 text-slate-900'
-                                        : 'bg-slate-50/90 border-slate-200/90 text-slate-900'
-                                    }`}
-                                  >
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <span
-                                        className={`text-[11px] font-black px-2.5 py-0.5 rounded-md shrink-0 whitespace-nowrap ${
-                                          isPositive
-                                            ? 'bg-emerald-600 text-white'
-                                            : isWarn
-                                            ? 'bg-rose-600 text-white'
-                                            : isAction
-                                            ? 'bg-indigo-600 text-white'
-                                            : 'bg-slate-700 text-white'
-                                        }`}
-                                      >
-                                        {ins.badge ||
-                                          (isPositive
-                                            ? '개선'
-                                            : isWarn
-                                            ? '주의'
-                                            : '핵심 처방')}
-                                      </span>
-                                      <span className="font-black text-xs sm:text-[13px] leading-snug">
-                                        {ins.title || ins.text}
-                                      </span>
+                                  <>
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                      <div className="flex items-center gap-2">
+                                        <span className="bg-slate-900 text-white text-[11px] font-extrabold px-2.5 py-0.5 rounded-md whitespace-nowrap">
+                                          핵심 요약 및 최우선 처방
+                                        </span>
+                                        <span className="text-xs font-extrabold text-slate-800">
+                                          {priorities.length > 0
+                                            ? `가장 먼저 잡아야 할 감점 요인 ${priorities
+                                                .map((p) => `[${p.shortLabel} -${p.currVal}점]`)
+                                                .join(' · ')}`
+                                            : trendInsight?.title}
+                                        </span>
+                                      </div>
+                                      {trendInsight && priorities.length > 0 && (
+                                        <span className="text-[11px] font-bold text-slate-500">
+                                          {trendInsight.title}
+                                        </span>
+                                      )}
                                     </div>
 
-                                    {ins.detail && (
-                                      <p className="font-semibold text-slate-700 leading-relaxed pl-0.5">
-                                        {ins.detail}
-                                      </p>
-                                    )}
-
-                                    {(ins.studyAction || ins.examAction) && (
-                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1">
-                                        {ins.studyAction && (
-                                          <div className="bg-white/90 border border-slate-200/80 rounded-xl px-3.5 py-2.5 space-y-1">
-                                            <span className="text-[10px] font-black text-indigo-700 block">
-                                              평소 학습 처방 (자습·클리닉 실천법)
-                                            </span>
-                                            <p className="text-[11px] font-semibold text-slate-700 leading-relaxed">
-                                              {ins.studyAction}
+                                    {priorities.length > 0 && (
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                                        {priorities.map((p) => (
+                                          <div
+                                            key={p.key}
+                                            className="bg-white border border-slate-200/90 rounded-xl px-3.5 py-3 space-y-1"
+                                          >
+                                            <div className="flex items-center justify-between gap-2">
+                                              <div className="flex items-center gap-1.5">
+                                                <span
+                                                  className={`text-[10px] font-black px-2 py-0.5 rounded whitespace-nowrap ${
+                                                    p.rank === 1
+                                                      ? 'bg-indigo-600 text-white'
+                                                      : 'bg-slate-200 text-slate-800'
+                                                  }`}
+                                                >
+                                                  {p.rank}순위 과제
+                                                </span>
+                                                <span className="text-xs font-black text-slate-900 whitespace-nowrap">
+                                                  {p.label}
+                                                </span>
+                                              </div>
+                                              <span className="text-xs font-black text-rose-600 tabular-nums whitespace-nowrap">
+                                                -{p.currVal}점
+                                              </span>
+                                            </div>
+                                            <p className="text-xs font-medium text-slate-600 leading-relaxed pt-0.5">
+                                              {p.action}
                                             </p>
                                           </div>
-                                        )}
-                                        {ins.examAction && (
-                                          <div className="bg-white/90 border border-slate-200/80 rounded-xl px-3.5 py-2.5 space-y-1">
-                                            <span className="text-[10px] font-black text-rose-700 block">
-                                              다음 시험장 실전 행동 루틴
-                                            </span>
-                                            <p className="text-[11px] font-semibold text-slate-700 leading-relaxed">
-                                              {ins.examAction}
-                                            </p>
-                                          </div>
-                                        )}
+                                        ))}
                                       </div>
                                     )}
-                                  </div>
+                                  </>
                                 );
-                              })}
+                              })()}
                             </div>
                           )}
 

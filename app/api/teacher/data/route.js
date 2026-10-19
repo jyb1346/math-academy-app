@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/session';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { loadScoreStore, enrichStudentsWithProfiles } from '@/lib/scoreStore';
 
 // GET /api/teacher/data — 교사 대시보드 초기 데이터 일괄 조회 (본인 담당 반/학생 범위)
 export async function GET(req) {
@@ -9,12 +10,13 @@ export async function GET(req) {
 
   const db = getSupabaseAdmin(req);
 
-  // 서로 무관한 조회 4개를 병렬 실행
-  const [classesRes, directStRes, teachersRes, qnaRes] = await Promise.all([
+  // 서로 무관한 조회 5개를 병렬 실행
+  const [classesRes, directStRes, teachersRes, qnaRes, scoreStore] = await Promise.all([
     db.from('classes').select('*').eq('teacher_id', user.id),
     db.from('users').select('id, name, email, role, parent_phone, teacher_id, created_at').eq('role', 'STUDENT').eq('teacher_id', user.id),
     db.from('users').select('id, name, email, role').in('role', ['TEACHER', 'HEAD_TEACHER', 'ADMIN']).order('name'),
     db.from('qna').select('id, status, replies').eq('teacher_id', user.id),
+    loadScoreStore(db),
   ]);
 
   if (classesRes.error) return NextResponse.json({ error: classesRes.error.message }, { status: 500 });
@@ -47,15 +49,19 @@ export async function GET(req) {
     }
   }
 
-  // 🎯 학생 목록 가나다(이름) 순 정렬
+  // 🎯 학생 목록 가나다(이름) 순 정렬 + 학년/학교 프로필 병합
   allTeacherStudents.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
+  const enrichedStudents = enrichStudentsWithProfiles(
+    allTeacherStudents,
+    scoreStore?.studentProfiles || {}
+  );
 
   const tData = teachersRes.data;
   const qnaData = qnaRes.data;
 
   return NextResponse.json({
     classes: myClasses,
-    students: allTeacherStudents,
+    students: enrichedStudents,
     teachers: tData || [],
     classStudents: myClassStudents,
     qna: qnaData || [],

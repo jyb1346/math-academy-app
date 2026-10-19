@@ -7,8 +7,13 @@ import {
   INTERNAL_EXAM_PERIODS,
   MOCK_EXAM_PERIODS,
   MATH_SUBJECTS,
+  MIDDLE_MATH_SUBJECTS,
+  ALL_MATH_SUBJECTS,
   HIGH_SCHOOL_GRADES,
+  SCHOOL_GRADE_OPTIONS,
   ERROR_REASON_CATEGORIES,
+  isMiddleSchoolRecord,
+  getMiddleSchoolAchievement,
   calculateZScore,
   zScoreToTopPercent,
   calculateAutoGrade,
@@ -22,9 +27,54 @@ import {
 } from '@/lib/scoreUtils';
 import { getClientCache, setClientCache } from '@/lib/clientCache';
 
+function getDefaultSubjectByGradeCode(gradeCode) {
+  switch (gradeCode) {
+    case 'M1':
+      return '중1-1';
+    case 'M2':
+      return '중2-1';
+    case 'M3':
+      return '중3-1';
+    case 'H1':
+      return '공통수학1';
+    case 'H2':
+      return '대수 (수학Ⅰ)';
+    case 'H3':
+      return '미적분 (미적분Ⅱ)';
+    default:
+      return '공통수학1';
+  }
+}
+
+function parseGradeCode(gradeCode, fallbackLevel = 'HIGH', fallbackGrade = 1) {
+  const code = String(gradeCode || '').trim().toUpperCase();
+  const found = SCHOOL_GRADE_OPTIONS.find((o) => o.id === code);
+  if (found) {
+    return {
+      grade_code: found.id,
+      school_level: found.school_level,
+      school_grade: found.school_grade,
+      label: found.label,
+      defaultSystem: found.defaultSystem,
+    };
+  }
+  const lvl = String(fallbackLevel || '').toUpperCase() === 'MIDDLE' ? 'MIDDLE' : 'HIGH';
+  const grd = [1, 2, 3].includes(Number(fallbackGrade)) ? Number(fallbackGrade) : 1;
+  const derivedCode = `${lvl === 'MIDDLE' ? 'M' : 'H'}${grd}`;
+  return {
+    grade_code: derivedCode,
+    school_level: lvl,
+    school_grade: grd,
+    label: `${lvl === 'MIDDLE' ? '중' : '고'}${grd}`,
+    defaultSystem: lvl === 'MIDDLE' || grd === 1 ? 5 : 9,
+  };
+}
+
 const INITIAL_EXAM_FORM = {
   id: null,
   exam_year: new Date().getFullYear(),
+  grade_code: 'H1',
+  school_level: 'HIGH',
   school_grade: 1,
   exam_category: 'INTERNAL',
   exam_period: '1_MID',
@@ -71,14 +121,17 @@ export default function TeacherScoresPage() {
 
   // 좌측 학생 필터 및 선택 상태
   const [selectedClassId, setSelectedClassId] = useState('ALL');
+  const [selectedSchoolLevelFilter, setSelectedSchoolLevelFilter] = useState('ALL'); // 'ALL' | 'MIDDLE' | 'HIGH'
   const [selectedSchoolFilter, setSelectedSchoolFilter] = useState('ALL');
   const [studentSearch, setStudentSearch] = useState('');
   const [selectedStudentId, setSelectedStudentId] = useState('');
 
   // 학생 학교/학년/목표 프로필 편집 상태
   const [profileSchoolName, setProfileSchoolName] = useState('');
+  const [profileGradeCode, setProfileGradeCode] = useState('H1');
+  const [profileSchoolLevel, setProfileSchoolLevel] = useState('HIGH');
   const [profileSchoolGrade, setProfileSchoolGrade] = useState(1);
-  const [profileGradeSystem, setProfileGradeSystem] = useState(9);
+  const [profileGradeSystem, setProfileGradeSystem] = useState(5);
   const [profileTargetGrade, setProfileTargetGrade] = useState('');
   const [profileTargetScore, setProfileTargetScore] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
@@ -99,6 +152,8 @@ export default function TeacherScoresPage() {
   // 탭 2: 시험별 엑셀형 일괄 입력 상태
   const [batchMeta, setBatchMeta] = useState({
     exam_year: new Date().getFullYear(),
+    grade_code: 'H1',
+    school_level: 'HIGH',
     school_grade: 1,
     exam_category: 'INTERNAL',
     exam_period: '1_MID',
@@ -113,7 +168,7 @@ export default function TeacherScoresPage() {
   const [bulkProfileSearch, setBulkProfileSearch] = useState('');
   const [bulkProfileRows, setBulkProfileRows] = useState({});
   const [bulkApplySchool, setBulkApplySchool] = useState('');
-  const [bulkApplyGrade, setBulkApplyGrade] = useState(1);
+  const [bulkApplyGradeCode, setBulkApplyGradeCode] = useState('H1');
   const [bulkApplySystem, setBulkApplySystem] = useState(5);
 
   // 초기 세션 및 성적 데이터 로드
@@ -185,9 +240,18 @@ export default function TeacherScoresPage() {
   useEffect(() => {
     if (!currentStudent) return;
     const prof = studentProfiles[currentStudent.id] || {};
+    const parsed = parseGradeCode(
+      prof.grade_code || currentStudent.grade_code,
+      prof.school_level || currentStudent.school_level,
+      prof.school_grade || currentStudent.school_grade
+    );
     setProfileSchoolName(prof.school_name || currentStudent.school_name || '');
-    setProfileSchoolGrade(Number(prof.school_grade || currentStudent.school_grade) || 1);
-    setProfileGradeSystem(Number(prof.grade_system || currentStudent.grade_system) || 9);
+    setProfileGradeCode(parsed.grade_code);
+    setProfileSchoolLevel(parsed.school_level);
+    setProfileSchoolGrade(parsed.school_grade);
+    setProfileGradeSystem(
+      Number(prof.grade_system || currentStudent.grade_system) || parsed.defaultSystem
+    );
     setProfileTargetGrade(
       prof.target_grade !== undefined && prof.target_grade !== null
         ? String(prof.target_grade)
@@ -246,6 +310,14 @@ export default function TeacherScoresPage() {
         if (!inClass) return false;
       }
       const prof = studentProfiles[st.id] || {};
+      const parsed = parseGradeCode(
+        prof.grade_code || st.grade_code,
+        prof.school_level || st.school_level,
+        prof.school_grade || st.school_grade
+      );
+      if (selectedSchoolLevelFilter !== 'ALL' && parsed.school_level !== selectedSchoolLevelFilter) {
+        return false;
+      }
       const stSchool = prof.school_name || st.school_name || '';
       if (selectedSchoolFilter !== 'ALL' && stSchool !== selectedSchoolFilter) {
         return false;
@@ -254,11 +326,20 @@ export default function TeacherScoresPage() {
         const kw = studentSearch.trim().toLowerCase();
         const matchName = st.name?.toLowerCase().includes(kw);
         const matchSchool = stSchool.toLowerCase().includes(kw);
-        if (!matchName && !matchSchool) return false;
+        const matchGrade = parsed.label.toLowerCase().includes(kw);
+        if (!matchName && !matchSchool && !matchGrade) return false;
       }
       return true;
     });
-  }, [students, classStudents, studentProfiles, selectedClassId, selectedSchoolFilter, studentSearch]);
+  }, [
+    students,
+    classStudents,
+    studentProfiles,
+    selectedClassId,
+    selectedSchoolLevelFilter,
+    selectedSchoolFilter,
+    studentSearch,
+  ]);
 
   // 현재 선택된 학생의 전체 시험 성적 (시간순 정렬)
   const studentExams = useMemo(() => {
@@ -341,6 +422,7 @@ export default function TeacherScoresPage() {
     if (!currentStudent) return;
     try {
       setSavingProfile(true);
+      const parsed = parseGradeCode(profileGradeCode, profileSchoolLevel, profileSchoolGrade);
       const res = await fetch('/api/scores', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -348,7 +430,9 @@ export default function TeacherScoresPage() {
           action: 'SAVE_PROFILE',
           student_id: currentStudent.id,
           school_name: profileSchoolName,
-          school_grade: Number(profileSchoolGrade),
+          grade_code: parsed.grade_code,
+          school_level: parsed.school_level,
+          school_grade: parsed.school_grade,
           grade_system: Number(profileGradeSystem),
           target_grade: profileTargetGrade !== '' ? Number(profileTargetGrade) : null,
           target_score: profileTargetScore !== '' ? Number(profileTargetScore) : null,
@@ -361,7 +445,7 @@ export default function TeacherScoresPage() {
         ...prev,
         [currentStudent.id]: data.profile,
       }));
-      alert(`${currentStudent.name} 학생의 학교·학년 및 목표 설정이 저장되었습니다.`);
+      alert(`${currentStudent.name} 학생의 학교·학년(${parsed.label}) 및 목표 설정이 저장되었습니다.`);
     } catch (err) {
       alert(`저장 실패: ${err.message}`);
     } finally {
@@ -373,14 +457,19 @@ export default function TeacherScoresPage() {
   const handleOpenNewScoreModal = () => {
     if (!currentStudent) return;
     const prof = studentProfiles[currentStudent.id] || {};
-    const schoolGrade = Number(prof.school_grade || profileSchoolGrade) || 1;
-    const defaultSubj =
-      schoolGrade === 1 ? '공통수학1' : schoolGrade === 2 ? '대수 (수학Ⅰ)' : '미적분 (미적분Ⅱ)';
+    const parsed = parseGradeCode(
+      prof.grade_code || profileGradeCode,
+      prof.school_level || profileSchoolLevel,
+      prof.school_grade || profileSchoolGrade
+    );
+    const defaultSubj = getDefaultSubjectByGradeCode(parsed.grade_code);
 
     setExamForm({
       ...INITIAL_EXAM_FORM,
       exam_year: new Date().getFullYear(),
-      school_grade: schoolGrade,
+      grade_code: parsed.grade_code,
+      school_level: parsed.school_level,
+      school_grade: parsed.school_grade,
       exam_category: 'INTERNAL',
       exam_period: '1_MID',
       subject: defaultSubj,
@@ -391,13 +480,20 @@ export default function TeacherScoresPage() {
   // 기존 성적 수정 모달 열기
   const handleOpenEditScoreModal = (exam) => {
     const eb = exam.error_breakdown || {};
+    const parsed = parseGradeCode(
+      exam.grade_code,
+      exam.school_level || (isMiddleSchoolRecord(exam) ? 'MIDDLE' : 'HIGH'),
+      exam.school_grade || 1
+    );
     setExamForm({
       id: exam.id,
       exam_year: exam.exam_year || new Date().getFullYear(),
-      school_grade: exam.school_grade || 1,
+      grade_code: parsed.grade_code,
+      school_level: parsed.school_level,
+      school_grade: parsed.school_grade,
       exam_category: exam.exam_category || 'INTERNAL',
       exam_period: exam.exam_period || '1_MID',
-      subject: exam.subject || '공통수학1',
+      subject: exam.subject || getDefaultSubjectByGradeCode(parsed.grade_code),
       raw_score: exam.raw_score ?? '',
       objective_score: exam.objective_score ?? '',
       essay_score: exam.essay_score ?? '',
@@ -434,13 +530,14 @@ export default function TeacherScoresPage() {
         sc.exam_category === 'INTERNAL' &&
         sc.school_name === schoolName &&
         Number(sc.exam_year) === Number(examForm.exam_year) &&
+        (sc.school_level || 'HIGH') === (examForm.school_level || 'HIGH') &&
         Number(sc.school_grade) === Number(examForm.exam_grade || examForm.school_grade) &&
         sc.exam_period === examForm.exam_period &&
         sc.subject === examForm.subject &&
         (sc.school_mean !== null || sc.school_std_dev !== null || sc.total_students !== null)
     );
     return match || null;
-  }, [scores, profileSchoolName, examForm.exam_category, examForm.exam_year, examForm.school_grade, examForm.exam_period, examForm.subject]);
+  }, [scores, profileSchoolName, examForm.exam_category, examForm.exam_year, examForm.school_level, examForm.school_grade, examForm.exam_period, examForm.subject]);
 
   // 모달에서 '1학기 최종(합산)' 또는 '2학기 최종(합산)' 선택 시 해당 학기 중간+기말 성적 자동 합산 매칭
   const matchedSemesterMidFinalForModal = useMemo(() => {
@@ -454,6 +551,7 @@ export default function TeacherScoresPage() {
       (sc) =>
         sc.exam_category === 'INTERNAL' &&
         Number(sc.exam_year) === Number(examForm.exam_year) &&
+        (sc.school_level || 'HIGH') === (examForm.school_level || 'HIGH') &&
         Number(sc.school_grade) === Number(examForm.school_grade) &&
         sc.exam_period === midPeriod &&
         (sc.subject || '').trim() === (examForm.subject || '').trim()
@@ -462,6 +560,7 @@ export default function TeacherScoresPage() {
       (sc) =>
         sc.exam_category === 'INTERNAL' &&
         Number(sc.exam_year) === Number(examForm.exam_year) &&
+        (sc.school_level || 'HIGH') === (examForm.school_level || 'HIGH') &&
         Number(sc.school_grade) === Number(examForm.school_grade) &&
         sc.exam_period === finalPeriod &&
         (sc.subject || '').trim() === (examForm.subject || '').trim()
@@ -521,16 +620,15 @@ export default function TeacherScoresPage() {
       totalStudents,
       combinedBreakdown,
     };
-  }, [studentExams, examForm.exam_category, examForm.exam_period, examForm.exam_year, examForm.school_grade, examForm.subject]);
+  }, [studentExams, examForm.exam_category, examForm.exam_period, examForm.exam_year, examForm.school_level, examForm.school_grade, examForm.subject]);
 
   // 단건 성적 저장 핸들러
   const handleSaveSingleScore = async (e) => {
     e.preventDefault();
     if (!currentStudent) return;
-    const autoGradeResult = calculateAutoGrade(
-      examForm,
-      examForm.exam_category === 'INTERNAL' ? profileGradeSystem : 9
-    );
+    const isFormMiddle = examForm.school_level === 'MIDDLE';
+    const effectiveSys = isFormMiddle ? 5 : examForm.exam_category === 'INTERNAL' ? profileGradeSystem : 9;
+    const autoGradeResult = calculateAutoGrade(examForm, effectiveSys);
     const resolvedGrade = autoGradeResult.grade ?? examForm.grade;
 
     if (examForm.raw_score === '' && examForm.rank === '' && !resolvedGrade) {
@@ -539,6 +637,7 @@ export default function TeacherScoresPage() {
 
     try {
       setSaving(true);
+      const parsed = parseGradeCode(examForm.grade_code, examForm.school_level, examForm.school_grade);
       const res = await fetch('/api/scores', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -547,10 +646,13 @@ export default function TeacherScoresPage() {
           syncSchoolStats: true,
           score: {
             ...examForm,
+            grade_code: parsed.grade_code,
+            school_level: parsed.school_level,
+            school_grade: parsed.school_grade,
             grade: resolvedGrade ?? '',
             student_id: currentStudent.id,
             school_name: profileSchoolName,
-            grade_system: profileGradeSystem,
+            grade_system: effectiveSys,
           },
         }),
       });
@@ -595,26 +697,52 @@ export default function TeacherScoresPage() {
     const pos = activeGradeAnalysis;
     const trend = activeErrorTrendComparison;
 
+    const isMiddle = Boolean(pos?.isMiddle || isMiddleSchoolRecord(activeDetailExam));
     const resolvedGrade = activeDetailExam.grade || pos?.actualGrade;
+    const studentGradeInfo = parseGradeCode(profileGradeCode, profileSchoolLevel, profileSchoolGrade);
     const lines = [];
-    lines.push(`[품수학 학원] ${currentStudent.name} 학생 고교 수학 성적 분석 리포트`);
+    lines.push(
+      `[품수학 학원] ${currentStudent.name} 학생 ${
+        isMiddle || studentGradeInfo.school_level === 'MIDDLE' ? '중등' : '고교'
+      } 수학 성적 분석 리포트`
+    );
     if (profileSchoolName) {
-      lines.push(`소속: ${profileSchoolName} ${profileSchoolGrade}학년 (${profileGradeSystem}등급제)`);
+      lines.push(
+        `소속: ${profileSchoolName} ${studentGradeInfo.label} (${
+          studentGradeInfo.school_level === 'MIDDLE'
+            ? '성취평가 A~E · 고교 5등급제 대비'
+            : `${profileGradeSystem}등급제`
+        })`
+      );
     }
     if (profileTargetGrade || profileTargetScore) {
       lines.push(
-        `목표 설정: ${profileTargetGrade ? `${profileTargetGrade}등급` : ''}${
-          profileTargetGrade && profileTargetScore ? ' / ' : ''
-        }${profileTargetScore ? `${profileTargetScore}점` : ''}`
+        `목표 설정: ${
+          profileTargetGrade
+            ? studentGradeInfo.school_level === 'MIDDLE'
+              ? `고교 진학 ${profileTargetGrade}등급 목표`
+              : `${profileTargetGrade}등급`
+            : ''
+        }${profileTargetGrade && profileTargetScore ? ' / ' : ''}${
+          profileTargetScore ? `${profileTargetScore}점` : ''
+        }`
       );
     }
     lines.push(`━━━━━━━━━━━━━━━━━━━━`);
     lines.push(`기준 시험: ${examTitle}`);
-    lines.push(
-      `• 원점수: ${activeDetailExam.raw_score ?? '-'}점 ${
-        resolvedGrade ? `(${resolvedGrade}등급)` : ''
-      }`
-    );
+    if (isMiddle) {
+      lines.push(
+        `• 원점수: ${activeDetailExam.raw_score ?? '-'}점${
+          pos?.achievement ? ` (성취도 ${pos.achievement})` : ''
+        }${resolvedGrade ? ` · 고교 5등급제 환산 시 ${resolvedGrade}등급권` : ''}`
+      );
+    } else {
+      lines.push(
+        `• 원점수: ${activeDetailExam.raw_score ?? '-'}점 ${
+          resolvedGrade ? `(${resolvedGrade}등급)` : ''
+        }`
+      );
+    }
 
     if (activeDetailExam.exam_category === 'INTERNAL') {
       if (activeDetailExam.rank && activeDetailExam.total_students) {
@@ -641,7 +769,7 @@ export default function TeacherScoresPage() {
     }
 
     if (pos?.statusBadge) {
-      lines.push(`\n[등급 컷 위치 진단]`);
+      lines.push(`\n[${isMiddle ? '성취도 A~E 및 고교 진학 위치 진단' : '등급 컷 위치 진단'}]`);
       lines.push(`• 판정: ${pos.statusBadge}`);
       if (pos.message) lines.push(`• 상세: ${pos.message}`);
     }
@@ -692,6 +820,7 @@ export default function TeacherScoresPage() {
         (sc) =>
           sc.student_id === st.id &&
           Number(sc.exam_year) === Number(batchMeta.exam_year) &&
+          (sc.school_level || 'HIGH') === (batchMeta.school_level || 'HIGH') &&
           Number(sc.school_grade) === Number(batchMeta.school_grade) &&
           sc.exam_category === batchMeta.exam_category &&
           sc.exam_period === batchMeta.exam_period &&
@@ -703,7 +832,10 @@ export default function TeacherScoresPage() {
         id: existing?.id || null,
         student_id: st.id,
         school_name: existing?.school_name || prof.school_name || '',
-        grade_system: prof.grade_system || 9,
+        grade_system:
+          batchMeta.school_level === 'MIDDLE'
+            ? 5
+            : prof.grade_system || 9,
         raw_score: existing?.raw_score ?? '',
         grade: existing?.grade ?? '',
         manual_grade: existing?.manual_grade ?? '',
@@ -734,6 +866,8 @@ export default function TeacherScoresPage() {
     scores,
     studentProfiles,
     batchMeta.exam_year,
+    batchMeta.grade_code,
+    batchMeta.school_level,
     batchMeta.school_grade,
     batchMeta.exam_category,
     batchMeta.exam_period,
@@ -900,11 +1034,18 @@ export default function TeacherScoresPage() {
     const next = {};
     students.forEach((st) => {
       const prof = studentProfiles[st.id] || {};
+      const parsed = parseGradeCode(
+        prof.grade_code || st.grade_code,
+        prof.school_level || st.school_level,
+        prof.school_grade || st.school_grade
+      );
       next[st.id] = {
         student_id: st.id,
         school_name: prof.school_name || st.school_name || '',
-        school_grade: Number(prof.school_grade || st.school_grade) || 1,
-        grade_system: Number(prof.grade_system || st.grade_system) || 9,
+        grade_code: parsed.grade_code,
+        school_level: parsed.school_level,
+        school_grade: parsed.school_grade,
+        grade_system: Number(prof.grade_system || st.grade_system) || parsed.defaultSystem,
         target_grade:
           prof.target_grade !== undefined && prof.target_grade !== null
             ? prof.target_grade
@@ -940,6 +1081,7 @@ export default function TeacherScoresPage() {
 
   // 현재 표시된 학생 전체에게 학교/학년/등급제 일괄 채우기
   const handleApplyBulkProfileToVisible = (applySchool = false) => {
+    const parsed = parseGradeCode(bulkApplyGradeCode);
     setBulkProfileRows((prev) => {
       const next = { ...prev };
       bulkProfileTargetStudents.forEach((st) => {
@@ -950,7 +1092,9 @@ export default function TeacherScoresPage() {
             applySchool && bulkApplySchool.trim()
               ? bulkApplySchool.trim()
               : curr.school_name || '',
-          school_grade: Number(bulkApplyGrade) || 1,
+          grade_code: parsed.grade_code,
+          school_level: parsed.school_level,
+          school_grade: parsed.school_grade,
           grade_system: Number(bulkApplySystem) === 5 ? 5 : 9,
         };
       });
@@ -976,7 +1120,7 @@ export default function TeacherScoresPage() {
 
       if (data.studentProfiles) setStudentProfiles(data.studentProfiles);
       if (data.scores) setScores(data.scores);
-      alert(`총 ${data.updatedCount}명의 소속 고등학교·학년·등급제·목표 설정이 저장되었습니다.`);
+      alert(`총 ${data.updatedCount}명의 소속 학교·학년·등급제·목표 설정이 저장되었습니다.`);
     } catch (err) {
       alert(`저장 실패: ${err.message}`);
     } finally {
@@ -996,12 +1140,14 @@ export default function TeacherScoresPage() {
           sc.exam_period !== '2_SEMESTER'
       )
       .forEach((sc) => {
-        const key = `${sc.exam_year}_${sc.school_name}_${sc.school_grade}_${sc.exam_period}_${sc.subject}`;
+        const lvl = isMiddleSchoolRecord(sc) ? 'MIDDLE' : 'HIGH';
+        const key = `${sc.exam_year}_${sc.school_name}_${lvl}_${sc.school_grade}_${sc.exam_period}_${sc.subject}`;
         if (!groups[key]) {
           groups[key] = {
             key,
             exam_year: sc.exam_year,
             school_name: sc.school_name,
+            school_level: lvl,
             school_grade: sc.school_grade,
             exam_period: sc.exam_period,
             subject: sc.subject,
@@ -1035,14 +1181,15 @@ export default function TeacherScoresPage() {
         let difficultyColor = 'slate';
         if (g.school_mean !== null) {
           const m = Number(g.school_mean);
-          if (m < 52) {
+          const isMid = g.school_level === 'MIDDLE';
+          if (isMid ? m < 65 : m < 52) {
             difficultyLabel = '고난도 (변별력 높음)';
             difficultyColor = 'rose';
-          } else if (m < 65) {
+          } else if (isMid ? m < 76 : m < 65) {
             difficultyLabel = '표준 변별력';
             difficultyColor = 'indigo';
           } else {
-            difficultyLabel = '평이 (감점 주의)';
+            difficultyLabel = '평이 (실수·감점 주의)';
             difficultyColor = 'emerald';
           }
         }
@@ -1062,10 +1209,17 @@ export default function TeacherScoresPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center font-bold text-slate-600">
-        고교 성적 추이 분석 시스템 로딩 중...
+        중·고등 성적 추이 분석 시스템 로딩 중...
       </div>
     );
   }
+
+  const currentStudentGradeParsed = parseGradeCode(
+    profileGradeCode,
+    profileSchoolLevel,
+    profileSchoolGrade
+  );
+  const isCurrentStudentMiddle = currentStudentGradeParsed.school_level === 'MIDDLE';
 
   return (
     <div className="min-h-screen bg-slate-50 print:bg-white pb-28 print:pb-4 font-sans text-slate-800 antialiased">
@@ -1082,10 +1236,10 @@ export default function TeacherScoresPage() {
             <div className="h-5 w-[1px] bg-slate-200 hidden sm:block" />
             <div>
               <h1 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
-                고교 수학 성적 추이 및 오답 분석
+                중·고등 수학 성적 추이 및 오답 분석
               </h1>
               <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                내신·모의고사 성적 추이와 감점 원인을 분석하여 다음 시험 대비 방향을 설계합니다
+                중등 성취평가(A~E·고교 환산 등급)와 고교 내신·모의고사 추이 및 7대 감점 원인을 정밀 분석합니다
               </p>
             </div>
           </div>
@@ -1131,8 +1285,30 @@ export default function TeacherScoresPage() {
                     onClick={() => setMainTab('PROFILE_SETUP')}
                     className="text-[11px] text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/70 font-bold px-2.5 py-1 rounded-lg transition shrink-0"
                   >
-                    학교 일괄설정
+                    학교·학년 설정
                   </button>
+                </div>
+
+                {/* 중등 / 고등 구분 필터 탭 */}
+                <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/70">
+                  {[
+                    { id: 'ALL', label: '전체' },
+                    { id: 'MIDDLE', label: '중등 (중1~3)' },
+                    { id: 'HIGH', label: '고등 (고1~3)' },
+                  ].map((lv) => (
+                    <button
+                      key={lv.id}
+                      type="button"
+                      onClick={() => setSelectedSchoolLevelFilter(lv.id)}
+                      className={`text-[11px] font-extrabold py-1.5 rounded-lg transition whitespace-nowrap ${
+                        selectedSchoolLevelFilter === lv.id
+                          ? 'bg-white text-slate-900 shadow-2xs'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      {lv.label}
+                    </button>
+                  ))}
                 </div>
 
                 {/* 반 필터 & 학교 필터 */}
@@ -1155,7 +1331,7 @@ export default function TeacherScoresPage() {
                     onChange={(e) => setSelectedSchoolFilter(e.target.value)}
                     className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 font-semibold text-slate-700 focus:outline-slate-400"
                   >
-                    <option value="ALL">전체 고등학교</option>
+                    <option value="ALL">전체 학교</option>
                     {schoolList.map((sch) => (
                       <option key={sch} value={sch}>
                         {sch}
@@ -1167,7 +1343,7 @@ export default function TeacherScoresPage() {
                 {/* 학생 이름/학교 검색 */}
                 <input
                   type="text"
-                  placeholder="학생 이름 또는 고등학교 검색"
+                  placeholder="학생 이름, 학교 또는 학년(중2, 고1) 검색"
                   value={studentSearch}
                   onChange={(e) => setStudentSearch(e.target.value)}
                   className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium text-slate-800 focus:outline-slate-400"
@@ -1178,13 +1354,23 @@ export default function TeacherScoresPage() {
                   {filteredStudents.map((st) => {
                     const isSelected = currentStudent?.id === st.id;
                     const prof = studentProfiles[st.id] || {};
+                    const stParsed = parseGradeCode(
+                      prof.grade_code || st.grade_code,
+                      prof.school_level || st.school_level,
+                      prof.school_grade || st.school_grade
+                    );
                     const stSchool = prof.school_name || st.school_name || '';
-                    const stGrade = prof.school_grade || st.school_grade || 1;
-                    const stSystem = Number(prof.grade_system || st.grade_system) === 5 ? 5 : 9;
+                    const stSystem =
+                      Number(prof.grade_system || st.grade_system) || stParsed.defaultSystem;
                     const stScores = scores
                       .filter((sc) => sc.student_id === st.id)
                       .sort((a, b) => getExamSortOrder(a) - getExamSortOrder(b));
                     const latest = stScores[stScores.length - 1] || null;
+                    const latestIsMiddle = latest ? isMiddleSchoolRecord(latest) : false;
+                    const latestAch =
+                      latest && latestIsMiddle
+                        ? getMiddleSchoolAchievement(latest.raw_score)
+                        : null;
                     const latestGrade = latest
                       ? latest.grade || calculateAutoGrade(latest, stSystem).grade
                       : null;
@@ -1203,14 +1389,18 @@ export default function TeacherScoresPage() {
                           <span className="font-bold text-sm truncate">{st.name}</span>
                           {latest ? (
                             <span
-                              className={`text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-md shrink-0 ${
+                              className={`text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-md shrink-0 whitespace-nowrap ${
                                 isSelected
                                   ? 'bg-white/15 text-white'
                                   : 'bg-slate-100 text-slate-700'
                               }`}
                             >
                               {latest.raw_score !== null ? `${latest.raw_score}점` : ''}
-                              {latestGrade ? ` · ${latestGrade}등급` : ''}
+                              {latestIsMiddle && latestAch
+                                ? ` · 성취도 ${latestAch.achievement}`
+                                : latestGrade
+                                ? ` · ${latestGrade}등급`
+                                : ''}
                             </span>
                           ) : (
                             <span className="text-[10px] font-medium text-slate-400">
@@ -1224,7 +1414,9 @@ export default function TeacherScoresPage() {
                               isSelected ? 'text-slate-300' : 'text-slate-500'
                             }`}
                           >
-                            {stSchool ? `${stSchool} 고${stGrade}` : '학교 미지정'}
+                            {stSchool
+                              ? `${stSchool} · ${stParsed.label}`
+                              : `${stParsed.label} (학교 미지정)`}
                           </span>
                           <span
                             className={`text-[10px] tabular-nums ${
@@ -1262,7 +1454,7 @@ export default function TeacherScoresPage() {
                       } items-center justify-between pb-3.5 mb-4 border-b border-slate-200 text-xs text-slate-500`}
                     >
                       <span className="font-bold text-slate-800">
-                        품수학 고교 수학 성적 추이 및 오답 분석 리포트
+                        품수학 {isCurrentStudentMiddle ? '중등' : '고교'} 수학 성적 추이 및 오답 분석 리포트
                       </span>
                       <span className="tabular-nums">
                         출력일: {new Date().toISOString().slice(0, 10)}
@@ -1275,14 +1467,29 @@ export default function TeacherScoresPage() {
                           <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
                             {currentStudent.name}
                           </h2>
-                          <span className="text-xs bg-slate-100 text-slate-700 border border-slate-200 font-bold px-3 py-1 rounded-lg">
-                            {profileSchoolName ? `${profileSchoolName} · ` : ''}고{profileSchoolGrade} ({profileGradeSystem}등급제)
+                          <span
+                            className={`text-xs border font-bold px-3 py-1 rounded-lg whitespace-nowrap ${
+                              isCurrentStudentMiddle
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                : 'bg-slate-100 text-slate-700 border-slate-200'
+                            }`}
+                          >
+                            {profileSchoolName ? `${profileSchoolName} · ` : ''}
+                            {currentStudentGradeParsed.label} (
+                            {isCurrentStudentMiddle
+                              ? '성취평가 A~E · 고교 5등급제 대비'
+                              : `${profileGradeSystem}등급제`}
+                            )
                           </span>
                           {(profileTargetGrade || profileTargetScore) && (
-                            <span className="text-xs bg-indigo-50 text-indigo-700 border border-indigo-200/80 font-bold px-2.5 py-1 rounded-lg tabular-nums">
+                            <span className="text-xs bg-indigo-50 text-indigo-700 border border-indigo-200/80 font-bold px-2.5 py-1 rounded-lg tabular-nums whitespace-nowrap">
                               목표:{' '}
                               {[
-                                profileTargetGrade ? `${profileTargetGrade}등급` : null,
+                                profileTargetGrade
+                                  ? isCurrentStudentMiddle
+                                    ? `고교 ${profileTargetGrade}등급`
+                                    : `${profileTargetGrade}등급`
+                                  : null,
                                 profileTargetScore ? `${profileTargetScore}점` : null,
                               ]
                                 .filter(Boolean)
@@ -1351,15 +1558,15 @@ export default function TeacherScoresPage() {
                     {!isConsultMode && (
                       <div className="mt-4 pt-3.5 border-t border-slate-100 flex flex-wrap items-center gap-2 print:hidden">
                         <span className="text-xs font-semibold text-slate-500 mr-1 whitespace-nowrap">
-                          학교·목표 설정:
+                          학교·학년·목표:
                         </span>
                         <input
                           type="text"
                           list="known-schools-datalist"
-                          placeholder="고등학교명 입력"
+                          placeholder="학교명 입력 (예: 대치중, 숙명여고)"
                           value={profileSchoolName}
                           onChange={(e) => setProfileSchoolName(e.target.value)}
-                          className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 font-semibold text-slate-800 w-36 focus:outline-slate-400"
+                          className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 font-semibold text-slate-800 w-40 focus:outline-slate-400"
                         />
                         <datalist id="known-schools-datalist">
                           {schoolList.map((sch) => (
@@ -1368,38 +1575,52 @@ export default function TeacherScoresPage() {
                         </datalist>
 
                         <select
-                          value={profileSchoolGrade}
-                          onChange={(e) => setProfileSchoolGrade(Number(e.target.value))}
+                          value={profileGradeCode}
+                          onChange={(e) => {
+                            const parsed = parseGradeCode(e.target.value);
+                            setProfileGradeCode(parsed.grade_code);
+                            setProfileSchoolLevel(parsed.school_level);
+                            setProfileSchoolGrade(parsed.school_grade);
+                            setProfileGradeSystem(parsed.defaultSystem);
+                          }}
                           className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-semibold text-slate-800"
                         >
-                          {HIGH_SCHOOL_GRADES.map((g) => (
+                          {SCHOOL_GRADE_OPTIONS.map((g) => (
                             <option key={g.id} value={g.id}>
-                              {g.label}
+                              {g.fullLabel}
                             </option>
                           ))}
                         </select>
 
-                        <select
-                          value={profileGradeSystem}
-                          onChange={(e) => setProfileGradeSystem(Number(e.target.value))}
-                          className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-semibold text-slate-800"
-                        >
-                          <option value={9}>9등급제 (1등급 4%)</option>
-                          <option value={5}>5등급제 (1등급 10%)</option>
-                        </select>
+                        {!isCurrentStudentMiddle ? (
+                          <select
+                            value={profileGradeSystem}
+                            onChange={(e) => setProfileGradeSystem(Number(e.target.value))}
+                            className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-semibold text-slate-800"
+                          >
+                            <option value={5}>5등급제 (1등급 10%)</option>
+                            <option value={9}>9등급제 (1등급 4%)</option>
+                          </select>
+                        ) : (
+                          <span className="text-[11px] bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold px-2.5 py-1 rounded-lg whitespace-nowrap">
+                            성취평가 A~E (고교 5등급제 환산)
+                          </span>
+                        )}
 
                         <select
                           value={profileTargetGrade}
                           onChange={(e) => setProfileTargetGrade(e.target.value)}
                           className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-semibold text-slate-800"
                         >
-                          <option value="">목표 등급 (선택)</option>
+                          <option value="">
+                            {isCurrentStudentMiddle ? '고교 목표 등급 (선택)' : '목표 등급 (선택)'}
+                          </option>
                           {Array.from(
-                            { length: profileGradeSystem === 5 ? 5 : 9 },
+                            { length: isCurrentStudentMiddle || profileGradeSystem === 5 ? 5 : 9 },
                             (_, i) => i + 1
                           ).map((g) => (
                             <option key={g} value={g}>
-                              목표 {g}등급
+                              {isCurrentStudentMiddle ? `고교 ${g}등급 목표` : `목표 ${g}등급`}
                             </option>
                           ))}
                         </select>
@@ -1432,7 +1653,7 @@ export default function TeacherScoresPage() {
                         아직 등록된 시험 성적이 없습니다
                       </h3>
                       <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-                        내신 지필고사나 모의고사 점수를 입력하면 성적 변화 추이 그래프와 등급 컷 위치, 오답 원인 분석표가 자동으로 생성됩니다.
+                        내신 지필고사나 모의고사 점수를 입력하면 성적 변화 추이 그래프와 등급·성취도 위치, 오답 원인 분석표가 자동으로 생성됩니다.
                       </p>
                       <button
                         onClick={handleOpenNewScoreModal}
@@ -1443,10 +1664,10 @@ export default function TeacherScoresPage() {
                     </div>
                   ) : (
                     <>
-                      {/* 2. 3대 핵심 요약 지표 카드 (잠재 성적 제거 → 원점수·등급 / 등급 컷 위치 / 학교 평균 대비 성과) */}
+                      {/* 2. 3대 핵심 요약 지표 카드 (원점수·등급·성취도 / 등급·고교환산 컷 위치 / 학교 평균 대비 성과) */}
                       {activeDetailExam && (
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          {/* 카드 1: 선택 시험 원점수 및 등급 */}
+                          {/* 카드 1: 선택 시험 원점수 및 등급/성취도 */}
                           <div className="bg-white rounded-2xl p-5 border border-slate-200/90 shadow-2xs flex flex-col justify-between">
                             <div>
                               <div className="flex items-center justify-between gap-2">
@@ -1457,7 +1678,7 @@ export default function TeacherScoresPage() {
                                   {formatExamShortLabel(activeDetailExam)}
                                 </span>
                               </div>
-                              <div className="mt-3 flex items-baseline justify-between gap-2">
+                              <div className="mt-3 flex items-baseline justify-between gap-2 flex-wrap">
                                 <div className="flex items-baseline gap-1">
                                   <span className="text-3xl font-black text-slate-900 tabular-nums tracking-tight">
                                     {activeDetailExam.raw_score !== null
@@ -1468,10 +1689,25 @@ export default function TeacherScoresPage() {
                                     점
                                   </span>
                                 </div>
-                                {(activeDetailExam.grade || activeGradeAnalysis?.actualGrade) && (
-                                  <span className="text-sm font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2.5 py-0.5 rounded-lg tabular-nums whitespace-nowrap">
-                                    {activeDetailExam.grade || activeGradeAnalysis?.actualGrade}등급
-                                  </span>
+                                {activeGradeAnalysis?.isMiddle ? (
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    {activeGradeAnalysis.achievement && (
+                                      <span className="text-sm font-extrabold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-lg whitespace-nowrap">
+                                        성취도 {activeGradeAnalysis.achievement}
+                                      </span>
+                                    )}
+                                    {(activeDetailExam.grade || activeGradeAnalysis?.actualGrade) && (
+                                      <span className="text-xs font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2 py-0.5 rounded-lg tabular-nums whitespace-nowrap">
+                                        고교 {activeDetailExam.grade || activeGradeAnalysis?.actualGrade}등급권
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  (activeDetailExam.grade || activeGradeAnalysis?.actualGrade) && (
+                                    <span className="text-sm font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2.5 py-0.5 rounded-lg tabular-nums whitespace-nowrap">
+                                      {activeDetailExam.grade || activeGradeAnalysis?.actualGrade}등급
+                                    </span>
+                                  )
                                 )}
                               </div>
                             </div>
@@ -1518,12 +1754,14 @@ export default function TeacherScoresPage() {
                             </div>
                           </div>
 
-                          {/* 카드 2: 등급 컷 위치 및 석차 백분율 진단 */}
+                          {/* 카드 2: 등급 컷 위치 / 중등 성취도 및 고교 진학 환산 진단 */}
                           <div className="bg-white rounded-2xl p-5 border border-slate-200/90 shadow-2xs flex flex-col justify-between">
                             <div>
                               <div className="flex items-center justify-between gap-2">
                                 <span className="text-xs font-bold text-slate-500 whitespace-nowrap">
-                                  등급 컷 위치 진단
+                                  {activeGradeAnalysis?.isMiddle
+                                    ? '성취도 및 고교 진학 위치 진단'
+                                    : '등급 컷 위치 진단'}
                                 </span>
                                 {activeGradeAnalysis?.topPct !== null && (
                                   <span className="text-[11px] font-bold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-md tabular-nums whitespace-nowrap">
@@ -1562,7 +1800,9 @@ export default function TeacherScoresPage() {
 
                             <div className="mt-3 pt-2.5 border-t border-slate-100 text-xs text-slate-500 font-medium leading-snug">
                               {activeGradeAnalysis?.message ||
-                                '석차/수강자수 입력 시 등급 내 상세 위치가 표시됩니다'}
+                                (activeGradeAnalysis?.isMiddle
+                                  ? '학교 평균·표준편차를 입력하면 꽉 찬 A(고교 1등급권) 여부를 진단합니다'
+                                  : '석차/수강자수 입력 시 등급 내 상세 위치가 표시됩니다')}
                             </div>
                           </div>
 
@@ -1667,7 +1907,7 @@ export default function TeacherScoresPage() {
                         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 border-b border-slate-100 pb-4">
                           <div>
                             <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
-                              고교 과정 성적 추이 차트
+                              {isCurrentStudentMiddle ? '중등·고교 대비 성적 추이 차트' : '고교 과정 성적 추이 차트'}
                             </h3>
                             <p className="text-xs text-slate-500 font-medium mt-0.5">
                               차트의 시험 지점을 클릭하면 하단의 오답 원인 분석 리포트가 해당 시험으로 전환됩니다.
@@ -1715,7 +1955,12 @@ export default function TeacherScoresPage() {
                             <div className="flex bg-slate-100 border border-slate-200/70 p-1 rounded-xl">
                               {[
                                 { id: 'SCORE', label: '원점수 추이' },
-                                { id: 'GRADE', label: '등급 추이 (1등급 상단)' },
+                                {
+                                  id: 'GRADE',
+                                  label: isCurrentStudentMiddle
+                                    ? '고교 환산 등급 추이'
+                                    : '등급 추이 (1등급 상단)',
+                                },
                                 { id: 'PERCENT', label: '상위 누적 %' },
                               ].map((m) => (
                                 <button
@@ -1757,7 +2002,11 @@ export default function TeacherScoresPage() {
                               <>
                                 <span className="flex items-center gap-1.5">
                                   <span className="w-3 h-3 rounded-full bg-indigo-600 ring-2 ring-indigo-200 inline-block" />
-                                  <span>내신 산출 등급 (상단 1등급)</span>
+                                  <span>
+                                    {isCurrentStudentMiddle
+                                      ? '내신 고교 5등급제 환산 등급 (상단 1등급)'
+                                      : '내신 산출 등급 (상단 1등급)'}
+                                  </span>
                                 </span>
                                 <span className="flex items-center gap-1.5">
                                   <span className="w-3 h-3 rounded-full bg-amber-500 ring-2 ring-amber-200 inline-block" />
@@ -1787,7 +2036,7 @@ export default function TeacherScoresPage() {
                         <ScoreTimelineChart
                           exams={timelineChartExams}
                           metricMode={chartMetricMode}
-                          gradeSystem={profileGradeSystem}
+                          gradeSystem={isCurrentStudentMiddle ? 5 : profileGradeSystem}
                           targetGrade={profileTargetGrade ? Number(profileTargetGrade) : null}
                           targetScore={profileTargetScore ? Number(profileTargetScore) : null}
                           selectedExamId={activeDetailExam?.id}
@@ -1820,16 +2069,29 @@ export default function TeacherScoresPage() {
                                     <span className="font-black">
                                       {semEx.raw_score !== null ? `${semEx.raw_score}점` : '-'}
                                     </span>
-                                    {semG && (
+                                    {semPos?.isMiddle && semPos?.achievement ? (
                                       <span
                                         className={`text-[11px] px-1.5 py-0.5 rounded font-extrabold ${
                                           isSel
                                             ? 'bg-indigo-700 text-white'
-                                            : 'bg-indigo-50 text-indigo-700'
+                                            : 'bg-emerald-50 text-emerald-800'
                                         }`}
                                       >
-                                        {semG}등급
+                                        성취도 {semPos.achievement}
+                                        {semG ? ` · 고교${semG}등급` : ''}
                                       </span>
+                                    ) : (
+                                      semG && (
+                                        <span
+                                          className={`text-[11px] px-1.5 py-0.5 rounded font-extrabold ${
+                                            isSel
+                                              ? 'bg-indigo-700 text-white'
+                                              : 'bg-indigo-50 text-indigo-700'
+                                          }`}
+                                        >
+                                          {semG}등급
+                                        </span>
+                                      )
                                     )}
                                   </button>
                                 );
@@ -2252,7 +2514,7 @@ export default function TeacherScoresPage() {
                                 <th className="py-3 px-3.5">시험 구분</th>
                                 <th className="py-3 px-3">과목명</th>
                                 <th className="py-3 px-3 text-right">원점수</th>
-                                <th className="py-3 px-3 text-center">산출 등급</th>
+                                <th className="py-3 px-3 text-center">산출 등급 / 성취도</th>
                                 <th className="py-3 px-3 text-right">석차 / 백분위</th>
                                 <th className="py-3 px-3 text-right">학교 평균 (편차)</th>
                                 <th className="py-3 px-3 text-center">상위 누적 %</th>
@@ -2304,7 +2566,18 @@ export default function TeacherScoresPage() {
                                       {exam.raw_score !== null ? `${exam.raw_score}점` : '-'}
                                     </td>
                                     <td className="py-3.5 px-3 text-center whitespace-nowrap">
-                                      {resolvedGrade ? (
+                                      {pos?.isMiddle ? (
+                                        <div className="flex flex-col items-center">
+                                          <span className="font-black px-2.5 py-0.5 rounded-lg text-xs bg-indigo-600 text-white">
+                                            성취도 {pos.achievement}
+                                          </span>
+                                          {resolvedGrade && (
+                                            <span className="text-[10px] font-bold text-slate-500 mt-0.5 whitespace-nowrap">
+                                              (고교 {resolvedGrade}등급권)
+                                            </span>
+                                          )}
+                                        </div>
+                                      ) : resolvedGrade ? (
                                         <span
                                           className={`font-black px-2.5 py-1 rounded-lg text-xs inline-block ${
                                             Number(resolvedGrade) <= 2
@@ -2454,14 +2727,21 @@ export default function TeacherScoresPage() {
                   대상 학년
                 </label>
                 <select
-                  value={batchMeta.school_grade}
-                  onChange={(e) =>
-                    setBatchMeta((p) => ({ ...p, school_grade: Number(e.target.value) }))
-                  }
+                  value={batchMeta.grade_code || 'H1'}
+                  onChange={(e) => {
+                    const parsed = parseGradeCode(e.target.value);
+                    setBatchMeta((p) => ({
+                      ...p,
+                      grade_code: parsed.grade_code,
+                      school_level: parsed.school_level,
+                      school_grade: parsed.school_grade,
+                      subject: getDefaultSubjectByGradeCode(parsed.grade_code, p.exam_category),
+                    }));
+                  }}
                   className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-black text-slate-800"
                 >
-                  {HIGH_SCHOOL_GRADES.map((g) => (
-                    <option key={g.id} value={g.id}>
+                  {SCHOOL_GRADE_OPTIONS.map((g) => (
+                    <option key={g.code} value={g.code}>
                       {g.label}
                     </option>
                   ))}
@@ -2480,7 +2760,7 @@ export default function TeacherScoresPage() {
                       ...p,
                       exam_category: cat,
                       exam_period: cat === 'INTERNAL' ? '1_MID' : 'MOCK_03',
-                      subject: cat === 'INTERNAL' ? '공통수학1' : '모의고사 (공통)',
+                      subject: getDefaultSubjectByGradeCode(p.grade_code || 'H1', cat),
                     }));
                   }}
                   className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-black text-slate-800"
@@ -2527,7 +2807,7 @@ export default function TeacherScoresPage() {
                   className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-black text-slate-800"
                 />
                 <datalist id="math-subjects-list">
-                  {MATH_SUBJECTS.map((s) => (
+                  {ALL_MATH_SUBJECTS.map((s) => (
                     <option key={s} value={s} />
                   ))}
                 </datalist>
@@ -2562,7 +2842,7 @@ export default function TeacherScoresPage() {
                     className="rounded text-indigo-600 focus:ring-indigo-500"
                   />
                   <span>
-                    같은 고등학교 학생끼리는 한 명만 [학교 평균 / 표준편차 / 수강자수]를 입력해도 자동으로 공유됩니다.
+                    같은 학교 학생끼리는 한 명만 [학교 평균 / 표준편차 / 수강자수]를 입력해도 자동으로 공유됩니다.
                   </span>
                 </label>
               </div>
@@ -2574,7 +2854,7 @@ export default function TeacherScoresPage() {
                 <thead>
                   <tr className="bg-slate-50 text-slate-700 font-black border-b border-slate-200 whitespace-nowrap">
                     <th className="py-2.5 px-2.5 min-w-[90px]">학생명</th>
-                    <th className="py-2.5 px-2 min-w-[115px]">고등학교명</th>
+                    <th className="py-2.5 px-2 min-w-[115px]">학교명</th>
                     <th className="py-2.5 px-2 min-w-[75px] bg-indigo-50/50 text-indigo-900">
                       원점수
                     </th>
@@ -2587,7 +2867,7 @@ export default function TeacherScoresPage() {
                           수강자수
                         </th>
                         <th className="py-2.5 px-2 min-w-[115px] bg-emerald-50/60 text-emerald-900 text-center">
-                          산출 등급
+                          {batchMeta.school_level === 'MIDDLE' ? '성취도 / 등급' : '산출 등급'}
                         </th>
                         <th className="py-2.5 px-2 min-w-[75px]">학교평균</th>
                         <th className="py-2.5 px-2 min-w-[75px]">표준편차</th>
@@ -2658,16 +2938,18 @@ export default function TeacherScoresPage() {
                 <tbody className="divide-y divide-slate-200/70">
                   {batchTargetStudents.map((st) => {
                     const row = batchRows[st.id] || { error_breakdown: {} };
+                    const isMiddle = batchMeta.school_level === 'MIDDLE';
                     const maxSysGrade =
                       batchMeta.exam_category === 'INTERNAL' && Number(row.grade_system) === 5
                         ? 5
                         : 9;
                     const autoGradeInfo = calculateAutoGrade(
-                      { ...row, exam_category: batchMeta.exam_category },
+                      { ...row, exam_category: batchMeta.exam_category, school_level: batchMeta.school_level },
                       maxSysGrade
                     );
                     const displayGrade =
                       autoGradeInfo.grade ?? (row.grade ? Number(row.grade) : null);
+                    const middleAch = isMiddle ? getMiddleSchoolAchievement(row.raw_score) : null;
                     const hasAnyValue =
                       row.raw_score !== '' ||
                       row.rank !== '' ||
@@ -2755,7 +3037,18 @@ export default function TeacherScoresPage() {
                             </td>
                             <td className="py-1.5 px-1.5 bg-emerald-50/30 text-center">
                               <div className="flex flex-col items-center gap-1">
-                                {displayGrade ? (
+                                {isMiddle && middleAch ? (
+                                  <div className="flex flex-col items-center">
+                                    <span className="font-black px-2 py-0.5 rounded-md text-[11px] whitespace-nowrap bg-indigo-600 text-white">
+                                      성취도 {middleAch.achievement}
+                                    </span>
+                                    {displayGrade && (
+                                      <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">
+                                        고교 {displayGrade}등급권
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : displayGrade ? (
                                   <span
                                     className={`font-black px-2 py-0.5 rounded-md text-[11px] whitespace-nowrap ${
                                       autoGradeInfo.isManualOverride
@@ -3022,12 +3315,12 @@ export default function TeacherScoresPage() {
                     className="text-xs bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 font-bold w-32"
                   />
                   <select
-                    value={bulkApplyGrade}
-                    onChange={(e) => setBulkApplyGrade(Number(e.target.value))}
+                    value={bulkApplyGradeCode}
+                    onChange={(e) => setBulkApplyGradeCode(e.target.value)}
                     className="text-xs bg-white border border-indigo-200 rounded-lg px-2 py-1.5 font-black text-slate-800"
                   >
-                    {HIGH_SCHOOL_GRADES.map((g) => (
-                      <option key={g.id} value={g.id}>
+                    {SCHOOL_GRADE_OPTIONS.map((g) => (
+                      <option key={g.code} value={g.code}>
                         {g.label}
                       </option>
                     ))}
@@ -3068,7 +3361,7 @@ export default function TeacherScoresPage() {
                   <tr className="bg-slate-50 text-slate-700 font-black border-b border-slate-200 whitespace-nowrap">
                     <th className="py-2.5 px-3">학생명</th>
                     <th className="py-2.5 px-3">소속 반</th>
-                    <th className="py-2.5 px-3 min-w-[170px]">소속 고등학교명</th>
+                    <th className="py-2.5 px-3 min-w-[170px]">소속 학교명 (중·고등)</th>
                     <th className="py-2.5 px-3 min-w-[115px]">현재 학년</th>
                     <th className="py-2.5 px-3 min-w-[155px]">내신 등급 산출 체계</th>
                     <th className="py-2.5 px-3 min-w-[110px]">목표 등급</th>
@@ -3080,7 +3373,9 @@ export default function TeacherScoresPage() {
                   {bulkProfileTargetStudents.map((st) => {
                     const row = bulkProfileRows[st.id] || {
                       school_name: '',
+                      school_level: 'HIGH',
                       school_grade: 1,
+                      grade_code: 'H1',
                       grade_system: 9,
                       target_grade: '',
                       target_score: '',
@@ -3098,7 +3393,7 @@ export default function TeacherScoresPage() {
                           <input
                             type="text"
                             list="known-schools-datalist"
-                            placeholder="예: 숙명여고, 단대부고..."
+                            placeholder="예: 대치중, 숙명여고..."
                             value={row.school_name ?? ''}
                             onChange={(e) =>
                               setBulkProfileRows((prev) => ({
@@ -3111,23 +3406,29 @@ export default function TeacherScoresPage() {
                         </td>
                         <td className="py-1.5 px-3">
                           <select
-                            value={row.school_grade || 1}
+                            value={
+                              row.grade_code ||
+                              (row.school_level === 'MIDDLE'
+                                ? `M${row.school_grade || 1}`
+                                : `H${row.school_grade || 1}`)
+                            }
                             onChange={(e) => {
-                              const g = Number(e.target.value);
+                              const parsed = parseGradeCode(e.target.value);
                               setBulkProfileRows((prev) => ({
                                 ...prev,
                                 [st.id]: {
                                   ...row,
-                                  school_grade: g,
-                                  // 고1로 바꾸면 기본 5등급제 추천, 고3은 9등급제 추천
-                                  grade_system: g === 1 ? 5 : row.grade_system || 9,
+                                  grade_code: parsed.grade_code,
+                                  school_level: parsed.school_level,
+                                  school_grade: parsed.school_grade,
+                                  grade_system: parsed.defaultSystem,
                                 },
                               }));
                             }}
                             className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 font-black text-slate-800"
                           >
-                            {HIGH_SCHOOL_GRADES.map((g) => (
-                              <option key={g.id} value={g.id}>
+                            {SCHOOL_GRADE_OPTIONS.map((g) => (
+                              <option key={g.code} value={g.code}>
                                 {g.label}
                               </option>
                             ))}
@@ -3208,7 +3509,7 @@ export default function TeacherScoresPage() {
                 학교별 수학 내신 시험 난이도 및 학원 성과 비교
               </h2>
               <p className="text-xs text-slate-500 font-semibold mt-0.5">
-                학생들의 성적 입력 시 기록된 학교별 과목 평균과 표준편차를 기반으로 인근 고등학교의 출제 난이도와 본원 재원생 평균을 자동 비교합니다.
+                학생들의 성적 입력 시 기록된 학교별(중·고등) 과목 평균과 표준편차를 기반으로 인근 학교의 출제 난이도와 본원 재원생 평균을 자동 비교합니다.
               </p>
             </div>
 
@@ -3221,7 +3522,7 @@ export default function TeacherScoresPage() {
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-extrabold whitespace-nowrap">
-                      <th className="py-3 px-3">고등학교</th>
+                      <th className="py-3 px-3">학교명 (중·고등)</th>
                       <th className="py-3 px-3">연도 · 학년 · 시험</th>
                       <th className="py-3 px-3">과목</th>
                       <th className="py-3 px-3 text-right">학교 전체 평균</th>
@@ -3293,7 +3594,7 @@ export default function TeacherScoresPage() {
                 </h3>
                 <p className="text-xs text-slate-500 font-semibold mt-0.5">
                   대상: {currentStudent.name} 학생{' '}
-                  {profileSchoolName ? `(${profileSchoolName} 고${profileSchoolGrade})` : ''}
+                  {profileSchoolName ? `(${profileSchoolName} ${currentStudentGradeParsed.label})` : ''}
                 </p>
               </div>
               <button
@@ -3326,14 +3627,26 @@ export default function TeacherScoresPage() {
                     시험 당시 학년
                   </label>
                   <select
-                    value={examForm.school_grade}
-                    onChange={(e) =>
-                      setExamForm((p) => ({ ...p, school_grade: Number(e.target.value) }))
+                    value={
+                      examForm.grade_code ||
+                      (examForm.school_level === 'MIDDLE'
+                        ? `M${examForm.school_grade || 1}`
+                        : `H${examForm.school_grade || 1}`)
                     }
+                    onChange={(e) => {
+                      const parsed = parseGradeCode(e.target.value);
+                      setExamForm((p) => ({
+                        ...p,
+                        grade_code: parsed.grade_code,
+                        school_level: parsed.school_level,
+                        school_grade: parsed.school_grade,
+                        subject: getDefaultSubjectByGradeCode(parsed.grade_code, p.exam_category),
+                      }));
+                    }}
                     className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-black text-slate-900 focus:border-indigo-500 focus:outline-hidden"
                   >
-                    {HIGH_SCHOOL_GRADES.map((g) => (
-                      <option key={g.id} value={g.id}>
+                    {SCHOOL_GRADE_OPTIONS.map((g) => (
+                      <option key={g.code} value={g.code}>
                         {g.label}
                       </option>
                     ))}
@@ -3352,7 +3665,7 @@ export default function TeacherScoresPage() {
                         ...p,
                         exam_category: cat,
                         exam_period: cat === 'INTERNAL' ? '1_MID' : 'MOCK_03',
-                        subject: cat === 'INTERNAL' ? '공통수학1' : '모의고사 (공통)',
+                        subject: getDefaultSubjectByGradeCode(p.grade_code || 'H1', cat),
                       }));
                     }}
                     className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-black text-slate-900 focus:border-indigo-500 focus:outline-hidden"
@@ -3397,7 +3710,7 @@ export default function TeacherScoresPage() {
                     value={examForm.subject}
                     onChange={(e) => setExamForm((p) => ({ ...p, subject: e.target.value }))}
                     className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 font-black text-slate-900 focus:border-indigo-500 focus:outline-hidden"
-                    placeholder="예: 공통수학1, 대수, 미적분..."
+                    placeholder="예: 중2-1, 공통수학1, 대수..."
                   />
                 </div>
               </div>
@@ -3594,9 +3907,34 @@ export default function TeacherScoresPage() {
                           <div className="bg-slate-50 border border-slate-200/90 rounded-2xl px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <div className="flex flex-wrap items-center gap-2.5">
                               <span className="text-xs font-extrabold text-slate-700 whitespace-nowrap">
-                                산출 등급 ({profileGradeSystem}등급제)
+                                {examForm.school_level === 'MIDDLE'
+                                  ? '중등 성취도 (A~E) 및 고교 환산 등급'
+                                  : `산출 등급 (${profileGradeSystem}등급제)`}
                               </span>
-                              {displayModalGrade ? (
+                              {examForm.school_level === 'MIDDLE' ? (
+                                <div className="flex items-center gap-2">
+                                  {(() => {
+                                    const ach = getMiddleSchoolAchievement(examForm.raw_score);
+                                    return (
+                                      <span className="text-sm font-black text-white bg-indigo-600 px-3 py-0.5 rounded-lg whitespace-nowrap">
+                                        성취도 {ach.achievement}
+                                      </span>
+                                    );
+                                  })()}
+                                  {displayModalGrade ? (
+                                    <span className="text-xs font-black text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md whitespace-nowrap">
+                                      고교 환산 {displayModalGrade}등급권
+                                      {modalAutoGrade.topPct !== null
+                                        ? ` (상위 ${modalAutoGrade.topPct}%)`
+                                        : ''}
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs font-semibold text-slate-400">
+                                      (학교 평균·편차 입력 시 고교 환산 등급 자동 진단)
+                                    </span>
+                                  )}
+                                </div>
+                              ) : displayModalGrade ? (
                                 <div className="flex items-center gap-2">
                                   <span className="text-sm font-black text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-0.5 rounded-lg whitespace-nowrap">
                                     {displayModalGrade}등급
@@ -4062,7 +4400,11 @@ function ScoreTimelineChart({
       const actualG = exam.grade || pos?.actualGrade;
       if (actualG) {
         primaryY = getYForGrade(actualG);
-        primaryLabel = `${actualG}등급`;
+        primaryLabel = pos?.isMiddle ? `고교 ${actualG}등급` : `${actualG}등급`;
+      } else if (pos?.isMiddle && pos?.achievement) {
+        const achMap = { A: 1, B: 2, C: 3, D: 4, E: 5 };
+        primaryY = getYForGrade(achMap[pos.achievement] || 3);
+        primaryLabel = `성취도 ${pos.achievement}`;
       }
     } else if (metricMode === 'PERCENT') {
       if (pos?.topPct !== null && pos?.topPct !== undefined) {

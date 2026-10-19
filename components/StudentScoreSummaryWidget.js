@@ -9,6 +9,7 @@ import {
   analyzePotentialPerformance,
   compareErrorTrends,
   findPreviousComparableExam,
+  parseGradeCode,
 } from '@/lib/scoreUtils';
 
 export default function StudentScoreSummaryWidget({
@@ -18,6 +19,15 @@ export default function StudentScoreSummaryWidget({
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [selectedExamId, setSelectedExamId] = useState(null);
   const [chartMetricMode, setChartMetricMode] = useState('SCORE'); // 'SCORE' | 'GRADE'
+
+  const studentGradeParsed = useMemo(() => {
+    return parseGradeCode(
+      profile?.grade_code ||
+        (profile?.school_level === 'MIDDLE'
+          ? `M${profile?.school_grade || 1}`
+          : `H${profile?.school_grade || 1}`)
+    );
+  }, [profile]);
 
   const gradeSystem = Number(profile?.grade_system) === 5 ? 5 : 9;
   const targetGrade = profile?.target_grade ? Number(profile.target_grade) : null;
@@ -86,11 +96,11 @@ export default function StudentScoreSummaryWidget({
         <div>
           <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
-              나의 고교 수학 성적 추이 및 오답 분석 리포트
+              나의 수학 성적 추이 및 오답 분석 리포트
             </h2>
             {profile?.school_name && (
               <span className="text-[11px] bg-slate-100 text-slate-700 border border-slate-200 font-bold px-2.5 py-0.5 rounded-md whitespace-nowrap">
-                {profile.school_name} · 고{profile.school_grade || 1} ({gradeSystem}등급제)
+                {profile.school_name} · {studentGradeParsed.label} ({gradeSystem}등급제)
               </span>
             )}
             {(targetGrade || targetScore) && (
@@ -135,8 +145,8 @@ export default function StudentScoreSummaryWidget({
             const isMock = ex.exam_category === 'MOCK';
             const isSemTotal =
               ex.exam_period === '1_SEMESTER' || ex.exam_period === '2_SEMESTER';
-            const exGrade =
-              ex.grade || analyzeGradePosition(ex, gradeSystem)?.actualGrade;
+            const rowPos = analyzeGradePosition(ex, gradeSystem);
+            const exGrade = ex.grade || rowPos?.actualGrade;
             return (
               <button
                 key={ex.id}
@@ -163,7 +173,11 @@ export default function StudentScoreSummaryWidget({
                     }`}
                   >
                     {ex.raw_score !== null ? `${ex.raw_score}점` : '-'}
-                    {exGrade ? ` · ${exGrade}등급` : ''}
+                    {rowPos?.isMiddle
+                      ? ` · 성취도 ${rowPos.achievement}`
+                      : exGrade
+                      ? ` · ${exGrade}등급`
+                      : ''}
                   </span>
                 </div>
                 <div
@@ -241,11 +255,22 @@ export default function StudentScoreSummaryWidget({
                     <span className="text-2xl sm:text-3xl font-black text-slate-900 tabular-nums tracking-tight">
                       {activeExam.raw_score !== null ? `${activeExam.raw_score}점` : '-'}
                     </span>
-                    {(activeExam.grade || posInfo?.actualGrade) && (
+                    {posInfo?.isMiddle ? (
+                      <div className="flex flex-col items-end">
+                        <span className="bg-indigo-600 text-white text-xs font-black px-2.5 py-1 rounded-lg tabular-nums whitespace-nowrap">
+                          성취도 {posInfo.achievement}
+                        </span>
+                        {(activeExam.grade || posInfo?.actualGrade) && (
+                          <span className="text-[10px] font-bold text-slate-500 mt-1 whitespace-nowrap">
+                            (고교 {activeExam.grade || posInfo.actualGrade}등급권)
+                          </span>
+                        )}
+                      </div>
+                    ) : (activeExam.grade || posInfo?.actualGrade) ? (
                       <span className="bg-indigo-600 text-white text-xs font-black px-2.5 py-1 rounded-lg tabular-nums whitespace-nowrap">
                         {activeExam.grade || posInfo?.actualGrade}등급
                       </span>
-                    )}
+                    ) : null}
                   </div>
                 </div>
                 <div className="text-[11px] font-bold text-slate-500 mt-3 pt-2.5 border-t border-slate-200/70 flex items-center justify-between gap-2 tabular-nums">
@@ -287,7 +312,7 @@ export default function StudentScoreSummaryWidget({
                 <div>
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-bold text-slate-500 whitespace-nowrap">
-                      등급 컷 위치 진단
+                      {posInfo?.isMiddle ? '중등 성취도 및 고교 진학 위치' : '등급 컷 위치 진단'}
                     </span>
                     {posInfo?.statusBadge && (
                       <span className="text-[11px] bg-indigo-50 border border-indigo-200/80 text-indigo-700 font-black px-2 py-0.5 rounded-md whitespace-nowrap">
@@ -296,11 +321,13 @@ export default function StudentScoreSummaryWidget({
                     )}
                   </div>
                   <p className="text-xs font-bold text-slate-800 mt-3 leading-relaxed">
-                    {posInfo?.message || '등수·전교생 수 입력 시 상위 등급 진입 여유도가 표시됩니다.'}
+                    {posInfo?.message || '등수·전교생 수 또는 평균·편차 입력 시 위치 진단이 표시됩니다.'}
                   </p>
                 </div>
                 <p className="text-[11px] font-medium text-slate-400 mt-3 pt-2.5 border-t border-slate-200/70">
-                  {targetGrade
+                  {posInfo?.isMiddle
+                    ? '중등 절대평가(성취도 A~E) 및 고교 5등급제 상대평가 예상 위치'
+                    : targetGrade
                     ? `목표 등급(${targetGrade}등급) 대비 현재 위치 진단`
                     : `${gradeSystem}등급제 기준 상대적 석차 위치 분석`}
                 </p>
@@ -605,7 +632,11 @@ function StudentMiniTimelineChart({
       const g = exam.grade || pos?.actualGrade;
       if (g) {
         primaryY = getYForGrade(g);
-        primaryLabel = `${g}등급`;
+        primaryLabel = pos?.isMiddle ? `고교 ${g}등급` : `${g}등급`;
+      } else if (pos?.isMiddle && pos?.achievement) {
+        const achMap = { A: 1, B: 2, C: 3, D: 4, E: 5 };
+        primaryY = getYForGrade(achMap[pos.achievement] || 3);
+        primaryLabel = `성취도 ${pos.achievement}`;
       }
     }
 

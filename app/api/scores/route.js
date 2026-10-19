@@ -2,74 +2,12 @@ import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/session';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { calculateAutoGrade } from '@/lib/scoreUtils';
-
-const BUCKET_NAME = 'attachments';
-const STORE_PATH = 'system_store/high_school_scores_v1.json';
-
-/**
- * 📦 Supabase Storage 기반 클라우드 영구 저장소 로드 (스키마 변경/컬럼 누락 에러 원천 차단)
- */
-async function loadScoreStore(db) {
-  try {
-    const { data, error } = await db.storage.from(BUCKET_NAME).download(STORE_PATH);
-    if (error || !data) {
-      return { scores: [], studentProfiles: {} };
-    }
-    const text = await data.text();
-    const parsed = JSON.parse(text);
-    return {
-      scores: Array.isArray(parsed.scores) ? parsed.scores : [],
-      studentProfiles:
-        parsed.studentProfiles && typeof parsed.studentProfiles === 'object'
-          ? parsed.studentProfiles
-          : {},
-    };
-  } catch (err) {
-    return { scores: [], studentProfiles: {} };
-  }
-}
-
-/**
- * 📦 Supabase Storage에 성적 및 학생 학교 프로필 영구 저장
- */
-async function saveScoreStore(db, storeData) {
-  const payload = JSON.stringify(
-    {
-      scores: storeData.scores || [],
-      studentProfiles: storeData.studentProfiles || {},
-      updatedAt: new Date().toISOString(),
-    },
-    null,
-    2
-  );
-  const buffer = Buffer.from(payload, 'utf-8');
-
-  let { error } = await db.storage.from(BUCKET_NAME).upload(STORE_PATH, buffer, {
-    contentType: 'application/json',
-    upsert: true,
-    cacheControl: '0',
-  });
-
-  // 만약 테스트 DB에 버킷이 아직 없다면 자동 생성 후 재시도
-  if (
-    error &&
-    (error.message?.includes('Bucket not found') ||
-      error.statusCode === '404' ||
-      error.status === 404)
-  ) {
-    await db.storage.createBucket(BUCKET_NAME, { public: true }).catch(() => {});
-    const retry = await db.storage.from(BUCKET_NAME).upload(STORE_PATH, buffer, {
-      contentType: 'application/json',
-      upsert: true,
-      cacheControl: '0',
-    });
-    error = retry.error;
-  }
-
-  if (error) {
-    throw new Error(`성적 데이터 저장 오류: ${error.message}`);
-  }
-}
+import {
+  loadScoreStore,
+  saveScoreStore,
+  normalizeSchoolLevelAndGrade,
+  enrichStudentsWithProfiles,
+} from '@/lib/scoreStore';
 
 /**
  * 선생님 권한에 따른 학생/반 목록 조회
@@ -172,10 +110,16 @@ export async function GET(req) {
     if (user.role === 'STUDENT') {
       const { scores, studentProfiles } = await loadScoreStore(db);
       const myScores = scores.filter((sc) => String(sc.student_id) === String(user.id));
-      const myProfile = studentProfiles[user.id] || {
-        school_name: '',
-        school_grade: 1,
-        grade_system: 9,
+      const rawProf = studentProfiles[user.id] || {};
+      const norm = normalizeSchoolLevelAndGrade(rawProf);
+      const myProfile = {
+        ...rawProf,
+        school_name: rawProf.school_name || '',
+        school_level: norm.school_level,
+        school_grade: norm.school_grade,
+        grade_code: norm.grade_code,
+        grade_label: norm.grade_label,
+        grade_system: norm.grade_system,
       };
       return NextResponse.json({
         scores: myScores,
@@ -197,17 +141,7 @@ export async function GET(req) {
       : scores.filter((sc) => allowedStudentIdSet.has(sc.student_id));
 
     // 학생 목록에 학교 프로필 병합
-    const enrichedStudents = roster.students.map((s) => {
-      const prof = studentProfiles[s.id] || {};
-      return {
-        ...s,
-        school_name: prof.school_name || '',
-        school_grade: Number(prof.school_grade) || 1,
-        grade_system: Number(prof.grade_system) || 9,
-        target_grade: prof.target_grade ? Number(prof.target_grade) : null,
-        target_score: prof.target_score ? Number(prof.target_score) : null,
-      };
-    });
+    const enrichedStudents = enrichStudentsWithProfiles(roster.students, studentProfiles);
 
     return NextResponse.json({
       scores: filteredScores,
@@ -289,8 +223,9 @@ function normalizeScoreRecord(input, existingId, teacherId) {
       ? Number(input.manual_grade)
       : null;
 
+  const normLevel = normalizeSchoolLevelAndGrade(input);
   const examCategory = input.exam_category === 'MOCK' ? 'MOCK' : 'INTERNAL';
-  const gradeSystem = Number(input.grade_system) === 5 ? 5 : 9;
+  const gradeSystem = normLevel.grade_system;
 
   // 🎯 등수/수강자수 또는 백분위/Z점수 기반 자동 산출 (+ 수동/예상 등급 보정값 반영)
   const autoGradeRes = calculateAutoGrade(
@@ -324,11 +259,13 @@ function normalizeScoreRecord(input, existingId, teacherId) {
     id,
     student_id: String(input.student_id),
     school_name: (input.school_name || '').trim(),
-    school_grade: Number(input.school_grade) || 1,
+    school_level: normLevel.school_level,
+    school_grade: normLevel.school_grade,
+    grade_code: normLevel.grade_code,
     exam_year: Number(input.exam_year) || new Date().getFullYear(),
     exam_category: examCategory,
     exam_period: input.exam_period || '1_MID',
-    subject: (input.subject || '공통수학1').trim(),
+    subject: (input.subject || (normLevel.school_level === 'MIDDLE' ? `중${normLevel.school_grade}-1` : '공통수학1')).trim(),
     raw_score: rawScore,
     objective_score: objScore,
     essay_score: essayScore,
@@ -376,7 +313,9 @@ export async function POST(req) {
         const {
           student_id,
           school_name,
+          school_level,
           school_grade,
+          grade_code,
           grade_system,
           target_grade,
           target_score,
@@ -385,11 +324,22 @@ export async function POST(req) {
           return NextResponse.json({ error: '학생 ID가 필요합니다.' }, { status: 400 });
         }
         const prev = store.studentProfiles[student_id] || {};
+        const cleanSchool = (school_name ?? prev.school_name ?? '').trim();
+        const norm = normalizeSchoolLevelAndGrade({
+          school_name: cleanSchool,
+          school_level: school_level ?? prev.school_level,
+          school_grade: school_grade ?? prev.school_grade,
+          grade_code: grade_code ?? prev.grade_code,
+          grade_system: grade_system ?? prev.grade_system,
+        });
+
         store.studentProfiles[student_id] = {
           ...prev,
-          school_name: (school_name ?? prev.school_name ?? '').trim(),
-          school_grade: Number(school_grade) || prev.school_grade || 1,
-          grade_system: Number(grade_system) || prev.grade_system || 9,
+          school_name: cleanSchool,
+          school_level: norm.school_level,
+          school_grade: norm.school_grade,
+          grade_code: norm.grade_code,
+          grade_system: norm.grade_system,
           target_grade:
             target_grade !== undefined
               ? target_grade !== '' && target_grade !== null
@@ -407,7 +357,6 @@ export async function POST(req) {
 
         // 해당 학생의 기존 내신 기록에도 학교명이 비어있다면 동기화
         if (school_name) {
-          const cleanSchool = school_name.trim();
           store.scores = store.scores.map((sc) =>
             sc.student_id === student_id && !sc.school_name
               ? { ...sc, school_name: cleanSchool }
@@ -441,8 +390,13 @@ export async function POST(req) {
           const prev = store.studentProfiles[p.student_id] || {};
           const cleanSchool =
             p.school_name !== undefined ? String(p.school_name).trim() : prev.school_name || '';
-          const nextGrade = Number(p.school_grade) || prev.school_grade || 1;
-          const nextSys = Number(p.grade_system) === 5 ? 5 : 9;
+          const norm = normalizeSchoolLevelAndGrade({
+            school_name: cleanSchool,
+            school_level: p.school_level ?? prev.school_level,
+            school_grade: p.school_grade ?? prev.school_grade,
+            grade_code: p.grade_code ?? prev.grade_code,
+            grade_system: p.grade_system ?? prev.grade_system,
+          });
           const nextTargetGrade =
             p.target_grade !== undefined
               ? p.target_grade !== '' && p.target_grade !== null
@@ -459,8 +413,10 @@ export async function POST(req) {
           store.studentProfiles[p.student_id] = {
             ...prev,
             school_name: cleanSchool,
-            school_grade: nextGrade,
-            grade_system: nextSys,
+            school_level: norm.school_level,
+            school_grade: norm.school_grade,
+            grade_code: norm.grade_code,
+            grade_system: norm.grade_system,
             target_grade: nextTargetGrade,
             target_score: nextTargetScore,
             updated_at: now,
@@ -471,7 +427,7 @@ export async function POST(req) {
           store.scores = store.scores.map((sc) => {
             if (String(sc.student_id) !== String(p.student_id)) return sc;
             const mergedSchool = sc.school_name || cleanSchool;
-            const autoRes = calculateAutoGrade(sc, nextSys);
+            const autoRes = calculateAutoGrade(sc, norm.grade_system);
             return {
               ...sc,
               school_name: mergedSchool,
@@ -496,14 +452,30 @@ export async function POST(req) {
           return NextResponse.json({ error: '학생 정보가 누락되었습니다.' }, { status: 400 });
         }
 
+        const prevProf = store.studentProfiles[recordInput.student_id] || {};
+        const normInput = normalizeSchoolLevelAndGrade({
+          school_name: recordInput.school_name || prevProf.school_name,
+          school_level: recordInput.school_level ?? prevProf.school_level,
+          school_grade: recordInput.school_grade ?? prevProf.school_grade,
+          grade_code: recordInput.grade_code ?? prevProf.grade_code,
+          grade_system: recordInput.grade_system ?? prevProf.grade_system,
+        });
+
         // 학생 프로필의 학교/학년도 함께 최신화
-        if (recordInput.school_name || recordInput.school_grade || recordInput.grade_system) {
-          const prevProf = store.studentProfiles[recordInput.student_id] || {};
+        if (
+          recordInput.school_name ||
+          recordInput.school_grade ||
+          recordInput.school_level ||
+          recordInput.grade_code ||
+          recordInput.grade_system
+        ) {
           store.studentProfiles[recordInput.student_id] = {
             ...prevProf,
             school_name: (recordInput.school_name || prevProf.school_name || '').trim(),
-            school_grade: Number(recordInput.school_grade) || prevProf.school_grade || 1,
-            grade_system: Number(recordInput.grade_system) || prevProf.grade_system || 9,
+            school_level: normInput.school_level,
+            school_grade: normInput.school_grade,
+            grade_code: normInput.grade_code,
+            grade_system: normInput.grade_system,
             updated_at: new Date().toISOString(),
           };
         }
@@ -514,20 +486,30 @@ export async function POST(req) {
           ''
         ).trim();
 
-        // 기존 동일 시험(학생 + 연도 + 학년 + 시험구분 + 시험시기 + 과목) 또는 ID 매칭 확인
-        const existingIdx = store.scores.findIndex(
-          (sc) =>
-            (recordInput.id && sc.id === recordInput.id) ||
-            (sc.student_id === recordInput.student_id &&
-              Number(sc.exam_year) === Number(recordInput.exam_year) &&
-              Number(sc.school_grade) === Number(recordInput.school_grade) &&
-              sc.exam_category === recordInput.exam_category &&
-              sc.exam_period === recordInput.exam_period &&
-              sc.subject === recordInput.subject)
-        );
+        // 기존 동일 시험(학생 + 연도 + 학교급 + 학년 + 시험구분 + 시험시기 + 과목) 또는 ID 매칭 확인
+        const existingIdx = store.scores.findIndex((sc) => {
+          if (recordInput.id && sc.id === recordInput.id) return true;
+          const scLevel = sc.school_level || 'HIGH';
+          return (
+            sc.student_id === recordInput.student_id &&
+            Number(sc.exam_year) === Number(recordInput.exam_year) &&
+            scLevel === normInput.school_level &&
+            Number(sc.school_grade) === Number(normInput.school_grade) &&
+            sc.exam_category === recordInput.exam_category &&
+            sc.exam_period === recordInput.exam_period &&
+            sc.subject === recordInput.subject
+          );
+        });
 
         const normalized = normalizeScoreRecord(
-          { ...recordInput, school_name: schoolName },
+          {
+            ...recordInput,
+            school_name: schoolName,
+            school_level: normInput.school_level,
+            school_grade: normInput.school_grade,
+            grade_code: normInput.grade_code,
+            grade_system: normInput.grade_system,
+          },
           existingIdx >= 0 ? store.scores[existingIdx].id : null,
           user.id
         );
@@ -545,11 +527,13 @@ export async function POST(req) {
           normalized.school_name
         ) {
           store.scores = store.scores.map((sc) => {
+            const scLevel = sc.school_level || 'HIGH';
             if (
               sc.id !== normalized.id &&
               sc.exam_category === 'INTERNAL' &&
               sc.school_name === normalized.school_name &&
               Number(sc.exam_year) === Number(normalized.exam_year) &&
+              scLevel === normalized.school_level &&
               Number(sc.school_grade) === Number(normalized.school_grade) &&
               sc.exam_period === normalized.exam_period &&
               sc.subject === normalized.subject
@@ -561,7 +545,8 @@ export async function POST(req) {
               const nextTotal =
                 normalized.total_students !== null ? normalized.total_students : sc.total_students;
               const peerGradeSys =
-                Number(store.studentProfiles[sc.student_id]?.grade_system) || 9;
+                Number(store.studentProfiles[sc.student_id]?.grade_system) ||
+                (scLevel === 'MIDDLE' ? 5 : 9);
               const peerAutoGrade = calculateAutoGrade(
                 {
                   ...sc,
@@ -603,6 +588,7 @@ export async function POST(req) {
           );
         }
 
+        const normMeta = normalizeSchoolLevelAndGrade(examMeta);
         let savedCount = 0;
         let deletedCount = 0;
         const schoolStatsMap = {};
@@ -610,31 +596,49 @@ export async function POST(req) {
         for (const row of rows) {
           if (!row.student_id) continue;
 
+          const prevProf = store.studentProfiles[row.student_id] || {};
+          const rowNorm = normalizeSchoolLevelAndGrade({
+            school_name: row.school_name ?? prevProf.school_name,
+            school_level: examMeta.school_level ?? normMeta.school_level,
+            school_grade: examMeta.school_grade ?? normMeta.school_grade,
+            grade_code: examMeta.grade_code ?? normMeta.grade_code,
+            grade_system: row.grade_system ?? prevProf.grade_system,
+          });
+
           // 학교명/학년 프로필 업데이트
-          if (row.school_name !== undefined || examMeta.school_grade) {
-            const prevProf = store.studentProfiles[row.student_id] || {};
+          if (
+            row.school_name !== undefined ||
+            examMeta.school_grade ||
+            examMeta.grade_code ||
+            examMeta.school_level
+          ) {
             store.studentProfiles[row.student_id] = {
               ...prevProf,
               school_name:
                 row.school_name !== undefined
                   ? row.school_name.trim()
                   : prevProf.school_name || '',
-              school_grade: Number(examMeta.school_grade) || prevProf.school_grade || 1,
-              grade_system: Number(row.grade_system) || prevProf.grade_system || 9,
+              school_level: rowNorm.school_level,
+              school_grade: rowNorm.school_grade,
+              grade_code: rowNorm.grade_code,
+              grade_system: rowNorm.grade_system,
               updated_at: new Date().toISOString(),
             };
           }
 
-          const existingIdx = store.scores.findIndex(
-            (sc) =>
-              (row.id && sc.id === row.id) ||
-              (sc.student_id === row.student_id &&
-                Number(sc.exam_year) === Number(examMeta.exam_year) &&
-                Number(sc.school_grade) === Number(examMeta.school_grade) &&
-                sc.exam_category === examMeta.exam_category &&
-                sc.exam_period === examMeta.exam_period &&
-                sc.subject === examMeta.subject)
-          );
+          const existingIdx = store.scores.findIndex((sc) => {
+            if (row.id && sc.id === row.id) return true;
+            const scLevel = sc.school_level || 'HIGH';
+            return (
+              sc.student_id === row.student_id &&
+              Number(sc.exam_year) === Number(examMeta.exam_year) &&
+              scLevel === rowNorm.school_level &&
+              Number(sc.school_grade) === Number(rowNorm.school_grade) &&
+              sc.exam_category === examMeta.exam_category &&
+              sc.exam_period === examMeta.exam_period &&
+              sc.subject === examMeta.subject
+            );
+          });
 
           const hasScoreData =
             !row.delete_row &&
@@ -657,6 +661,10 @@ export async function POST(req) {
           const mergedInput = {
             ...examMeta,
             ...row,
+            school_level: rowNorm.school_level,
+            school_grade: rowNorm.school_grade,
+            grade_code: rowNorm.grade_code,
+            grade_system: rowNorm.grade_system,
             school_name: (
               row.school_name ??
               store.studentProfiles[row.student_id]?.school_name ??
@@ -704,12 +712,14 @@ export async function POST(req) {
           Object.keys(schoolStatsMap).length > 0
         ) {
           store.scores = store.scores.map((sc) => {
+            const scLevel = sc.school_level || 'HIGH';
             if (
               sc.exam_category === 'INTERNAL' &&
               sc.school_name &&
               schoolStatsMap[sc.school_name] &&
               Number(sc.exam_year) === Number(examMeta.exam_year) &&
-              Number(sc.school_grade) === Number(examMeta.school_grade) &&
+              scLevel === normMeta.school_level &&
+              Number(sc.school_grade) === Number(normMeta.school_grade) &&
               sc.exam_period === examMeta.exam_period &&
               sc.subject === examMeta.subject
             ) {
@@ -720,7 +730,8 @@ export async function POST(req) {
               const nextTotal =
                 sc.total_students !== null ? sc.total_students : donor.total_students;
               const peerGradeSys =
-                Number(store.studentProfiles[sc.student_id]?.grade_system) || 9;
+                Number(store.studentProfiles[sc.student_id]?.grade_system) ||
+                (scLevel === 'MIDDLE' ? 5 : 9);
               const peerAutoGrade = calculateAutoGrade(
                 {
                   ...sc,

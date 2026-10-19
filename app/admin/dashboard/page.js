@@ -240,6 +240,8 @@ export default function AdminDashboard() {
           email: editingStudent.email,
           parentPhone: editingStudent.parent_phone,
           teacherId: editingStudent.teacher_id,
+          schoolName: editingStudent.school_name ?? '',
+          gradeCode: editingStudent.grade_code || 'H1',
         }),
       });
       const data = await res.json();
@@ -271,7 +273,8 @@ export default function AdminDashboard() {
   const filteredStudents = allStudents.filter((st) => {
     const matchSearch = !studentSearch.trim() || 
       (st.name || '').toLowerCase().includes(studentSearch.toLowerCase()) || 
-      (st.email || '').toLowerCase().includes(studentSearch.toLowerCase());
+      (st.email || '').toLowerCase().includes(studentSearch.toLowerCase()) ||
+      (st.school_name || '').toLowerCase().includes(studentSearch.toLowerCase());
     const matchTeacher = filterTeacher === 'ALL' || st.teacher_id === filterTeacher;
     return matchSearch && matchTeacher;
   });
@@ -280,7 +283,8 @@ export default function AdminDashboard() {
     const matchSearch =
       !assignModalSearch.trim() ||
       (st.name || '').toLowerCase().includes(assignModalSearch.toLowerCase()) ||
-      (st.email || '').toLowerCase().includes(assignModalSearch.toLowerCase());
+      (st.email || '').toLowerCase().includes(assignModalSearch.toLowerCase()) ||
+      (st.school_name || '').toLowerCase().includes(assignModalSearch.toLowerCase());
     const matchTeacher =
       assignModalTeacherFilter === 'ALL' || st.teacher_id === assignModalTeacherFilter;
     const matchSelected = !onlySelectedInModal || selectedStudentIds.includes(st.id);
@@ -320,7 +324,7 @@ export default function AdminDashboard() {
             onClick={() => router.push('/teacher/scores')}
             className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-black px-3.5 py-2 rounded-xl transition shadow-xs"
           >
-            📈 고교 성적 추이
+            📈 중·고등 성적 추이
           </button>
           <button
             onClick={() => setShowPushModal(true)}
@@ -582,6 +586,9 @@ export default function AdminDashboard() {
                   studentEnrolledClassIds.includes(String(c.id))
                 );
                 const teacherObj = allTeachers.find((t) => t.id === st.teacher_id);
+                const isMiddle = st.school_level === 'MIDDLE';
+                const displayGradeBadge =
+                  st.grade_label || (st.school_name ? `${isMiddle ? '중' : '고'}${st.school_grade || 1}` : '');
 
                 return (
                   <div
@@ -591,6 +598,17 @@ export default function AdminDashboard() {
                     <div className="space-y-1.5">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-extrabold text-sm text-slate-800">{st.name}</span>
+                        {(displayGradeBadge || st.school_name) && (
+                          <span
+                            className={`px-2 py-0.5 rounded-md font-extrabold text-[11px] border whitespace-nowrap ${
+                              isMiddle
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                            }`}
+                          >
+                            {[displayGradeBadge, st.school_name].filter(Boolean).join(' · ')}
+                          </span>
+                        )}
                         <span className="text-slate-400 text-xs font-semibold">({st.email})</span>
                         {st.parent_phone ? (
                           <span className="bg-amber-100 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-full font-bold text-[10px]">
@@ -646,7 +664,14 @@ export default function AdminDashboard() {
 
                       <button
                         type="button"
-                        onClick={() => setEditingStudent(st)}
+                        onClick={() =>
+                          setEditingStudent({
+                            ...st,
+                            grade_code:
+                              st.grade_code ||
+                              `${st.school_level === 'MIDDLE' ? 'M' : 'H'}${st.school_grade || 1}`,
+                          })
+                        }
                         className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold px-3 py-2 rounded-xl text-xs transition whitespace-nowrap shadow-2xs"
                       >
                         ✏️ 수정
@@ -792,6 +817,11 @@ export default function AdminDashboard() {
                         <div>
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="text-xs font-black text-slate-800">{st.name}</span>
+                            {st.grade_label && (
+                              <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-slate-200/80 text-slate-700">
+                                {st.grade_label}
+                              </span>
+                            )}
                             <span className="text-[10px] text-slate-400">({st.email})</span>
                           </div>
 
@@ -862,6 +892,46 @@ export default function AdminDashboard() {
                   onChange={(e) => setEditingStudent({ ...editingStudent, name: e.target.value })}
                   className="w-full p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
                 />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">🎓 학년 구분 (중1~고3)</label>
+                  <select
+                    value={
+                      editingStudent.grade_code ||
+                      `${editingStudent.school_level === 'MIDDLE' ? 'M' : 'H'}${editingStudent.school_grade || 1}`
+                    }
+                    onChange={(e) =>
+                      setEditingStudent({ ...editingStudent, grade_code: e.target.value })
+                    }
+                    className="w-full p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500"
+                  >
+                    <optgroup label="중학교 (성취도 A~E + 고교 환산)">
+                      <option value="M1">중학교 1학년 (중1)</option>
+                      <option value="M2">중학교 2학년 (중2)</option>
+                      <option value="M3">중학교 3학년 (중3)</option>
+                    </optgroup>
+                    <optgroup label="고등학교 (내신·모의고사 등급)">
+                      <option value="H1">고등학교 1학년 (고1 · 5등급제)</option>
+                      <option value="H2">고등학교 2학년 (고2 · 9등급제)</option>
+                      <option value="H3">고등학교 3학년 (고3 · 9등급제)</option>
+                    </optgroup>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">🏫 재학 학교명</label>
+                  <input
+                    type="text"
+                    placeholder="예: 서현중, 분당고"
+                    value={editingStudent.school_name || ''}
+                    onChange={(e) =>
+                      setEditingStudent({ ...editingStudent, school_name: e.target.value })
+                    }
+                    className="w-full p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
               </div>
 
               <div>

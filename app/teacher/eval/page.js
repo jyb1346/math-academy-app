@@ -97,6 +97,8 @@ export default function TeacherEvalPage() {
   const [batchSubmitting, setBatchSubmitting] = useState(false);
   const [batchProgressText, setBatchProgressText] = useState('');
   const [commonCustomTestType, setCommonCustomTestType] = useState('');
+  const [commonBatchComment, setCommonBatchComment] = useState('');
+  const [showCommonCommentBox, setShowCommonCommentBox] = useState(false);
 
   // 판서수업: 학생별 커스텀 평가 항목 추가 입력 상태 (studentId -> 값)
   const [batchShowAddCustomMap, setBatchShowAddCustomMap] = useState({});
@@ -858,6 +860,39 @@ export default function TeacherEvalPage() {
     );
     const label = type === '기타' ? `기타 (${trimmed})` : type;
     showToast(`📝 모든 학생의 시험 종류가 '${label}'(으)로 일괄 변경되었습니다.`);
+  };
+
+  const handleApplyCommonCommentToAll = (mode = 'overwrite') => {
+    const trimmed = (commonBatchComment || '').trim();
+    if (!trimmed) {
+      alert('일괄 적용할 총평 코멘트를 입력해 주세요.');
+      return;
+    }
+
+    if (mode === 'overwrite') {
+      const hasExisting = batchStudents.some((s) => s.included && (s.comment || '').trim());
+      if (hasExisting && !confirm('이미 작성된 코멘트가 있는 학생이 있습니다. 정말 모두 덮어쓰시겠습니까?')) {
+        return;
+      }
+    }
+
+    setBatchStudents((prev) =>
+      prev.map((s) => {
+        if (!s.included) return s;
+        if (mode === 'append') {
+          const prevComment = (s.comment || '').trim();
+          const newComment = prevComment ? `${prevComment}\n\n${trimmed}` : trimmed;
+          return { ...s, comment: newComment };
+        }
+        return { ...s, comment: trimmed };
+      })
+    );
+
+    showToast(
+      mode === 'append'
+        ? '📢 선택된 모든 학생의 코멘트 뒤에 공통 내용이 덧붙여졌습니다.'
+        : '📢 선택된 모든 학생의 코멘트가 공통 내용으로 일괄 적용되었습니다.'
+    );
   };
 
   const handleToggleSelectAllStudents = () => {
@@ -1699,6 +1734,65 @@ export default function TeacherEvalPage() {
                   </div>
                 )}
 
+                {/* 📢 반 전체 공통 총평 코멘트 일괄 적용 툴바 */}
+                {batchStudents.length > 0 && (
+                  <div className="p-3 bg-amber-50/70 rounded-2xl border border-amber-200/80 shadow-2xs space-y-2.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-black text-amber-950 flex items-center gap-1">
+                          <span>📢</span>
+                          <span>반 전체 공통 총평 일괄 작성 / 적용</span>
+                        </span>
+                        <span className="text-[11px] text-amber-700 font-medium hidden sm:inline">
+                          (공지사항, 공통 과제 안내 등을 모든 학생에게 한번에 적용)
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowCommonCommentBox((prev) => !prev)}
+                        className="text-xs font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-2.5 py-1 rounded-xl transition self-start sm:self-auto flex items-center gap-1"
+                      >
+                        <span>{showCommonCommentBox ? '접기 ▲' : '작성창 열기 ▼'}</span>
+                      </button>
+                    </div>
+
+                    {showCommonCommentBox && (
+                      <div className="pt-2 border-t border-amber-200/70 space-y-2">
+                        <textarea
+                          rows={3}
+                          value={commonBatchComment}
+                          onChange={(e) => setCommonBatchComment(e.target.value)}
+                          placeholder="반 전체 학생에게 공통으로 들어갈 안내나 총평을 입력하세요. (Shift+Enter 또는 Enter로 줄바꿈 가능)"
+                          className="w-full p-2.5 bg-white border border-amber-300 rounded-xl text-xs sm:text-sm font-medium leading-relaxed placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-300 resize-y"
+                        />
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <span className="text-[11px] text-slate-500">
+                            💡 적용 시 현재 체크(포함)된 학생들에게 일괄 반영됩니다.
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleApplyCommonCommentToAll('append')}
+                              className="text-xs font-bold bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 px-3 py-1.5 rounded-xl shadow-2xs transition active:scale-95"
+                              title="학생별 기존 코멘트 뒤에 줄바꿈 후 덧붙입니다"
+                            >
+                              ➕ 기존 내용 뒤에 덧붙이기
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleApplyCommonCommentToAll('overwrite')}
+                              className="text-xs font-extrabold bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-xl shadow-2xs transition active:scale-95"
+                              title="모든 학생의 코멘트를 이 내용으로 완전히 덮어씁니다"
+                            >
+                              ✍️ 전체 덮어쓰기
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* 학생 카드 리스트 */}
                 {batchStudents.length === 0 ? (
                   <p className="p-8 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl">
@@ -1848,47 +1942,65 @@ export default function TeacherEvalPage() {
                             </div>
                           </div>
 
-                          {/* 2행: 시험 성적 및 개별 코멘트 입력칸 (넓고 쾌적한 2분할 레이아웃) */}
-                          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 pt-1 border-t border-slate-100 text-xs">
-                            <div className="sm:col-span-5 flex items-center gap-1.5">
-                              <select
-                                value={st.testType}
-                                onChange={(e) => handleBatchTestTypeChange(st.student_id, e.target.value)}
-                                className="p-1.5 border rounded-lg text-xs bg-slate-50 font-bold text-slate-800 shrink-0"
-                              >
-                                <option value="단원평가">📘 단원평가</option>
-                                <option value="일일테스트">⚡ 일일테스트</option>
-                                <option value="주간테스트">📝 주간테스트</option>
-                                <option value="모의고사">🎯 모의고사</option>
-                                <option value="기타">✍️ 기타 (직접입력)</option>
-                              </select>
-                              {st.testType === '기타' && (
-                                <input
-                                  type="text"
-                                  value={st.customTestType || ''}
-                                  onChange={(e) => handleBatchCustomTestTypeChange(st.student_id, e.target.value)}
-                                  placeholder="시험명 직접입력"
-                                  className="w-28 p-1.5 bg-white border border-indigo-300 rounded-lg text-xs font-bold placeholder:text-slate-400 shrink-0"
-                                />
-                              )}
+                          {/* 2행: 시험 종류 및 점수 입력 */}
+                          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 text-xs">
+                            <span className="text-[11px] font-bold text-slate-500 shrink-0">📊 시험 성적:</span>
+                            <select
+                              value={st.testType}
+                              onChange={(e) => handleBatchTestTypeChange(st.student_id, e.target.value)}
+                              className="p-1.5 border border-slate-200 rounded-lg text-xs bg-slate-50 font-bold text-slate-800 shrink-0"
+                            >
+                              <option value="단원평가">📘 단원평가</option>
+                              <option value="일일테스트">⚡ 일일테스트</option>
+                              <option value="주간테스트">📝 주간테스트</option>
+                              <option value="모의고사">🎯 모의고사</option>
+                              <option value="기타">✍️ 기타 (직접입력)</option>
+                            </select>
+                            {st.testType === '기타' && (
                               <input
                                 type="text"
-                                value={st.testScore}
-                                onChange={(e) => handleBatchTestScoreChange(st.student_id, e.target.value)}
-                                placeholder="시험점수(선택)"
-                                className="w-full p-1.5 bg-white border rounded-lg text-xs font-bold placeholder:text-slate-400"
+                                value={st.customTestType || ''}
+                                onChange={(e) => handleBatchCustomTestTypeChange(st.student_id, e.target.value)}
+                                placeholder="시험명 직접입력"
+                                className="w-28 sm:w-32 p-1.5 bg-white border border-indigo-300 rounded-lg text-xs font-bold placeholder:text-slate-400 shrink-0"
                               />
-                            </div>
+                            )}
+                            <input
+                              type="text"
+                              value={st.testScore}
+                              onChange={(e) => handleBatchTestScoreChange(st.student_id, e.target.value)}
+                              placeholder="점수 입력 (예: 95점, 24/25 등 / 미입력 시 리포트에서 숨김)"
+                              className="flex-1 min-w-[140px] p-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold placeholder:text-slate-400 focus:outline-none focus:border-indigo-400"
+                            />
+                          </div>
 
-                            <div className="sm:col-span-7">
-                              <input
-                                type="text"
-                                value={st.comment}
-                                onChange={(e) => handleBatchCommentChange(st.student_id, e.target.value)}
-                                placeholder="학생별 특이사항이나 칭찬 메모 (비워두면 학부모 화면에 코멘트 영역이 숨겨집니다)"
-                                className="w-full p-1.5 bg-white border rounded-lg text-xs font-medium placeholder:text-slate-400"
-                              />
+                          {/* 3행: 선생님 총평 코멘트 (여러 줄 입력 가능한 textarea) */}
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                                <span>✍️</span>
+                                <span>선생님 총평 코멘트</span>
+                                <span className="text-[10px] text-slate-400 font-normal">
+                                  (Enter / Shift+Enter로 줄바꿈 가능)
+                                </span>
+                              </label>
+                              {st.comment && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleBatchCommentChange(st.student_id, '')}
+                                  className="text-[10px] text-slate-400 hover:text-rose-500 font-medium transition"
+                                >
+                                  내용 지우기
+                                </button>
+                              )}
                             </div>
+                            <textarea
+                              rows={3}
+                              value={st.comment}
+                              onChange={(e) => handleBatchCommentChange(st.student_id, e.target.value)}
+                              placeholder="학생별 특이사항, 학습 태도, 칭찬 또는 학부모 전달사항을 입력하세요. (비워두면 학부모 화면에서 코멘트 영역이 숨겨집니다)"
+                              className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm font-medium leading-relaxed placeholder:text-slate-400 focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-300 resize-y transition shadow-2xs"
+                            />
                           </div>
 
                           {/* 펼쳐진 역량 점수 슬라이더 에디터 */}

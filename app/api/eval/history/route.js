@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/session';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { generateReportToken } from '@/lib/securityUtils';
 
 // GET /api/eval/history — 담당 강사의 전체 학생 명단 + 본인이 작성한 과제표 히스토리
 export async function GET(req) {
@@ -38,10 +39,16 @@ export async function GET(req) {
 
   const evalData = evalRes.data;
 
+  // 학부모 리포트 1클릭 열람 및 링크 복사용 HMAC 서명 토큰 첨부
+  const evalDataWithTokens = (evalData || []).map((ev) => ({
+    ...ev,
+    report_token: generateReportToken(ev.id),
+  }));
+
   return NextResponse.json({
     students: allTeacherStudents,
     classes: myClasses,
     classStudents: (csData || []).filter((cs) => myClassIds.includes(cs.class_id)),
-    evaluations: evalData || [],
+    evaluations: evalDataWithTokens,
   });
 }

@@ -284,13 +284,20 @@ export default function EvalHistoryPage() {
     alert(`🎉 알림톡 일괄 발송 완료!\n\n- 발송 성공: ${successCount}건\n- 실패: ${failCount}건\n- 연락처 없음(건너뜀): ${skippedCount}건`);
   };
 
-  const handleCopyReportLink = (evalId) => {
-    const url = `${window.location.origin}/report/${evalId}`;
+  const handleCopyReportLink = (item) => {
+    const token = item.report_token;
+    const url = `${window.location.origin}/report/${item.id}${token ? `?t=${token}` : ''}`;
     navigator.clipboard.writeText(url).then(() => {
-      alert(`📋 학부모 리포트 링크가 복사되었습니다!\n\n${url}`);
+      alert(`📋 학부모 리포트 링크가 복사되었습니다!\n(학부모님이 로그인 없이 바로 열람하실 수 있는 보안 링크입니다)\n\n${url}`);
     }).catch(() => {
       prompt('아래 주소를 복사해 주세요:', url);
     });
+  };
+
+  const handleOpenReport = (item) => {
+    const token = item.report_token;
+    const url = `/report/${item.id}${token ? `?t=${token}` : ''}`;
+    window.open(url, '_blank');
   };
 
   const handleDeleteEval = async (id, studentName, evalDate) => {
@@ -639,11 +646,22 @@ export default function EvalHistoryPage() {
                       </div>
                       <div className="flex items-center gap-1.5 flex-wrap shrink-0 pt-1 sm:pt-0">
                         <button
-                          onClick={() => handleCopyReportLink(item.id)}
-                          className="px-2.5 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition whitespace-nowrap shadow-2xs"
-                          title="학부모 리포트 웹 주소 복사"
+                          type="button"
+                          onClick={() => handleOpenReport(item)}
+                          className="px-2.5 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition whitespace-nowrap shadow-2xs flex items-center gap-1 active:scale-95"
+                          title="학부모에게 발송된 웹 리포트 새 창으로 바로 확인하기"
                         >
-                          🔗 링크 복사
+                          <span>👁️</span>
+                          <span>리포트 확인</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyReportLink(item)}
+                          className="px-2.5 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition whitespace-nowrap shadow-2xs flex items-center gap-1 active:scale-95"
+                          title="학부모 리포트 웹 주소 복사 (보안 서명 토큰 포함)"
+                        >
+                          <span>🔗</span>
+                          <span>링크 복사</span>
                         </button>
                         <button
                           onClick={() => handleResendNotification(item)}

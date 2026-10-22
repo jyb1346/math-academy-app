@@ -2,13 +2,20 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { verifyReportToken } from '@/lib/securityUtils';
 import { sendPushToUsers } from '@/lib/pushService';
+import { getSessionUser } from '@/lib/session';
 
-// GET /api/report/[id]?t=<토큰> — 학부모 리포트 열람 (로그인 없이 서명 토큰으로만 접근)
+// GET /api/report/[id]?t=<토큰> — 학부모 리포트 열람 (보안 서명 토큰 또는 로그인된 선생님/학생 본인 접근)
 export async function GET(req, { params }) {
   const { id } = await params;
   const token = req.nextUrl.searchParams.get('t');
 
-  if (!verifyReportToken(id, token)) {
+  const sessionUser = getSessionUser(req);
+  const isTeacherOrAdmin = sessionUser && ['TEACHER', 'HEAD_TEACHER', 'ADMIN'].includes(sessionUser.role);
+  const isStudentUser = sessionUser && sessionUser.role === 'STUDENT';
+  const isTokenValid = verifyReportToken(id, token);
+
+  // 토큰도 없고, 로그인된 교사/관리자도 아니며, 로그인된 학생도 아닌 경우 즉시 차단
+  if (!isTokenValid && !isTeacherOrAdmin && !isStudentUser) {
     return NextResponse.json({ error: '유효하지 않거나 만료된 링크입니다.' }, { status: 403 });
   }
 
@@ -22,6 +29,11 @@ export async function GET(req, { params }) {
 
   if (error || !evalData) {
     return NextResponse.json({ error: '등록된 피드백 정보를 찾을 수 없습니다.' }, { status: 404 });
+  }
+
+  // 학생 계정으로 로그인한 경우 본인 피드백만 열람 가능
+  if (!isTokenValid && !isTeacherOrAdmin && isStudentUser && sessionUser.id !== evalData.student_id) {
+    return NextResponse.json({ error: '본인의 피드백만 열람할 수 있습니다.' }, { status: 403 });
   }
 
   const { data: tData } = await db
@@ -56,7 +68,11 @@ export async function POST(req, { params }) {
   const { id } = await params;
   const token = req.nextUrl.searchParams.get('t');
 
-  if (!verifyReportToken(id, token)) {
+  const sessionUser = getSessionUser(req);
+  const isTeacherOrAdmin = sessionUser && ['TEACHER', 'HEAD_TEACHER', 'ADMIN'].includes(sessionUser.role);
+  const isTokenValid = verifyReportToken(id, token);
+
+  if (!isTokenValid && !isTeacherOrAdmin) {
     return NextResponse.json({ error: '유효하지 않거나 만료된 링크입니다.' }, { status: 403 });
   }
 

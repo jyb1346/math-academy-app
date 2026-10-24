@@ -753,6 +753,56 @@ export default function TeacherEvalPage() {
     }
   };
 
+  // 👥 반 전체 과제 일괄 검사 모달용: 특정 학생의 모든 누적 미완료 과제 일괄 완료 처리
+  const handleBulkUpdateStudentAllPending = async (studentId, newStatus = '완료') => {
+    try {
+      const studentEvals = classAllEvals.filter((e) => e.student_id === studentId);
+      const evalsToUpdate = [];
+
+      studentEvals.forEach((ev) => {
+        const parsed = parseEvaluationRecord(ev);
+        const hasPending = (parsed.homeworkBooks || []).some(
+          (b) => b.status !== newStatus
+        );
+        if (hasPending) {
+          evalsToUpdate.push(ev);
+        }
+      });
+
+      if (evalsToUpdate.length === 0) return;
+
+      for (const targetEval of evalsToUpdate) {
+        const updatedComment = updateAllBooksStatusInComment(targetEval.teacher_comment, newStatus);
+        const res = await fetch(`/api/eval/${targetEval.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ teacherComment: updatedComment }),
+        });
+        if (!res.ok) {
+          throw new Error('수정 실패');
+        }
+      }
+
+      setClassAllEvals((prev) =>
+        prev.map((item) => {
+          if (item.student_id === studentId) {
+            return {
+              ...item,
+              teacher_comment: updateAllBooksStatusInComment(item.teacher_comment, newStatus),
+            };
+          }
+          return item;
+        })
+      );
+
+      const targetStudent = students.find((s) => s.id === studentId);
+      showToast(`✅ [${targetStudent?.name || '학생'}]의 모든 누적 과제가 '${newStatus}'(으)로 일괄 변경되었습니다.`);
+    } catch (err) {
+      console.error('handleBulkUpdateStudentAllPending error:', err);
+      alert('누적 과제 일괄 수정 중 오류가 발생했습니다.');
+    }
+  };
+
   const handleModalUpdateEvaluation = async (evalId, updatedProgress, updatedBooks) => {
     try {
       const targetEval = classAllEvals.find((e) => e.id === evalId);
@@ -2815,6 +2865,7 @@ export default function TeacherEvalPage() {
             classAllEvals={classAllEvals}
             onStatusChange={handleModalHomeworkStatusChange}
             onBulkUpdateStudentStatus={handleBulkUpdateStudentHomeworkStatus}
+            onBulkUpdateStudentAllPending={handleBulkUpdateStudentAllPending}
             onOpenStudentModal={(st) => setHomeworkModalStudent(st)}
             showToast={showToast}
           />

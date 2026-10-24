@@ -111,6 +111,34 @@ export default function TeacherEvalPage() {
   const [showClassHomeworkModal, setShowClassHomeworkModal] = useState(false);
   const [classAllEvals, setClassAllEvals] = useState([]);
 
+  // 📋 반 과제 일괄 검사 모달 독립 상태 (전체 반 보기 및 개별 반 전환 지원)
+  const [inspectionClassId, setInspectionClassId] = useState('ALL');
+  const [inspectionStudents, setInspectionStudents] = useState([]);
+  const [inspectionAllEvals, setInspectionAllEvals] = useState([]);
+  const [inspectionLoading, setInspectionLoading] = useState(false);
+
+  const fetchInspectionData = async (classId) => {
+    setInspectionLoading(true);
+    try {
+      const res = await fetch(`/api/eval/class/${classId}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '조회 실패');
+      setInspectionStudents(data.students || []);
+      setInspectionAllEvals(data.evaluations || []);
+    } catch (err) {
+      console.error('fetchInspectionData error:', err);
+    } finally {
+      setInspectionLoading(false);
+    }
+  };
+
+  const handleOpenClassHomeworkInspection = () => {
+    const targetClass = selectedClassId || 'ALL';
+    setInspectionClassId(targetClass);
+    fetchInspectionData(targetClass);
+    setShowClassHomeworkModal(true);
+  };
+
   // 🚨 현재 반의 최근 과제 미완료 학생 수 실시간 집계 (툴바 뱃지용)
   const classIncompleteHomeworkCount = useMemo(() => {
     if (!students || students.length === 0 || !classAllEvals || classAllEvals.length === 0) return 0;
@@ -711,8 +739,13 @@ export default function TeacherEvalPage() {
           item.id === evalId ? { ...item, teacher_comment: updatedComment } : item
         )
       );
+      setInspectionAllEvals((prev) =>
+        prev.map((item) =>
+          item.id === evalId ? { ...item, teacher_comment: updatedComment } : item
+        )
+      );
 
-      const targetStudent = students.find((s) => s.id === targetEval.student_id);
+      const targetStudent = (inspectionStudents.length > 0 ? inspectionStudents : students).find((s) => s.id === targetEval.student_id);
       const studentDisplayName = homeworkModalStudent?.name || targetStudent?.name || '학생';
       showToast(`✅ [${studentDisplayName}]의 [${bookName}] 과제 상태가 '${newStatus}'(으)로 변경되었습니다.`);
     } catch (err) {
@@ -744,8 +777,13 @@ export default function TeacherEvalPage() {
           item.id === evalId ? { ...item, teacher_comment: updatedComment } : item
         )
       );
+      setInspectionAllEvals((prev) =>
+        prev.map((item) =>
+          item.id === evalId ? { ...item, teacher_comment: updatedComment } : item
+        )
+      );
 
-      const targetStudent = students.find((s) => s.id === targetEval.student_id);
+      const targetStudent = (inspectionStudents.length > 0 ? inspectionStudents : students).find((s) => s.id === targetEval.student_id);
       showToast(`✅ [${targetStudent?.name || '학생'}]의 모든 과제가 '${newStatus}'(으)로 변경되었습니다.`);
     } catch (err) {
       console.error('handleBulkUpdateStudentHomeworkStatus error:', err);
@@ -794,8 +832,19 @@ export default function TeacherEvalPage() {
           return item;
         })
       );
+      setInspectionAllEvals((prev) =>
+        prev.map((item) => {
+          if (item.student_id === studentId) {
+            return {
+              ...item,
+              teacher_comment: updateAllBooksStatusInComment(item.teacher_comment, newStatus),
+            };
+          }
+          return item;
+        })
+      );
 
-      const targetStudent = students.find((s) => s.id === studentId);
+      const targetStudent = (inspectionStudents.length > 0 ? inspectionStudents : students).find((s) => s.id === studentId);
       showToast(`✅ [${targetStudent?.name || '학생'}]의 모든 누적 과제가 '${newStatus}'(으)로 일괄 변경되었습니다.`);
     } catch (err) {
       console.error('handleBulkUpdateStudentAllPending error:', err);
@@ -1500,7 +1549,7 @@ export default function TeacherEvalPage() {
           {/* 📋 반 과제 일괄 검사 툴바 버튼 (피드백 히스토리 왼쪽) */}
           <button
             type="button"
-            onClick={() => setShowClassHomeworkModal(true)}
+            onClick={handleOpenClassHomeworkInspection}
             className="text-xs font-extrabold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-3 py-1.5 rounded-xl shadow-2xs transition flex items-center gap-1.5 active:scale-95 cursor-pointer"
             title="반 전체 학생의 최근 교재별 과제 상태를 한눈에 검사하고 미완료자를 확인합니다"
           >
@@ -2855,14 +2904,15 @@ export default function TeacherEvalPage() {
           <ClassHomeworkInspectionModal
             isOpen={showClassHomeworkModal}
             onClose={() => setShowClassHomeworkModal(false)}
-            selectedClass={classes.find((c) => String(c.id) === String(selectedClassId))}
+            selectedClassId={inspectionClassId}
             classes={classes}
             onSelectClass={(newClassId) => {
-              setSelectedClassId(newClassId);
-              fetchClassStudents(newClassId);
+              setInspectionClassId(newClassId);
+              fetchInspectionData(newClassId);
             }}
-            students={students}
-            classAllEvals={classAllEvals}
+            students={inspectionStudents.length > 0 ? inspectionStudents : students}
+            classAllEvals={inspectionAllEvals.length > 0 ? inspectionAllEvals : classAllEvals}
+            isLoading={inspectionLoading}
             onStatusChange={handleModalHomeworkStatusChange}
             onBulkUpdateStudentStatus={handleBulkUpdateStudentHomeworkStatus}
             onBulkUpdateStudentAllPending={handleBulkUpdateStudentAllPending}

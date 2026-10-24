@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import ClassHomeworkInspectionModal from '@/components/ClassHomeworkInspectionModal';
 import { useRouter } from 'next/navigation';
 import StudentHomeworkTable from '@/components/StudentHomeworkTable';
 import { getClientCache, setClientCache, invalidateClientCache } from '@/lib/clientCache';
@@ -12,6 +13,7 @@ import {
   extractRecentBookNamesFromEvaluations,
   extractAllUniqueBookNamesFromEvaluations,
   updateBookStatusInComment,
+  updateAllBooksStatusInComment,
   updateEvaluationProgressAndBooksInComment,
 } from '@/lib/evalUtils';
 
@@ -106,7 +108,31 @@ export default function TeacherEvalPage() {
 
   // 👥 판서수업(반 일괄)용 누적 과제표 검사 모달 상태 및 반 전체 평가 기록
   const [homeworkModalStudent, setHomeworkModalStudent] = useState(null);
+  const [showClassHomeworkModal, setShowClassHomeworkModal] = useState(false);
   const [classAllEvals, setClassAllEvals] = useState([]);
+
+  // 🚨 현재 반의 최근 과제 미완료 학생 수 실시간 집계 (툴바 뱃지용)
+  const classIncompleteHomeworkCount = useMemo(() => {
+    if (!students || students.length === 0 || !classAllEvals || classAllEvals.length === 0) return 0;
+    let count = 0;
+    students.forEach((st) => {
+      const studentEvals = classAllEvals.filter((e) => e.student_id === st.id);
+      if (studentEvals.length === 0) return;
+      const evalsWithBooks = studentEvals
+        .map((e) => ({ ...e, parsed: parseEvaluationRecord(e) }))
+        .filter((e) => (e.parsed.homeworkBooks || []).length > 0)
+        .sort((a, b) => new Date(b.eval_date).getTime() - new Date(a.eval_date).getTime());
+
+      if (evalsWithBooks.length > 0) {
+        const latest = evalsWithBooks[0];
+        const hasIncomplete = latest.parsed.homeworkBooks.some(
+          (b) => b.status === '미완료' || b.status === '일부완료' || b.status === '질문남음' || b.status === '미체크' || !b.status
+        );
+        if (hasIncomplete) count++;
+      }
+    });
+    return count;
+  }, [students, classAllEvals]);
 
   const [loading, setLoading] = useState(true);
   const router = useRouter();
@@ -686,10 +712,44 @@ export default function TeacherEvalPage() {
         )
       );
 
-      showToast(`✅ [${homeworkModalStudent?.name || '학생'}]의 [${bookName}] 과제 상태가 '${newStatus}'(으)로 변경되었습니다.`);
+      const targetStudent = students.find((s) => s.id === targetEval.student_id);
+      const studentDisplayName = homeworkModalStudent?.name || targetStudent?.name || '학생';
+      showToast(`✅ [${studentDisplayName}]의 [${bookName}] 과제 상태가 '${newStatus}'(으)로 변경되었습니다.`);
     } catch (err) {
       console.error('handleModalHomeworkStatusChange error:', err);
       alert('과제 상태 수정 중 오류가 발생했습니다.');
+    }
+  };
+
+  // 👥 반 전체 과제 일괄 검사 모달용: 특정 학생의 모든 교재 상태 일괄 변경
+  const handleBulkUpdateStudentHomeworkStatus = async (evalId, newStatus) => {
+    try {
+      const targetEval = classAllEvals.find((e) => e.id === evalId);
+      if (!targetEval) return;
+
+      const updatedComment = updateAllBooksStatusInComment(targetEval.teacher_comment, newStatus);
+
+      const res = await fetch(`/api/eval/${evalId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teacherComment: updatedComment }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || '수정 실패');
+      }
+
+      setClassAllEvals((prev) =>
+        prev.map((item) =>
+          item.id === evalId ? { ...item, teacher_comment: updatedComment } : item
+        )
+      );
+
+      const targetStudent = students.find((s) => s.id === targetEval.student_id);
+      showToast(`✅ [${targetStudent?.name || '학생'}]의 모든 과제가 '${newStatus}'(으)로 변경되었습니다.`);
+    } catch (err) {
+      console.error('handleBulkUpdateStudentHomeworkStatus error:', err);
+      alert('과제 상태 일괄 수정 중 오류가 발생했습니다.');
     }
   };
 
@@ -1387,6 +1447,22 @@ export default function TeacherEvalPage() {
           </h1>
         </div>
         <div className="flex items-center gap-2">
+          {/* 📋 반 과제 일괄 검사 툴바 버튼 (피드백 히스토리 왼쪽) */}
+          <button
+            type="button"
+            onClick={() => setShowClassHomeworkModal(true)}
+            className="text-xs font-extrabold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-3 py-1.5 rounded-xl shadow-2xs transition flex items-center gap-1.5 active:scale-95 cursor-pointer"
+            title="반 전체 학생의 최근 교재별 과제 상태를 한눈에 검사하고 미완료자를 확인합니다"
+          >
+            <span>📋</span>
+            <span>반 과제 일괄 검사</span>
+            {classIncompleteHomeworkCount > 0 && (
+              <span className="bg-rose-500 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full animate-pulse">
+                미완 {classIncompleteHomeworkCount}
+              </span>
+            )}
+          </button>
+
           <button
             onClick={() => router.push('/teacher/eval/history')}
             className="text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-xl border border-indigo-200 transition"
@@ -2724,6 +2800,24 @@ export default function TeacherEvalPage() {
               <span>{actionToast}</span>
             </div>
           )}
+
+          {/* 📋 반 전체 과제 일괄 검사 모달 */}
+          <ClassHomeworkInspectionModal
+            isOpen={showClassHomeworkModal}
+            onClose={() => setShowClassHomeworkModal(false)}
+            selectedClass={classes.find((c) => String(c.id) === String(selectedClassId))}
+            classes={classes}
+            onSelectClass={(newClassId) => {
+              setSelectedClassId(newClassId);
+              fetchClassStudents(newClassId);
+            }}
+            students={students}
+            classAllEvals={classAllEvals}
+            onStatusChange={handleModalHomeworkStatusChange}
+            onBulkUpdateStudentStatus={handleBulkUpdateStudentHomeworkStatus}
+            onOpenStudentModal={(st) => setHomeworkModalStudent(st)}
+            showToast={showToast}
+          />
 
           {/* 📑 판서수업(반 일괄 모드)용 학생 누적 과제표 검사 팝업 모달 */}
           {homeworkModalStudent && (

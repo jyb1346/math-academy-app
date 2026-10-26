@@ -49,8 +49,26 @@ export default function ClassHomeworkInspectionModal({
   // 3. ⏳ 가장 최근에 올라온 숙제 제외하고 보기 토글 (과거 밀린 숙제만 보기)
   const [excludeLatestHomework, setExcludeLatestHomework] = useState(false);
 
-  // 4. 필터 탭: 'ALL' (전체) | 'INCOMPLETE' (미완료/보완필요) | 'COMPLETED' (완료)
-  const [filterTab, setFilterTab] = useState('ALL');
+  // 4. ✅ 완료된 과제 숨기기 토글 (실시간 검사: 완료 체크 시 화면에서 즉시 사라짐)
+  const [hideCompletedTasks, setHideCompletedTasks] = useState(true);
+
+  // 개별 학생별 완료 과제 수동 펼침 상태 Set
+  const [expandedCompletedStudentIds, setExpandedCompletedStudentIds] = useState(new Set());
+
+  const toggleExpandCompleted = (studentId) => {
+    setExpandedCompletedStudentIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(studentId)) {
+        next.delete(studentId);
+      } else {
+        next.add(studentId);
+      }
+      return next;
+    });
+  };
+
+  // 5. 필터 탭: 'ALL' (전체) | 'INCOMPLETE' (미완료/보완필요) | 'COMPLETED' (완료) - 기본 미완료 탭
+  const [filterTab, setFilterTab] = useState('INCOMPLETE');
 
   // 5. 뷰 모드: 'CARDS' (학생별 카드 뷰) | 'TABLE' (엑셀 매트릭스 표 뷰)
   const [viewMode, setViewMode] = useState('CARDS');
@@ -366,6 +384,24 @@ export default function ClassHomeworkInspectionModal({
                   className="w-3.5 h-3.5 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
                 />
                 <span>⏳ 가장 최근 숙제 제외 (과거 밀린 숙제만)</span>
+              </label>
+
+              {/* 4. ✅ 완료된 과제 즉시 숨기기 토글 (실시간 숙제 검사용) */}
+              <label
+                className={`flex items-center gap-1.5 cursor-pointer px-2.5 py-1 rounded-xl border text-xs font-black transition select-none shadow-2xs ${
+                  hideCompletedTasks
+                    ? 'bg-emerald-100 border-emerald-400 text-emerald-950 ring-1 ring-emerald-300'
+                    : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
+                }`}
+                title="체크 완료된 과제는 화면에서 즉시 숨겨, 검사할 남은 숙제만 집중해서 봅니다"
+              >
+                <input
+                  type="checkbox"
+                  checked={hideCompletedTasks}
+                  onChange={(e) => setHideCompletedTasks(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                />
+                <span>✅ 완료 과제 숨김</span>
               </label>
 
               {/* 4. 뷰 모드 전환 버튼: 카드 뷰 vs 엑셀 표 뷰 */}
@@ -721,71 +757,127 @@ export default function ClassHomeworkInspectionModal({
                     </div>
                   </div>
 
-                  {/* 과제 태스크 리스트 (날짜 뱃지 + 교재 + 5개 상태 버튼) */}
-                  {row.hasTasks ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 border-t border-slate-100">
-                      {row.allTasks.map((task, idx) => {
-                        const currentStatus = task.status || '미체크';
+                  {/* 과제 태스크 리스트 (실시간 완료 숨김 및 날짜 뱃지 + 교재 + 5개 상태 버튼) */}
+                  {row.hasTasks ? (() => {
+                    const isExpanded = expandedCompletedStudentIds.has(row.student.id);
+                    const tasksToDisplay = hideCompletedTasks && !isExpanded
+                      ? row.allTasks.filter((t) => t.status !== '완료')
+                      : row.allTasks;
 
-                        return (
-                          <div
-                            key={`${task.evalId}_${task.bookName}_${idx}`}
-                            className={`p-2.5 rounded-xl border transition space-y-1.5 ${
-                              currentStatus === '완료'
-                                ? 'bg-slate-50/70 border-slate-200'
-                                : 'bg-white border-rose-200/90 shadow-2xs ring-1 ring-rose-100'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between text-xs gap-1.5">
-                              <div className="flex items-center gap-1.5 truncate">
-                                {/* 날짜 태그 */}
-                                <span className="text-[10px] font-black px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 shrink-0">
-                                  {task.formattedDate}
-                                </span>
-                                <span className="font-extrabold text-slate-800 truncate" title={task.bookName}>
-                                  📖 {task.bookName}
-                                </span>
-                              </div>
-                              <span className="text-[10.5px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded truncate max-w-[130px] shrink-0">
-                                {task.range || '범위 미지정'}
-                              </span>
-                            </div>
-
-                            {/* 5가지 상태 선택 버튼 바 (1클릭 변경) */}
-                            <div className="grid grid-cols-5 gap-1 pt-0.5">
-                              {HOMEWORK_STATUS_OPTIONS.map((opt) => {
-                                const isSelected = currentStatus === opt.value;
-
-                                return (
-                                  <button
-                                    key={opt.value}
-                                    type="button"
-                                    onClick={() => onStatusChange && onStatusChange(task.evalId, task.bookName, opt.value)}
-                                    className={`py-1 text-[10.5px] font-extrabold rounded-lg border transition text-center cursor-pointer active:scale-95 ${
-                                      isSelected
-                                        ? opt.value === '완료'
-                                          ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs ring-1 ring-emerald-300'
-                                          : opt.value === '일부완료'
-                                          ? 'bg-sky-500 text-white border-sky-600 shadow-xs ring-1 ring-sky-300'
-                                          : opt.value === '미완료'
-                                          ? 'bg-rose-600 text-white border-rose-700 shadow-xs ring-1 ring-rose-300'
-                                          : opt.value === '질문남음'
-                                          ? 'bg-amber-500 text-white border-amber-600 shadow-xs ring-1 ring-amber-300'
-                                          : 'bg-slate-700 text-white border-slate-800 shadow-xs'
-                                        : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200'
-                                    }`}
-                                    title={`${task.formattedDate} [${task.bookName}] 과제 상태를 '${opt.value}'(으)로 변경`}
-                                  >
-                                    {opt.value}
-                                  </button>
-                                );
-                              })}
-                            </div>
+                    if (tasksToDisplay.length === 0) {
+                      return (
+                        <div className="pt-2 border-t border-slate-100 space-y-2">
+                          <div className="flex items-center justify-between p-2.5 bg-emerald-50/70 border border-emerald-200/90 rounded-xl text-xs">
+                            <span className="font-extrabold text-emerald-800 flex items-center gap-1.5">
+                              <span>🎉</span>
+                              <span>모든 과제 검사가 완료되었습니다! ({row.completedTasksCount}건 완료)</span>
+                            </span>
+                            {row.completedTasksCount > 0 && hideCompletedTasks && (
+                              <button
+                                type="button"
+                                onClick={() => toggleExpandCompleted(row.student.id)}
+                                className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 underline cursor-pointer"
+                              >
+                                {isExpanded ? '완료 과제 접기 ▲' : `완료 내역 보기 (${row.completedTasksCount}건) ▼`}
+                              </button>
+                            )}
                           </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="space-y-2 pt-1 border-t border-slate-100">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          {tasksToDisplay.map((task, idx) => {
+                            const currentStatus = task.status || '미체크';
+
+                            return (
+                              <div
+                                key={`${task.evalId}_${task.bookName}_${idx}`}
+                                className={`p-2.5 rounded-xl border transition space-y-1.5 ${
+                                  currentStatus === '완료'
+                                    ? 'bg-slate-50/70 border-slate-200'
+                                    : 'bg-white border-rose-200/90 shadow-2xs ring-1 ring-rose-100'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between text-xs gap-1.5">
+                                  <div className="flex items-center gap-1.5 truncate">
+                                    {/* 날짜 태그 */}
+                                    <span className="text-[10px] font-black px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 shrink-0">
+                                      {task.formattedDate}
+                                    </span>
+                                    <span className="font-extrabold text-slate-800 truncate" title={task.bookName}>
+                                      📖 {task.bookName}
+                                    </span>
+                                  </div>
+                                  <span className="text-[10.5px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded truncate max-w-[130px] shrink-0">
+                                    {task.range || '범위 미지정'}
+                                  </span>
+                                </div>
+
+                                {/* 5가지 상태 선택 버튼 바 (1클릭 변경) */}
+                                <div className="grid grid-cols-5 gap-1 pt-0.5">
+                                  {HOMEWORK_STATUS_OPTIONS.map((opt) => {
+                                    const isSelected = currentStatus === opt.value;
+
+                                    return (
+                                      <button
+                                        key={opt.value}
+                                        type="button"
+                                        onClick={() => onStatusChange && onStatusChange(task.evalId, task.bookName, opt.value)}
+                                        className={`py-1 text-[10.5px] font-extrabold rounded-lg border transition text-center cursor-pointer active:scale-95 ${
+                                          isSelected
+                                            ? opt.value === '완료'
+                                              ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs ring-1 ring-emerald-300'
+                                              : opt.value === '일부완료'
+                                              ? 'bg-sky-500 text-white border-sky-600 shadow-xs ring-1 ring-sky-300'
+                                              : opt.value === '미완료'
+                                              ? 'bg-rose-600 text-white border-rose-700 shadow-xs ring-1 ring-rose-300'
+                                              : opt.value === '질문남음'
+                                              ? 'bg-amber-500 text-white border-amber-600 shadow-xs ring-1 ring-amber-300'
+                                              : 'bg-slate-700 text-white border-slate-800 shadow-xs'
+                                            : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200'
+                                        }`}
+                                        title={`${task.formattedDate} [${task.bookName}] 과제 상태를 '${opt.value}'(으)로 변경`}
+                                      >
+                                        {opt.value}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* 완료 과제 접기/펼치기 보조 안내 버튼 */}
+                        {hideCompletedTasks && !isExpanded && row.completedTasksCount > 0 && (
+                          <div className="flex justify-end pt-0.5">
+                            <button
+                              type="button"
+                              onClick={() => toggleExpandCompleted(row.student.id)}
+                              className="text-[11px] font-semibold text-slate-400 hover:text-indigo-600 transition cursor-pointer flex items-center gap-1"
+                            >
+                              <span>✓ 완료된 과제 ${row.completedTasksCount}건 숨김됨</span>
+                              <span className="underline">(펼쳐보기)</span>
+                            </button>
+                          </div>
+                        )}
+                        {isExpanded && row.completedTasksCount > 0 && (
+                          <div className="flex justify-end pt-0.5">
+                            <button
+                              type="button"
+                              onClick={() => toggleExpandCompleted(row.student.id)}
+                              className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 transition cursor-pointer"
+                            >
+                              ▲ 완료된 과제 다시 숨기기
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })() : (
                     <div className="text-[11px] text-slate-400 font-medium py-1">
                       {excludeLatestHomework
                         ? '가장 최근 숙제를 제외한 과거 미완료 과제가 없습니다.'

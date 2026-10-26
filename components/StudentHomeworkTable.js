@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { parseEvaluationRecord, HOMEWORK_STATUS_OPTIONS } from '@/lib/evalUtils';
+import { parseEvaluationRecord, HOMEWORK_STATUS_OPTIONS, analyzeStudentLearningState } from '@/lib/evalUtils';
+import StudentDiagnosticCard from '@/components/StudentDiagnosticCard';
 
 /**
  * 📊 학생별 진도 & 교재별 과제 체크표 (엑셀 과제표 + 일자별 카드 뷰)
@@ -38,6 +39,12 @@ export default function StudentHomeworkTable({
 
   // 📌 최근 진행 중인 교재만 필터링 여부 (기본 true)
   const [onlyActiveBooks, setOnlyActiveBooks] = useState(true);
+
+  // 🧠 선생님 전용: 학생 학습 상태 AI 정밀 진단 계산
+  const diagnostic = useMemo(() => {
+    if (!isEditable) return null;
+    return analyzeStudentLearningState(evaluations);
+  }, [evaluations, isEditable]);
 
   // 1. 모든 평가 레코드에서 사용된 고유 교재명 목록 추출 및 최신 사용순 정렬
   const { tableRows, allBookNames, activeBookNames } = useMemo(() => {
@@ -379,6 +386,11 @@ export default function StudentHomeworkTable({
       </div>
 
       {/* ========================================================= */}
+      {/* 🧠 선생님 전용: 학생 학습 상태 AI 정밀 진단 리포트 */}
+      {isEditable && diagnostic && (
+        <StudentDiagnosticCard studentName={studentName} diagnostic={diagnostic} defaultExpanded={false} />
+      )}
+
       {/* 1. 📊 엑셀 스타일 테이블 뷰 (상단 헤더 Sticky + 좌측 [날짜]만 Sticky 고정) */}
       {/* ========================================================= */}
       {viewMode === 'TABLE' && (

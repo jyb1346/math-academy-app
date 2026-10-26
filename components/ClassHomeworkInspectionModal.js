@@ -1,17 +1,19 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { parseEvaluationRecord, HOMEWORK_STATUS_OPTIONS } from '@/lib/evalUtils';
+import {
+  parseEvaluationRecord,
+  HOMEWORK_STATUS_OPTIONS,
+  analyzeStudentLearningState,
+} from '@/lib/evalUtils';
+import StudentDiagnosticCard from '@/components/StudentDiagnosticCard';
 
 /**
- * 📋 반 전체 과제 일괄 검사표 모달
+ * 📋 반 전체 과제 일괄 검사표 & AI 학습 상태 정밀 진단 모달
  * - [🌐 전체 반 보기]: 반 구분 없이 담당하는 모든 반의 학생들을 한 화면에서 일괄 검사
  * - [⏳ 가장 최근 숙제 제외]: 오늘/직전 회차 최신 과제를 제외하고, 과거에 밀린 미완료 과제만 집중 검사
- * - [🌐 전체 기간 누적 통합 뷰]: 모든 날짜의 과제를 한눈에 모아서 검사
- * - [📅 특정 수업일자별 뷰]: 특정 수업일의 과제만 집중 검사
- * - [📊 엑셀 매트릭스 표 뷰] 및 [📑 학생별 카드 뷰] 지원
- * - 미완료 학생 명단 원클릭 클립보드 복사
- * - 학생별 누적 미완료 과제 원클릭 일괄 완료 처리
+ * - [✅ 완료 과제 자동 숨김]: 완료 클릭 시 화면에서 즉시 사라지는 실시간 체크리스트 모드
+ * - [🧠 AI 학습 상태 정밀 진단]: 출결 리듬 + 정시/지연 이행도 + 미완료 원인(태도/분량/난이도) + 성취도 교차 검증
  */
 export default function ClassHomeworkInspectionModal({
   isOpen,
@@ -67,21 +69,40 @@ export default function ClassHomeworkInspectionModal({
     });
   };
 
-  // 5. 필터 탭: 'ALL' (전체) | 'INCOMPLETE' (미완료/보완필요) | 'COMPLETED' (완료) - 기본 미완료 탭
+  // 🧠 개별 학생별 AI 정밀 진단 카드 펼침 상태 Set & 전체 진단 펼침 토글
+  const [expandedDiagnosticStudentIds, setExpandedDiagnosticStudentIds] = useState(new Set());
+  const [showAllDiagnostics, setShowAllDiagnostics] = useState(false);
+
+  const toggleDiagnosticForStudent = (studentId) => {
+    setExpandedDiagnosticStudentIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(studentId)) {
+        next.delete(studentId);
+      } else {
+        next.add(studentId);
+      }
+      return next;
+    });
+  };
+
+  // 5. 필터 탭: 'INCOMPLETE' (미완료 학생 - 기본) | 'CARE_NEEDED' (AI 집중케어/지연군) | 'ALL' (전체) | 'COMPLETED' (전체 완료)
   const [filterTab, setFilterTab] = useState('INCOMPLETE');
 
-  // 5. 뷰 모드: 'CARDS' (학생별 카드 뷰) | 'TABLE' (엑셀 매트릭스 표 뷰)
+  // 6. 뷰 모드: 'CARDS' (학생별 카드 뷰) | 'TABLE' (엑셀 매트릭스 표 뷰)
   const [viewMode, setViewMode] = useState('CARDS');
 
-  // 6. 검색어 (학생 이름 또는 반 이름)
+  // 7. 검색어 (학생 이름 또는 반 이름)
   const [searchQuery, setSearchQuery] = useState('');
 
-  // 7. 학생별 과제 데이터 집계
+  // 8. 학생별 과제 데이터 및 AI 정밀 학습 상태 집계
   const studentInspectionRows = useMemo(() => {
     if (!students || students.length === 0) return [];
 
     return students.map((st) => {
       const studentEvals = (classAllEvals || []).filter((e) => e.student_id === st.id);
+
+      // 🧠 학생 전체 누적 기록 기반 AI 학습 상태 정밀 진단 실행
+      const diagnostic = analyzeStudentLearningState(studentEvals);
 
       // 과제가 부여된 평가들을 최신순 정렬
       const evalsWithBooks = studentEvals
@@ -117,6 +138,9 @@ export default function ClassHomeworkInspectionModal({
             bookName: b.name,
             range: b.range || '',
             status: b.status || '미체크',
+            firstStatus: b.firstStatus || null,
+            firstCheckedAt: b.firstCheckedAt || null,
+            completedAt: b.completedAt || null,
           });
         });
       });
@@ -124,7 +148,12 @@ export default function ClassHomeworkInspectionModal({
       const totalTasksCount = allTasks.length;
       const completedTasksCount = allTasks.filter((t) => t.status === '완료').length;
       const incompleteTasks = allTasks.filter(
-        (t) => t.status === '미완료' || t.status === '일부완료' || t.status === '질문남음' || t.status === '미체크' || !t.status
+        (t) =>
+          t.status === '미완료' ||
+          t.status === '일부완료' ||
+          t.status === '질문남음' ||
+          t.status === '미체크' ||
+          !t.status
       );
       const incompleteTasksCount = incompleteTasks.length;
 
@@ -132,13 +161,16 @@ export default function ClassHomeworkInspectionModal({
       const allCompleted = hasTasks && incompleteTasksCount === 0;
       const hasIncomplete = incompleteTasksCount > 0;
 
-      // 가장 최근 출결 상태
-      const latestEval = studentEvals.sort((a, b) => new Date(b.eval_date) - new Date(a.eval_date))[0];
+      const isCareNeeded =
+        diagnostic.grade.level === 'CRITICAL' ||
+        diagnostic.grade.level === 'WARNING' ||
+        diagnostic.achievement.isSuperficialSuspect;
 
       return {
         student: st,
         className: st.className || '',
-        attendanceStatus: latestEval?.attendance_status || 'ATTEND',
+        diagnostic,
+        isCareNeeded,
         targetEvals,
         allTasks,
         incompleteTasks,
@@ -152,16 +184,19 @@ export default function ClassHomeworkInspectionModal({
     });
   }, [students, classAllEvals, selectedDateFilter, excludeLatestHomework]);
 
-  // 8. 통계 계산
+  // 9. 통계 계산
   const stats = useMemo(() => {
     const totalStudents = studentInspectionRows.length;
     let completedCount = 0;
     let incompleteCount = 0;
     let noHomeworkCount = 0;
     let totalPendingTasks = 0;
+    let careNeededCount = 0;
 
     studentInspectionRows.forEach((row) => {
       totalPendingTasks += row.incompleteTasksCount;
+      if (row.isCareNeeded) careNeededCount++;
+
       if (!row.hasTasks) {
         noHomeworkCount++;
       } else if (row.allCompleted) {
@@ -171,10 +206,10 @@ export default function ClassHomeworkInspectionModal({
       }
     });
 
-    return { totalStudents, completedCount, incompleteCount, noHomeworkCount, totalPendingTasks };
+    return { totalStudents, completedCount, incompleteCount, noHomeworkCount, totalPendingTasks, careNeededCount };
   }, [studentInspectionRows]);
 
-  // 9. 필터 및 검색 적용된 행 목록
+  // 10. 필터 및 검색 적용된 행 목록
   const filteredRows = useMemo(() => {
     return studentInspectionRows.filter((row) => {
       if (searchQuery.trim()) {
@@ -189,11 +224,14 @@ export default function ClassHomeworkInspectionModal({
       if (filterTab === 'INCOMPLETE') {
         return row.hasTasks && row.hasIncomplete;
       }
+      if (filterTab === 'CARE_NEEDED') {
+        return row.isCareNeeded;
+      }
       return true;
     });
   }, [studentInspectionRows, filterTab, searchQuery]);
 
-  // 10. 미완료자 명단 클립보드 복사 핸들러
+  // 11. 미완료자 명단 클립보드 복사 핸들러
   const handleCopyIncompleteStudents = () => {
     const incompleteRows = studentInspectionRows.filter((r) => r.hasTasks && r.hasIncomplete);
 
@@ -203,7 +241,7 @@ export default function ClassHomeworkInspectionModal({
     }
 
     const currentClassObj = classes.find((c) => String(c.id) === String(selectedClassId));
-    const className = selectedClassId === 'ALL' ? '품수학 전체 반' : (currentClassObj?.name || '해당 반');
+    const className = selectedClassId === 'ALL' ? '품수학 전체 반' : currentClassObj?.name || '해당 반';
     const isAllMode = selectedDateFilter === 'ALL';
     const scopeLabel = isAllMode
       ? excludeLatestHomework
@@ -218,7 +256,7 @@ export default function ClassHomeworkInspectionModal({
 
     incompleteRows.forEach((r) => {
       const classTag = selectedClassId === 'ALL' && r.className ? `[${r.className}] ` : '';
-      lines.push(`• ${classTag}${r.student.name}:`);
+      lines.push(`• ${classTag}${r.student.name} (${r.diagnostic.grade.shortLabel}):`);
       r.incompleteTasks.forEach((t) => {
         const dateTag = isAllMode ? `[${t.formattedDate}] ` : '';
         lines.push(`   - ${dateTag}${t.bookName}(${t.range}): ${t.status}`);
@@ -243,8 +281,8 @@ export default function ClassHomeworkInspectionModal({
       });
   };
 
-  // 11. 학생의 모든 누적 미완료 과제 일괄 완료 처리
-  const handleCompleteAllForStudent = async (studentId, studentName) => {
+  // 12. 학생의 모든 누적 미완료 과제 일괄 완료 처리
+  const handleCompleteAllForStudent = async (studentId) => {
     if (!studentId) return;
     if (onBulkUpdateStudentAllPending) {
       await onBulkUpdateStudentAllPending(studentId, '완료');
@@ -258,7 +296,7 @@ export default function ClassHomeworkInspectionModal({
     }
   };
 
-  // 12. 엑셀 표(Matrix) 뷰를 위한 고유 날짜/교재 열 목록 추출
+  // 13. 엑셀 표(Matrix) 뷰를 위한 고유 날짜/교재 열 목록 추출
   const matrixColumns = useMemo(() => {
     if (viewMode !== 'TABLE') return [];
 
@@ -288,7 +326,6 @@ export default function ClassHomeworkInspectionModal({
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-4 animate-fade-in">
       <div className="bg-white rounded-3xl max-w-5xl w-full max-h-[94vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
-        
         {/* 모달 상단 헤더 */}
         <div className="p-4 sm:p-5 border-b border-slate-200 bg-slate-50/90 shrink-0">
           <div className="flex items-center justify-between gap-3">
@@ -296,10 +333,10 @@ export default function ClassHomeworkInspectionModal({
               <span className="text-xl">📋</span>
               <div>
                 <h3 className="text-base sm:text-lg font-black text-slate-800 flex items-center gap-2 flex-wrap">
-                  <span>반 전체 과제 일괄 검사표</span>
+                  <span>반 전체 과제 일괄 검사 & AI 학습 상태 진단</span>
                   {isAllClasses ? (
                     <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
-                      🌐 전체 반 통합 (반 구분 없음)
+                      🌐 전체 반 통합
                     </span>
                   ) : currentClassObj ? (
                     <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200">
@@ -308,14 +345,7 @@ export default function ClassHomeworkInspectionModal({
                   ) : null}
                 </h3>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">
-                  {isAllClasses
-                    ? '담당하는 모든 반의 학생들을 한 화면에서 종합 검사합니다.'
-                    : '선택된 반 소속 학생들의 과제 수행 여부를 검사합니다.'}
-                  {excludeLatestHomework && (
-                    <span className="text-amber-700 font-bold ml-1.5 bg-amber-100 px-1.5 py-0.2 rounded">
-                      (최신 숙제 제외: 과거 밀린 숙제만 검사 중)
-                    </span>
-                  )}
+                  완료 버튼을 누르면 화면에서 즉시 정리되며, 출결·과제 이행 패턴을 바탕으로 각 학생의 현재 학습 상태를 자동 진단합니다.
                 </p>
               </div>
             </div>
@@ -330,11 +360,10 @@ export default function ClassHomeworkInspectionModal({
             </button>
           </div>
 
-          {/* 컨트롤 바: 반 선택 / 검사 범위 / ⏳ 최신 숙제 제외 토글 / 뷰 모드 / 검색 */}
-          <div className="mt-3.5 pt-3 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-2.5">
+          {/* 컨트롤 바: 반 선택 / 검사 범위 / 최신 숙제 제외 / 완료 숨김 / AI 진단 전체 펼침 / 뷰 모드 / 검색 */}
+          <div className="mt-3.5 pt-3 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 flex-wrap">
-              
-              {/* 1. 🌐 반 선택 (전체 반 보기 포함) */}
+              {/* 1. 🌐 반 선택 */}
               <div className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-xl border border-slate-200 shadow-2xs">
                 <span className="text-xs font-bold text-slate-500">반:</span>
                 <select
@@ -351,7 +380,7 @@ export default function ClassHomeworkInspectionModal({
                 </select>
               </div>
 
-              {/* 2. 검사 범위: [🌐 전체 누적 통합] or [특정 수업일] */}
+              {/* 2. 검사 범위 */}
               <div className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-xl border border-indigo-200 shadow-2xs">
                 <span className="text-xs font-bold text-indigo-900">검사 범위:</span>
                 <select
@@ -368,7 +397,7 @@ export default function ClassHomeworkInspectionModal({
                 </select>
               </div>
 
-              {/* 3. ⏳ 가장 최근에 올라온 숙제 제외하고 보기 (과거 밀린 숙제 전용) */}
+              {/* 3. ⏳ 가장 최근 숙제 제외 */}
               <label
                 className={`flex items-center gap-1.5 cursor-pointer px-2.5 py-1 rounded-xl border text-xs font-black transition select-none shadow-2xs ${
                   excludeLatestHomework
@@ -383,10 +412,10 @@ export default function ClassHomeworkInspectionModal({
                   onChange={(e) => setExcludeLatestHomework(e.target.checked)}
                   className="w-3.5 h-3.5 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
                 />
-                <span>⏳ 가장 최근 숙제 제외 (과거 밀린 숙제만)</span>
+                <span>⏳ 최근 숙제 제외</span>
               </label>
 
-              {/* 4. ✅ 완료된 과제 즉시 숨기기 토글 (실시간 숙제 검사용) */}
+              {/* 4. ✅ 완료된 과제 즉시 숨김 토글 */}
               <label
                 className={`flex items-center gap-1.5 cursor-pointer px-2.5 py-1 rounded-xl border text-xs font-black transition select-none shadow-2xs ${
                   hideCompletedTasks
@@ -404,7 +433,25 @@ export default function ClassHomeworkInspectionModal({
                 <span>✅ 완료 과제 숨김</span>
               </label>
 
-              {/* 4. 뷰 모드 전환 버튼: 카드 뷰 vs 엑셀 표 뷰 */}
+              {/* 5. 🧠 AI 진단 리포트 일괄 펼침 토글 */}
+              <label
+                className={`flex items-center gap-1.5 cursor-pointer px-2.5 py-1 rounded-xl border text-xs font-black transition select-none shadow-2xs ${
+                  showAllDiagnostics
+                    ? 'bg-indigo-600 border-indigo-700 text-white'
+                    : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
+                }`}
+                title="모든 학생의 AI 정밀 학습 진단 리포트 카드를 한꺼번에 펼쳐서 봅니다"
+              >
+                <input
+                  type="checkbox"
+                  checked={showAllDiagnostics}
+                  onChange={(e) => setShowAllDiagnostics(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                />
+                <span>🧠 전체 정밀 진단 펼치기</span>
+              </label>
+
+              {/* 6. 뷰 모드 전환 버튼 */}
               <div className="flex items-center p-0.5 bg-slate-200/70 rounded-xl border border-slate-200 text-xs font-bold">
                 <button
                   type="button"
@@ -414,7 +461,6 @@ export default function ClassHomeworkInspectionModal({
                       ? 'bg-white text-indigo-700 font-extrabold shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
-                  title="학생별 과제 카드 뷰"
                 >
                   📑 카드 뷰
                 </button>
@@ -426,7 +472,6 @@ export default function ClassHomeworkInspectionModal({
                       ? 'bg-white text-indigo-700 font-extrabold shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
-                  title="반 전체 엑셀 현황표 뷰"
                 >
                   📊 엑셀 표 뷰
                 </button>
@@ -450,18 +495,7 @@ export default function ClassHomeworkInspectionModal({
         {/* 통계 요약 바 & 필터 탭 */}
         <div className="px-4 sm:px-5 py-2.5 bg-indigo-50/50 border-b border-indigo-100 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
           {/* 필터 탭 */}
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setFilterTab('ALL')}
-              className={`px-3 py-1 rounded-xl text-xs font-extrabold transition cursor-pointer ${
-                filterTab === 'ALL'
-                  ? 'bg-indigo-600 text-white shadow-2xs'
-                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-              }`}
-            >
-              전체 학생 ({stats.totalStudents}명)
-            </button>
+          <div className="flex items-center gap-1.5 flex-wrap">
             <button
               type="button"
               onClick={() => setFilterTab('INCOMPLETE')}
@@ -476,6 +510,35 @@ export default function ClassHomeworkInspectionModal({
                 {stats.incompleteCount}명 ({stats.totalPendingTasks}건)
               </span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => setFilterTab('CARE_NEEDED')}
+              className={`px-3 py-1 rounded-xl text-xs font-extrabold transition cursor-pointer flex items-center gap-1 ${
+                filterTab === 'CARE_NEEDED'
+                  ? 'bg-amber-600 text-white shadow-2xs'
+                  : 'bg-white text-amber-800 border border-amber-300 hover:bg-amber-50'
+              }`}
+              title="슬럼프 급락, 만성 지연 완료, 분량/난이도 병목, 형식적 숙제 의심 등 집중 관리가 필요한 학생만 모아봅니다"
+            >
+              <span>🧠 AI 집중케어 대상</span>
+              <span className="px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-900 text-[10.5px]">
+                {stats.careNeededCount}명
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setFilterTab('ALL')}
+              className={`px-3 py-1 rounded-xl text-xs font-extrabold transition cursor-pointer ${
+                filterTab === 'ALL'
+                  ? 'bg-indigo-600 text-white shadow-2xs'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              전체 학생 ({stats.totalStudents}명)
+            </button>
+
             <button
               type="button"
               onClick={() => setFilterTab('COMPLETED')}
@@ -521,6 +584,8 @@ export default function ClassHomeworkInspectionModal({
                   ? excludeLatestHomework
                     ? '가장 최근 숙제를 제외했을 때, 과거 밀린 과제가 있는 학생이 없습니다! (과거 과제 전원 완료 🎉)'
                     : '현재 미완료 과제가 있는 학생이 없습니다! 모든 과제가 완료되었습니다.'
+                  : filterTab === 'CARE_NEEDED'
+                  ? '현재 슬럼프 경보나 집중 케어가 필요한 위험군 학생이 없습니다!'
                   : filterTab === 'COMPLETED'
                   ? '아직 과제를 전체 완료한 학생이 없습니다.'
                   : '조건에 해당하는 학생이 없습니다.'}
@@ -535,60 +600,62 @@ export default function ClassHomeworkInspectionModal({
                     <th className="p-3 whitespace-nowrap min-w-[140px]">
                       {isAllClasses ? '반 / 학생명' : '학생명'}
                     </th>
-                    <th className="p-3 text-center whitespace-nowrap min-w-[110px]">과제 달성률</th>
+                    <th className="p-3 text-center whitespace-nowrap min-w-[130px] border-l border-slate-200">
+                      🧠 AI 학습 진단
+                    </th>
+                    <th className="p-3 text-center whitespace-nowrap min-w-[100px] border-l border-slate-200">
+                      정시 / 최종률
+                    </th>
                     {matrixColumns.map((col) => (
-                      <th key={col.key} className="p-2.5 text-center min-w-[140px] border-l border-slate-200/80">
-                        <div className="font-extrabold text-slate-800 truncate" title={col.bookName}>
-                          {col.bookName}
-                        </div>
-                        <div className="text-[10px] text-indigo-600 font-bold">
-                          {col.formattedDate} 수업
+                      <th
+                        key={col.key}
+                        className="p-2.5 text-center border-l border-slate-200 min-w-[165px] bg-slate-50"
+                      >
+                        <div className="text-[10px] font-black text-indigo-700">{col.formattedDate}</div>
+                        <div className="text-xs font-extrabold text-slate-800 truncate max-w-[155px]" title={col.bookName}>
+                          📖 {col.bookName}
                         </div>
                       </th>
                     ))}
-                    <th className="p-3 text-center whitespace-nowrap min-w-[100px] border-l border-slate-200">
+                    <th className="p-3 text-center whitespace-nowrap border-l border-slate-200 min-w-[110px]">
                       빠른 조작
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-200">
                   {filteredRows.map((row) => (
-                    <tr key={row.student.id} className="hover:bg-slate-50/70 transition">
-                      {/* 학생 이름 & 반 이름 */}
-                      <td className="p-3 font-black text-slate-800 whitespace-nowrap">
-                        <div className="space-y-0.5">
+                    <tr
+                      key={row.student.id}
+                      className={`hover:bg-slate-50/80 transition ${
+                        row.allCompleted ? 'bg-emerald-50/20' : row.hasIncomplete ? 'bg-white' : 'bg-slate-50/40'
+                      }`}
+                    >
+                      {/* 반 / 학생명 */}
+                      <td className="p-3 font-extrabold text-slate-800 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
                           {isAllClasses && row.className && (
-                            <span className="text-[9.5px] font-bold px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-100 inline-block mr-1">
+                            <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-purple-100 text-purple-800">
                               {row.className}
                             </span>
                           )}
-                          <div className="flex items-center gap-1.5">
-                            <span>{row.student.name}</span>
-                            {row.attendanceStatus === 'ABSENT' && (
-                              <span className="text-[9.5px] px-1 py-0.2 rounded bg-rose-100 text-rose-700 font-black">
-                                결석
-                              </span>
-                            )}
-                          </div>
+                          <span>{row.student.name}</span>
                         </div>
                       </td>
 
-                      {/* 달성률 */}
-                      <td className="p-3 text-center whitespace-nowrap">
-                        {row.hasTasks ? (
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10.5px] font-black ${
-                              row.allCompleted
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : 'bg-rose-100 text-rose-800'
-                            }`}
-                          >
-                            {row.completedTasksCount}/{row.totalTasksCount}건
-                            {row.allCompleted ? ' 🟢' : ' 🚨'}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400 text-[10px]">과제 없음</span>
-                        )}
+                      {/* AI 학습 진단 뱃지 */}
+                      <td className="p-2.5 text-center border-l border-slate-100 whitespace-nowrap">
+                        <span
+                          className={`inline-block text-[10.5px] font-black px-2 py-0.5 rounded-lg border ${row.diagnostic.grade.colorClass}`}
+                        >
+                          {row.diagnostic.grade.badgeText}
+                        </span>
+                      </td>
+
+                      {/* 정시 / 최종 완료율 */}
+                      <td className="p-2.5 text-center border-l border-slate-100 whitespace-nowrap text-[11px] font-bold">
+                        <span className="text-emerald-700 font-black">{row.diagnostic.homework.onTimeRate}%</span>
+                        <span className="text-slate-300 mx-1">/</span>
+                        <span className="text-indigo-700 font-black">{row.diagnostic.homework.finalCompletionRate}%</span>
                       </td>
 
                       {/* 각 날짜/교재별 셀 */}
@@ -620,7 +687,9 @@ export default function ClassHomeworkInspectionModal({
                                     <button
                                       key={opt.value}
                                       type="button"
-                                      onClick={() => onStatusChange && onStatusChange(task.evalId, task.bookName, opt.value)}
+                                      onClick={() =>
+                                        onStatusChange && onStatusChange(task.evalId, task.bookName, opt.value)
+                                      }
                                       className={`px-1 py-0.5 text-[9.5px] font-extrabold rounded transition ${
                                         isSelected
                                           ? opt.value === '완료'
@@ -634,7 +703,6 @@ export default function ClassHomeworkInspectionModal({
                                             : 'bg-slate-700 text-white shadow-2xs'
                                           : 'bg-slate-100 hover:bg-slate-200 text-slate-500'
                                       }`}
-                                      title={`${task.formattedDate} [${task.bookName}] 상태를 '${opt.value}'(으)로 변경`}
                                     >
                                       {opt.value === '일부완료' ? '일부' : opt.value === '질문남음' ? '질문' : opt.value}
                                     </button>
@@ -652,7 +720,7 @@ export default function ClassHomeworkInspectionModal({
                           {row.hasIncomplete && (
                             <button
                               type="button"
-                              onClick={() => handleCompleteAllForStudent(row.student.id, row.student.name)}
+                              onClick={() => handleCompleteAllForStudent(row.student.id)}
                               className="text-[11px] font-black bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-lg transition active:scale-95"
                               title="이 학생의 모든 미완료 과제를 완료로 변경"
                             >
@@ -661,9 +729,10 @@ export default function ClassHomeworkInspectionModal({
                           )}
                           <button
                             type="button"
-                            onClick={() => onOpenStudentModal && onOpenStudentModal({ ...row.student, student_id: row.student.id })}
+                            onClick={() =>
+                              onOpenStudentModal && onOpenStudentModal({ ...row.student, student_id: row.student.id })
+                            }
                             className="text-[11px] font-bold text-indigo-700 hover:bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-lg transition"
-                            title="개별 과제표 모달 열기"
                           >
                             과제표 ↗
                           </button>
@@ -675,217 +744,273 @@ export default function ClassHomeworkInspectionModal({
               </table>
             </div>
           ) : (
-            /* 📑 2. 학생별 카드 뷰 (상세 리스트 형태) */
+            /* 📑 2. 학생별 카드 뷰 (상세 리스트 + AI 상태 정밀 진단) */
             <div className="space-y-3">
-              {filteredRows.map((row) => (
-                <div
-                  key={row.student.id}
-                  className={`p-3.5 sm:p-4 rounded-2xl border transition space-y-3 ${
-                    row.allCompleted
-                      ? 'bg-emerald-50/40 border-emerald-200/90'
-                      : row.hasIncomplete
-                      ? 'bg-white border-rose-200/90 shadow-2xs hover:border-rose-300'
-                      : 'bg-slate-50/60 border-slate-200 opacity-75'
-                  }`}
-                >
-                  {/* 학생 헤더 행 */}
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {isAllClasses && row.className && (
-                        <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
-                          {row.className}
-                        </span>
-                      )}
-                      <span className="text-sm font-black text-slate-800">{row.student.name}</span>
-                      <span className="text-[11px] text-slate-400 font-medium">({row.student.email})</span>
+              {filteredRows.map((row) => {
+                const isDiagOpen = showAllDiagnostics || expandedDiagnosticStudentIds.has(row.student.id);
 
-                      {row.attendanceStatus === 'ABSENT' ? (
-                        <span className="text-[10.5px] font-black px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-700">
-                          🔴 결석
-                        </span>
-                      ) : row.attendanceStatus === 'LATE' ? (
-                        <span className="text-[10.5px] font-black px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-700">
-                          ⚡ 지각
-                        </span>
-                      ) : null}
-
-                      {/* 종합 상태 뱃지 */}
-                      {!row.hasTasks ? (
-                        <span className="text-[10.5px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md">
-                          {excludeLatestHomework ? '과거 밀린 과제 없음 (전원 완료 🟢)' : '부여된 과제 없음'}
-                        </span>
-                      ) : row.allCompleted ? (
-                        <span className="text-[10.5px] font-black text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-md flex items-center gap-1">
-                          <span>🟢</span>
-                          <span>
-                            {excludeLatestHomework ? '과거 과제 전체 완료' : '전체 완료'} ({row.completedTasksCount}건)
+                return (
+                  <div
+                    key={row.student.id}
+                    className={`p-3.5 sm:p-4 rounded-2xl border transition space-y-3 ${
+                      row.allCompleted
+                        ? 'bg-emerald-50/40 border-emerald-200/90'
+                        : row.hasIncomplete
+                        ? 'bg-white border-rose-200/90 shadow-2xs hover:border-rose-300'
+                        : 'bg-slate-50/60 border-slate-200 opacity-75'
+                    }`}
+                  >
+                    {/* 학생 헤더 행 */}
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {isAllClasses && row.className && (
+                          <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
+                            {row.className}
                           </span>
-                        </span>
-                      ) : (
-                        <span className="text-[10.5px] font-black text-rose-800 bg-rose-100 px-2.5 py-0.5 rounded-md flex items-center gap-1">
-                          <span>🚨</span>
-                          <span>
-                            미완료 {row.incompleteTasksCount}건 / 완료 {row.completedTasksCount}건 (총 {row.totalTasksCount}건)
-                          </span>
-                        </span>
-                      )}
-                    </div>
+                        )}
+                        <span className="text-sm font-black text-slate-800">{row.student.name}</span>
+                        <span className="text-[11px] text-slate-400 font-medium">({row.student.email})</span>
 
-                    <div className="flex items-center gap-1.5">
-                      {/* 누적 미완료 과제 일괄 완료 버튼 */}
-                      {row.hasIncomplete && (
+                        {/* 🧠 AI 학습 상태 정밀 진단 뱃지 (클릭 시 상세 리포트 토글) */}
                         <button
                           type="button"
-                          onClick={() => handleCompleteAllForStudent(row.student.id, row.student.name)}
-                          className="text-xs font-extrabold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-1 rounded-xl transition shadow-2xs active:scale-95 cursor-pointer"
-                          title="이 학생의 모든 미완료 과제를 '완료 🟢' 상태로 일괄 변경합니다"
+                          onClick={() => toggleDiagnosticForStudent(row.student.id)}
+                          className={`text-[11px] font-black px-2.5 py-0.5 rounded-lg border transition cursor-pointer flex items-center gap-1 hover:brightness-95 ${row.diagnostic.grade.colorClass}`}
+                          title="클릭하여 이 학생의 출결·과제 정시성·원인 분석 상세 리포트를 확인합니다"
                         >
-                          ⚡ 누적 과제 모두 완료
+                          <span>{row.diagnostic.grade.badgeText}</span>
+                          <span className="text-[9.5px] opacity-80">{isDiagOpen ? '▲' : '▼'}</span>
                         </button>
-                      )}
 
-                      {/* 개별 과제표 모달 열기 */}
-                      <button
-                        type="button"
-                        onClick={() => onOpenStudentModal && onOpenStudentModal({ ...row.student, student_id: row.student.id })}
-                        className="text-xs font-bold text-indigo-700 hover:bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-xl transition shadow-2xs active:scale-95 flex items-center gap-0.5 cursor-pointer"
-                        title="누적 과제표 및 상세 히스토리 보기"
-                      >
-                        <span>📑</span>
-                        <span>과제표</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* 과제 태스크 리스트 (실시간 완료 숨김 및 날짜 뱃지 + 교재 + 5개 상태 버튼) */}
-                  {row.hasTasks ? (() => {
-                    const isExpanded = expandedCompletedStudentIds.has(row.student.id);
-                    const tasksToDisplay = hideCompletedTasks && !isExpanded
-                      ? row.allTasks.filter((t) => t.status !== '완료')
-                      : row.allTasks;
-
-                    if (tasksToDisplay.length === 0) {
-                      return (
-                        <div className="pt-2 border-t border-slate-100 space-y-2">
-                          <div className="flex items-center justify-between p-2.5 bg-emerald-50/70 border border-emerald-200/90 rounded-xl text-xs">
-                            <span className="font-extrabold text-emerald-800 flex items-center gap-1.5">
-                              <span>🎉</span>
-                              <span>모든 과제 검사가 완료되었습니다! ({row.completedTasksCount}건 완료)</span>
+                        {/* 잔여 과제 요약 뱃지 */}
+                        {!row.hasTasks ? (
+                          <span className="text-[10.5px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md">
+                            {excludeLatestHomework ? '과거 밀린 과제 없음 (전원 완료 🟢)' : '부여된 과제 없음'}
+                          </span>
+                        ) : row.allCompleted ? (
+                          <span className="text-[10.5px] font-black text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-md flex items-center gap-1">
+                            <span>🟢</span>
+                            <span>
+                              {excludeLatestHomework ? '과거 과제 전체 완료' : '전체 완료'} ({row.completedTasksCount}건)
                             </span>
-                            {row.completedTasksCount > 0 && hideCompletedTasks && (
-                              <button
-                                type="button"
-                                onClick={() => toggleExpandCompleted(row.student.id)}
-                                className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 underline cursor-pointer"
-                              >
-                                {isExpanded ? '완료 과제 접기 ▲' : `완료 내역 보기 (${row.completedTasksCount}건) ▼`}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <div className="space-y-2 pt-1 border-t border-slate-100">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                          {tasksToDisplay.map((task, idx) => {
-                            const currentStatus = task.status || '미체크';
-
-                            return (
-                              <div
-                                key={`${task.evalId}_${task.bookName}_${idx}`}
-                                className={`p-2.5 rounded-xl border transition space-y-1.5 ${
-                                  currentStatus === '완료'
-                                    ? 'bg-slate-50/70 border-slate-200'
-                                    : 'bg-white border-rose-200/90 shadow-2xs ring-1 ring-rose-100'
-                                }`}
-                              >
-                                <div className="flex items-center justify-between text-xs gap-1.5">
-                                  <div className="flex items-center gap-1.5 truncate">
-                                    {/* 날짜 태그 */}
-                                    <span className="text-[10px] font-black px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 shrink-0">
-                                      {task.formattedDate}
-                                    </span>
-                                    <span className="font-extrabold text-slate-800 truncate" title={task.bookName}>
-                                      📖 {task.bookName}
-                                    </span>
-                                  </div>
-                                  <span className="text-[10.5px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded truncate max-w-[130px] shrink-0">
-                                    {task.range || '범위 미지정'}
-                                  </span>
-                                </div>
-
-                                {/* 5가지 상태 선택 버튼 바 (1클릭 변경) */}
-                                <div className="grid grid-cols-5 gap-1 pt-0.5">
-                                  {HOMEWORK_STATUS_OPTIONS.map((opt) => {
-                                    const isSelected = currentStatus === opt.value;
-
-                                    return (
-                                      <button
-                                        key={opt.value}
-                                        type="button"
-                                        onClick={() => onStatusChange && onStatusChange(task.evalId, task.bookName, opt.value)}
-                                        className={`py-1 text-[10.5px] font-extrabold rounded-lg border transition text-center cursor-pointer active:scale-95 ${
-                                          isSelected
-                                            ? opt.value === '완료'
-                                              ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs ring-1 ring-emerald-300'
-                                              : opt.value === '일부완료'
-                                              ? 'bg-sky-500 text-white border-sky-600 shadow-xs ring-1 ring-sky-300'
-                                              : opt.value === '미완료'
-                                              ? 'bg-rose-600 text-white border-rose-700 shadow-xs ring-1 ring-rose-300'
-                                              : opt.value === '질문남음'
-                                              ? 'bg-amber-500 text-white border-amber-600 shadow-xs ring-1 ring-amber-300'
-                                              : 'bg-slate-700 text-white border-slate-800 shadow-xs'
-                                            : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200'
-                                        }`}
-                                        title={`${task.formattedDate} [${task.bookName}] 과제 상태를 '${opt.value}'(으)로 변경`}
-                                      >
-                                        {opt.value}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        {/* 완료 과제 접기/펼치기 보조 안내 버튼 */}
-                        {hideCompletedTasks && !isExpanded && row.completedTasksCount > 0 && (
-                          <div className="flex justify-end pt-0.5">
-                            <button
-                              type="button"
-                              onClick={() => toggleExpandCompleted(row.student.id)}
-                              className="text-[11px] font-semibold text-slate-400 hover:text-indigo-600 transition cursor-pointer flex items-center gap-1"
-                            >
-                              <span>✓ 완료된 과제 ${row.completedTasksCount}건 숨김됨</span>
-                              <span className="underline">(펼쳐보기)</span>
-                            </button>
-                          </div>
-                        )}
-                        {isExpanded && row.completedTasksCount > 0 && (
-                          <div className="flex justify-end pt-0.5">
-                            <button
-                              type="button"
-                              onClick={() => toggleExpandCompleted(row.student.id)}
-                              className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 transition cursor-pointer"
-                            >
-                              ▲ 완료된 과제 다시 숨기기
-                            </button>
-                          </div>
+                          </span>
+                        ) : (
+                          <span className="text-[10.5px] font-black text-rose-800 bg-rose-100 px-2.5 py-0.5 rounded-md flex items-center gap-1">
+                            <span>🚨</span>
+                            <span>
+                              남은 숙제 {row.incompleteTasksCount}건 / 완료 {row.completedTasksCount}건
+                            </span>
+                          </span>
                         )}
                       </div>
-                    );
-                  })() : (
-                    <div className="text-[11px] text-slate-400 font-medium py-1">
-                      {excludeLatestHomework
-                        ? '가장 최근 숙제를 제외한 과거 미완료 과제가 없습니다.'
-                        : '부여된 교재 과제 기록이 없습니다.'}
+
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {/* 🧠 정밀 진단 리포트 보기 버튼 */}
+                        <button
+                          type="button"
+                          onClick={() => toggleDiagnosticForStudent(row.student.id)}
+                          className={`text-xs font-extrabold px-2.5 py-1 rounded-xl border transition shadow-2xs active:scale-95 cursor-pointer flex items-center gap-1 ${
+                            isDiagOpen
+                              ? 'bg-slate-800 text-white border-slate-900'
+                              : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+                          }`}
+                          title="출결·정시율·미완료 원인·학부모 상담 멘트 등 정밀 분석 보기"
+                        >
+                          <span>🧠</span>
+                          <span>{isDiagOpen ? '진단 닫기' : '상태 진단'}</span>
+                        </button>
+
+                        {/* 누적 미완료 과제 일괄 완료 버튼 */}
+                        {row.hasIncomplete && (
+                          <button
+                            type="button"
+                            onClick={() => handleCompleteAllForStudent(row.student.id)}
+                            className="text-xs font-extrabold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-1 rounded-xl transition shadow-2xs active:scale-95 cursor-pointer"
+                            title="이 학생의 모든 미완료 과제를 '완료 🟢' 상태로 일괄 변경합니다"
+                          >
+                            ⚡ 모두 완료
+                          </button>
+                        )}
+
+                        {/* 개별 과제표 모달 열기 */}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onOpenStudentModal && onOpenStudentModal({ ...row.student, student_id: row.student.id })
+                          }
+                          className="text-xs font-bold text-indigo-700 hover:bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-xl transition shadow-2xs active:scale-95 flex items-center gap-0.5 cursor-pointer"
+                          title="누적 과제표 및 상세 히스토리 보기"
+                        >
+                          <span>📑</span>
+                          <span>과제표</span>
+                        </button>
+                      </div>
                     </div>
-                  )}
-                </div>
-              ))}
+
+                    {/* 🧠 펼쳐지는 AI 학습 상태 정밀 진단 리포트 카드 */}
+                    {isDiagOpen && (
+                      <div className="pt-1">
+                        <StudentDiagnosticCard
+                          studentName={row.student.name}
+                          diagnostic={row.diagnostic}
+                          defaultExpanded={true}
+                        />
+                      </div>
+                    )}
+
+                    {/* 과제 태스크 리스트 (완료 과제 자동 숨김 + 1클릭 상태 변경) */}
+                    {row.hasTasks ? (
+                      (() => {
+                        const isExpanded = expandedCompletedStudentIds.has(row.student.id);
+                        const tasksToDisplay =
+                          hideCompletedTasks && !isExpanded
+                            ? row.allTasks.filter((t) => t.status !== '완료')
+                            : row.allTasks;
+
+                        if (tasksToDisplay.length === 0) {
+                          return (
+                            <div className="pt-2 border-t border-slate-100 space-y-2">
+                              <div className="flex items-center justify-between p-2.5 bg-emerald-50/70 border border-emerald-200/90 rounded-xl text-xs">
+                                <span className="font-extrabold text-emerald-800 flex items-center gap-1.5">
+                                  <span>🎉</span>
+                                  <span>모든 과제 검사가 완료되었습니다! ({row.completedTasksCount}건 완료)</span>
+                                </span>
+                                {row.completedTasksCount > 0 && hideCompletedTasks && (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleExpandCompleted(row.student.id)}
+                                    className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 underline cursor-pointer"
+                                  >
+                                    {isExpanded
+                                      ? '완료 과제 접기 ▲'
+                                      : `완료 내역 보기 (${row.completedTasksCount}건) ▼`}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="space-y-2 pt-1 border-t border-slate-100">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                              {tasksToDisplay.map((task, idx) => {
+                                const currentStatus = task.status || '미체크';
+                                const hadInitialFailure =
+                                  task.firstStatus &&
+                                  task.firstStatus !== '미체크' &&
+                                  task.firstStatus !== '완료';
+
+                                return (
+                                  <div
+                                    key={`${task.evalId}_${task.bookName}_${idx}`}
+                                    className={`p-2.5 rounded-xl border transition space-y-1.5 ${
+                                      currentStatus === '완료'
+                                        ? 'bg-slate-50/70 border-slate-200'
+                                        : 'bg-white border-rose-200/90 shadow-2xs ring-1 ring-rose-100'
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between text-xs gap-1.5">
+                                      <div className="flex items-center gap-1.5 truncate">
+                                        {/* 날짜 태그 */}
+                                        <span className="text-[10px] font-black px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 shrink-0">
+                                          {task.formattedDate}
+                                        </span>
+                                        <span
+                                          className="font-extrabold text-slate-800 truncate"
+                                          title={task.bookName}
+                                        >
+                                          📖 {task.bookName}
+                                        </span>
+                                        {currentStatus === '완료' && hadInitialFailure && (
+                                          <span
+                                            className="text-[9.5px] font-extrabold px-1.5 py-0.2 rounded bg-sky-100 text-sky-800 shrink-0"
+                                            title={`최초 검사(${task.firstCheckedAt || '-'}): ${task.firstStatus} ➔ 완료(${task.completedAt || '-'})`}
+                                          >
+                                            지연완료(최초:{task.firstStatus})
+                                          </span>
+                                        )}
+                                      </div>
+                                      <span className="text-[10.5px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded truncate max-w-[130px] shrink-0">
+                                        {task.range || '범위 미지정'}
+                                      </span>
+                                    </div>
+
+                                    {/* 5가지 상태 선택 버튼 바 (1클릭 변경) */}
+                                    <div className="grid grid-cols-5 gap-1 pt-0.5">
+                                      {HOMEWORK_STATUS_OPTIONS.map((opt) => {
+                                        const isSelected = currentStatus === opt.value;
+
+                                        return (
+                                          <button
+                                            key={opt.value}
+                                            type="button"
+                                            onClick={() =>
+                                              onStatusChange &&
+                                              onStatusChange(task.evalId, task.bookName, opt.value)
+                                            }
+                                            className={`py-1 text-[10.5px] font-extrabold rounded-lg border transition text-center cursor-pointer active:scale-95 ${
+                                              isSelected
+                                                ? opt.value === '완료'
+                                                  ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs ring-1 ring-emerald-300'
+                                                  : opt.value === '일부완료'
+                                                  ? 'bg-sky-500 text-white border-sky-600 shadow-xs ring-1 ring-sky-300'
+                                                  : opt.value === '미완료'
+                                                  ? 'bg-rose-600 text-white border-rose-700 shadow-xs ring-1 ring-rose-300'
+                                                  : opt.value === '질문남음'
+                                                  ? 'bg-amber-500 text-white border-amber-600 shadow-xs ring-1 ring-amber-300'
+                                                  : 'bg-slate-700 text-white border-slate-800 shadow-xs'
+                                                : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200'
+                                            }`}
+                                            title={`${task.formattedDate} [${task.bookName}] 과제 상태를 '${opt.value}'(으)로 변경`}
+                                          >
+                                            {opt.value}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* 완료 과제 접기/펼치기 보조 안내 버튼 */}
+                            {hideCompletedTasks && !isExpanded && row.completedTasksCount > 0 && (
+                              <div className="flex justify-end pt-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleExpandCompleted(row.student.id)}
+                                  className="text-[11px] font-semibold text-slate-400 hover:text-indigo-600 transition cursor-pointer flex items-center gap-1"
+                                >
+                                  <span>✓ 완료된 과제 {row.completedTasksCount}건 숨김됨</span>
+                                  <span className="underline">(펼쳐보기)</span>
+                                </button>
+                              </div>
+                            )}
+                            {isExpanded && row.completedTasksCount > 0 && (
+                              <div className="flex justify-end pt-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleExpandCompleted(row.student.id)}
+                                  className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 transition cursor-pointer"
+                                >
+                                  ▲ 완료된 과제 다시 숨기기
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      <div className="text-[11px] text-slate-400 font-medium py-1">
+                        {excludeLatestHomework
+                          ? '가장 최근 숙제를 제외한 과거 미완료 과제가 없습니다.'
+                          : '부여된 교재 과제 기록이 없습니다.'}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -893,7 +1018,7 @@ export default function ClassHomeworkInspectionModal({
         {/* 모달 하단 닫기 바 */}
         <div className="p-3 sm:p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3 shrink-0">
           <div className="text-xs text-slate-500 font-medium">
-            💡 버튼을 누르면 DB에 즉시 반영되며, 학부모 리포트 및 일일 피드백 화면에 실시간 동기화됩니다.
+            💡 완료 버튼을 누르면 화면에서 즉시 숨겨지며, 최초 검사 상태와 최종 완료 시점이 자동 기록되어 정시/지연 이행도에 반영됩니다.
           </div>
           <button
             type="button"
@@ -903,7 +1028,6 @@ export default function ClassHomeworkInspectionModal({
             닫기
           </button>
         </div>
-
       </div>
     </div>
   );

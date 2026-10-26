@@ -715,7 +715,7 @@ export default function TeacherEvalPage() {
   // 👥 판서수업(반 일괄)용 모달 내 과제표 상태 실시간 변경 핸들러
   const handleModalHomeworkStatusChange = async (evalId, bookName, newStatus) => {
     try {
-      const targetEval = classAllEvals.find((e) => e.id === evalId);
+      const targetEval = inspectionAllEvals.find((e) => e.id === evalId) || classAllEvals.find((e) => e.id === evalId);
       if (!targetEval) return;
 
       const updatedComment = updateBookStatusInComment(
@@ -757,7 +757,7 @@ export default function TeacherEvalPage() {
   // 👥 반 전체 과제 일괄 검사 모달용: 특정 학생의 모든 교재 상태 일괄 변경
   const handleBulkUpdateStudentHomeworkStatus = async (evalId, newStatus) => {
     try {
-      const targetEval = classAllEvals.find((e) => e.id === evalId);
+      const targetEval = inspectionAllEvals.find((e) => e.id === evalId) || classAllEvals.find((e) => e.id === evalId);
       if (!targetEval) return;
 
       const updatedComment = updateAllBooksStatusInComment(targetEval.teacher_comment, newStatus);
@@ -794,7 +794,8 @@ export default function TeacherEvalPage() {
   // 👥 반 전체 과제 일괄 검사 모달용: 특정 학생의 모든 누적 미완료 과제 일괄 완료 처리
   const handleBulkUpdateStudentAllPending = async (studentId, newStatus = '완료') => {
     try {
-      const studentEvals = classAllEvals.filter((e) => e.student_id === studentId);
+      const sourceEvals = inspectionAllEvals.length > 0 ? inspectionAllEvals : classAllEvals;
+      const studentEvals = sourceEvals.filter((e) => e.student_id === studentId);
       const evalsToUpdate = [];
 
       studentEvals.forEach((ev) => {
@@ -854,7 +855,7 @@ export default function TeacherEvalPage() {
 
   const handleModalUpdateEvaluation = async (evalId, updatedProgress, updatedBooks) => {
     try {
-      const targetEval = classAllEvals.find((e) => e.id === evalId);
+      const targetEval = inspectionAllEvals.find((e) => e.id === evalId) || classAllEvals.find((e) => e.id === evalId);
       if (!targetEval) return;
 
       const updatedComment = updateEvaluationProgressAndBooksInComment(
@@ -2948,7 +2949,7 @@ export default function TeacherEvalPage() {
                 <div className="bg-slate-50 p-3 sm:p-4 rounded-2xl border border-slate-200">
                   <StudentHomeworkTable
                     studentName={homeworkModalStudent.name}
-                    evaluations={classAllEvals.filter((e) => e.student_id === homeworkModalStudent.student_id)}
+                    evaluations={(inspectionAllEvals.length > 0 ? inspectionAllEvals : classAllEvals).filter((e) => e.student_id === homeworkModalStudent.student_id)}
                     isEditable={true}
                     currentUserId={user?.id}
                     userRole={user?.role}

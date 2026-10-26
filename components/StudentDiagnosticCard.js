@@ -3,14 +3,12 @@
 import React, { useState } from 'react';
 
 /**
- * 🧠 학생 학습 상태 AI 정밀 진단 카드 컴포넌트
- * - 출결 리듬 + 숙제 정시/지연 이행도 + 미완료 원인(태도/분량/난이도) + 최근 추세 + 성취도 교차 분석을 시각화
+ * 🧠 학생 학습 상태 AI 정밀 진단 카드 컴포넌트 (가독성 강화 2열 와이드 레이아웃)
  */
 export default function StudentDiagnosticCard({
   studentName = '학생',
   diagnostic,
   defaultExpanded = false,
-  compact = false,
 }) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [copied, setCopied] = useState(false);
@@ -48,7 +46,6 @@ export default function StudentDiagnosticCard({
       });
   };
 
-  // 상단 배경 테마 색상
   const containerTheme =
     grade.level === 'CRITICAL'
       ? 'bg-rose-50/70 border-rose-200'
@@ -59,28 +56,27 @@ export default function StudentDiagnosticCard({
       : 'bg-indigo-50/50 border-indigo-200';
 
   return (
-    <div className={`rounded-2xl border transition-all overflow-hidden ${containerTheme}`}>
-      {/* 1. 상단 요약 헤더 바 (클릭 시 상세 접기/펼치기) */}
+    <div className={`rounded-2xl border transition-all overflow-hidden break-keep ${containerTheme}`}>
+      {/* 1. 상단 요약 헤더 바 */}
       <div
         onClick={() => setIsExpanded(!isExpanded)}
-        className="p-3 sm:p-3.5 flex items-center justify-between gap-2.5 flex-wrap cursor-pointer hover:bg-white/40 transition select-none"
+        className="p-3.5 sm:p-4 flex items-center justify-between gap-3 flex-wrap cursor-pointer hover:bg-white/50 transition select-none"
       >
-        <div className="flex items-center gap-2 flex-wrap flex-1 min-w-[240px]">
-          <span className="text-xs font-black px-2.5 py-1 rounded-xl border shadow-2xs whitespace-nowrap bg-slate-900 text-white border-slate-800">
+        <div className="flex items-center gap-2.5 flex-wrap flex-1 min-w-[260px]">
+          <span className="text-xs font-black px-2.5 py-1 rounded-xl bg-slate-900 text-white whitespace-nowrap">
             🧠 AI 학습 진단
           </span>
-          <span className={`text-xs font-black px-2.5 py-1 rounded-xl border whitespace-nowrap ${grade.colorClass}`}>
+          <span className={`text-xs sm:text-[13px] font-black px-3 py-1 rounded-xl border whitespace-nowrap ${grade.colorClass}`}>
             {grade.badgeText}
           </span>
-          <span className="text-xs font-extrabold text-slate-800 leading-snug">
+          <span className="text-[13px] sm:text-sm font-extrabold text-slate-800 leading-snug">
             {headline}
           </span>
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0">
-          {/* 핵심 미니 수치 칩 (접혀 있을 때도 한눈에 보이도록) */}
+        <div className="flex items-center gap-2 shrink-0">
           {!isExpanded && homework.evaluatedCount > 0 && (
-            <div className="hidden lg:flex items-center gap-1.5 text-[11px] font-bold text-slate-600 bg-white/80 px-2.5 py-1 rounded-xl border border-slate-200/80">
+            <div className="hidden xl:flex items-center gap-2 text-xs font-bold text-slate-600 bg-white px-3 py-1.5 rounded-xl border border-slate-200 whitespace-nowrap">
               <span>정시 {homework.onTimeRate}%</span>
               <span className="text-slate-300">|</span>
               <span>최종 {homework.finalCompletionRate}%</span>
@@ -92,10 +88,9 @@ export default function StudentDiagnosticCard({
           <button
             type="button"
             onClick={handleCopyConsultScript}
-            className="px-2.5 py-1 rounded-xl text-[11px] font-extrabold bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs transition cursor-pointer"
-            title="학부모 상담용 정밀 분석 요약 및 추천 멘트를 복사합니다"
+            className="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs transition cursor-pointer whitespace-nowrap"
           >
-            {copied ? '✅ 복사됨!' : '📋 상담 브리핑 복사'}
+            {copied ? '✅ 복사 완료!' : '📋 상담 브리핑 복사'}
           </button>
 
           <button
@@ -104,129 +99,154 @@ export default function StudentDiagnosticCard({
               e.stopPropagation();
               setIsExpanded(!isExpanded);
             }}
-            className="px-2.5 py-1 rounded-xl text-[11px] font-black bg-white/90 hover:bg-white text-slate-700 border border-slate-200/90 shadow-2xs transition cursor-pointer"
+            className="px-3 py-1.5 rounded-xl text-xs font-black bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-2xs transition cursor-pointer whitespace-nowrap"
           >
-            {isExpanded ? '상세 닫기 ▲' : '정밀 분석 열기 ▼'}
+            {isExpanded ? '닫기 ▲' : '상세 보기 ▼'}
           </button>
         </div>
       </div>
 
-      {/* 2. 펼쳐졌을 때 나타나는 4대 정밀 지표 & 처방전 */}
+      {/* 2. 상세 내용 (시원시원한 2열 와이드 그리드) */}
       {isExpanded && (
-        <div className="p-3.5 sm:p-4 pt-2 border-t border-slate-200/70 bg-white/90 space-y-3.5 text-xs">
-          {/* 4대 핵심 지표 카드 그리드 */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-            {/* ① 숙제 타이밍 (정시 vs 지연 vs 미해결) */}
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-black text-slate-700 flex items-center gap-1">
+        <div className="p-4 sm:p-5 bg-white border-t border-slate-200/80 space-y-4">
+          {/* 4대 지표: 좁은 4열 대신 넉넉한 2열(md:grid-cols-2) 배치로 글씨 깨짐 완벽 방지 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            {/* ① 숙제 적시성 (제때 했는가 vs 밀려서 했는가) */}
+            <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-black text-slate-800 flex items-center gap-1.5 whitespace-nowrap">
                   <span>⏱️</span>
-                  <span>과제 적시성 (제때 했는가)</span>
+                  <span>숙제 적시성 (제때 해왔는가)</span>
                 </span>
-                <span className="text-[10.5px] font-bold text-slate-400">
-                  검사 {homework.evaluatedCount}건 기준
+                <span className="text-xs font-bold text-slate-500 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 whitespace-nowrap">
+                  총 {homework.evaluatedCount}건 검사 기준
                 </span>
               </div>
 
-              <div className="flex items-baseline justify-between gap-2">
+              <div className="grid grid-cols-2 gap-3 bg-white p-3 rounded-xl border border-slate-200/80">
                 <div>
-                  <span className="text-[10.5px] text-slate-500 font-bold block">정시 완료율</span>
-                  <span className="text-lg font-black text-emerald-700">{homework.onTimeRate}%</span>
+                  <span className="text-xs text-slate-500 font-bold block mb-0.5">첫 검사 정시 완료율</span>
+                  <span className="text-2xl font-black text-emerald-600">{homework.onTimeRate}%</span>
                 </div>
-                <div className="text-right">
-                  <span className="text-[10.5px] text-slate-500 font-bold block">최종 완료율</span>
-                  <span className="text-lg font-black text-indigo-700">{homework.finalCompletionRate}%</span>
+                <div className="border-l border-slate-100 pl-3">
+                  <span className="text-xs text-slate-500 font-bold block mb-0.5">지연 포함 최종 완료율</span>
+                  <span className="text-2xl font-black text-indigo-600">{homework.finalCompletionRate}%</span>
                 </div>
               </div>
 
-              {/* 3단 누적 진행 바 */}
-              <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden flex">
+              {/* 3단 누적 바 */}
+              <div className="w-full h-3 bg-slate-200 rounded-full overflow-hidden flex">
                 {homework.onTimeRate > 0 && (
                   <div
                     style={{ width: `${homework.onTimeRate}%` }}
                     className="bg-emerald-500 h-full"
-                    title={`정시 완료: ${homework.onTimeCount}건 (${homework.onTimeRate}%)`}
+                    title={`정시 완료: ${homework.onTimeCount}건`}
                   />
                 )}
                 {homework.delayedRate > 0 && (
                   <div
                     style={{ width: `${homework.delayedRate}%` }}
                     className="bg-sky-400 h-full"
-                    title={`지연 완료: ${homework.delayedCount}건 (${homework.delayedRate}%)`}
+                    title={`지연 완료: ${homework.delayedCount}건`}
                   />
                 )}
                 {homework.incompleteRate > 0 && (
                   <div
                     style={{ width: `${homework.incompleteRate}%` }}
                     className="bg-rose-500 h-full"
-                    title={`미해결: ${homework.incompleteCount}건 (${homework.incompleteRate}%)`}
+                    title={`미해결: ${homework.incompleteCount}건`}
                   />
                 )}
               </div>
 
-              <div className="flex items-center justify-between text-[10.5px] font-bold text-slate-600 pt-0.5">
-                <span className="text-emerald-700">🟢 정시 {homework.onTimeCount}건</span>
-                <span className="text-sky-700">
-                  🔵 지연 {homework.delayedCount}건
-                  {homework.delayedCount > 0 ? `(평균+${homework.avgDelayDays}일)` : ''}
+              {/* 하단 건수 배지 (줄바꿈 깨짐 방지) */}
+              <div className="flex items-center justify-between gap-2 flex-wrap text-xs font-extrabold pt-0.5">
+                <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 whitespace-nowrap">
+                  🟢 제때 완료 {homework.onTimeCount}건
                 </span>
-                <span className="text-rose-700">🔴 미완 {homework.incompleteCount}건</span>
+                <span className="px-2.5 py-1 rounded-lg bg-sky-50 text-sky-800 border border-sky-200 whitespace-nowrap">
+                  🔵 지연 완료 {homework.delayedCount}건
+                  {homework.delayedCount > 0 ? ` (평균 +${homework.avgDelayDays}일)` : ''}
+                </span>
+                <span className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-800 border border-rose-200 whitespace-nowrap">
+                  🔴 미해결 {homework.incompleteCount}건
+                </span>
               </div>
             </div>
 
-            {/* ② 미완료의 질적 원인 분리 */}
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-black text-slate-700 flex items-center gap-1">
+            {/* ② 미완료 원인 분석 */}
+            <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200 space-y-3 flex flex-col justify-between">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-sm font-black text-slate-800 flex items-center gap-1.5 whitespace-nowrap">
                   <span>🔍</span>
-                  <span>미완료 원인 분류</span>
+                  <span>왜 제때 못 해왔는가 (원인 분류)</span>
                 </span>
-                <span className="text-[10.5px] font-extrabold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900">
+                <span className="text-xs font-extrabold px-2.5 py-0.5 rounded-lg bg-amber-100 text-amber-900 border border-amber-200 whitespace-nowrap">
                   {causes.dominantCauseLabel}
                 </span>
               </div>
 
               {causes.totalNonOnTime === 0 ? (
-                <div className="py-3 text-center text-emerald-700 font-extrabold text-[11px]">
-                  🎉 지연이나 미완료된 과제가 한 건도 없습니다!
+                <div className="my-auto py-6 text-center bg-emerald-50/70 rounded-xl border border-emerald-200 text-emerald-800 font-extrabold text-sm">
+                  🎉 모든 숙제를 제때 완수하여 지연/미완료 내역이 없습니다!
                 </div>
               ) : (
-                <div className="space-y-1.5 pt-0.5">
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-bold text-slate-600">🔴 미착수/태도 (미완료)</span>
-                    <span className="font-black text-rose-700">
-                      {causes.notStartedCount}건 ({causes.notStartedPct}%)
-                    </span>
+                <div className="space-y-2.5 bg-white p-3.5 rounded-xl border border-slate-200/80">
+                  {/* 미완료 (태도) */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-xs sm:text-[13px]">
+                      <span className="font-bold text-slate-700 whitespace-nowrap">🔴 아예 안 폄 / 태도 문제 (미완료)</span>
+                      <span className="font-black text-rose-700 whitespace-nowrap">
+                        {causes.notStartedCount}건 ({causes.notStartedPct}%)
+                      </span>
+                    </div>
+                    <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div style={{ width: `${causes.notStartedPct}%` }} className="bg-rose-500 h-full" />
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-bold text-slate-600">🔵 분량/시간부족 (일부완료)</span>
-                    <span className="font-black text-sky-700">
-                      {causes.partialCount}건 ({causes.partialPct}%)
-                    </span>
+
+                  {/* 일부완료 (분량) */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-xs sm:text-[13px]">
+                      <span className="font-bold text-slate-700 whitespace-nowrap">🔵 풀다 멈춤 / 분량·시간 부족 (일부완료)</span>
+                      <span className="font-black text-sky-700 whitespace-nowrap">
+                        {causes.partialCount}건 ({causes.partialPct}%)
+                      </span>
+                    </div>
+                    <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div style={{ width: `${causes.partialPct}%` }} className="bg-sky-500 h-full" />
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-bold text-slate-600">🟡 난이도/막힘 (질문남음)</span>
-                    <span className="font-black text-amber-700">
-                      {causes.questionCount}건 ({causes.questionPct}%)
-                    </span>
+
+                  {/* 질문남음 (난이도) */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-xs sm:text-[13px]">
+                      <span className="font-bold text-slate-700 whitespace-nowrap">🟡 어려워서 막힘 / 난이도 문제 (질문남음)</span>
+                      <span className="font-black text-amber-700 whitespace-nowrap">
+                        {causes.questionCount}건 ({causes.questionPct}%)
+                      </span>
+                    </div>
+                    <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div style={{ width: `${causes.questionPct}%` }} className="bg-amber-500 h-full" />
+                    </div>
                   </div>
                 </div>
               )}
             </div>
 
             {/* ③ 출결 리듬 & 최근 추세 */}
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-black text-slate-700 flex items-center gap-1">
+            <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200 space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-sm font-black text-slate-800 flex items-center gap-1.5 whitespace-nowrap">
                   <span>📅</span>
-                  <span>출결 리듬 & 최근 추세</span>
+                  <span>출결 리듬 & 최근 흐름 변화</span>
                 </span>
                 <span
-                  className={`text-[10.5px] font-extrabold px-1.5 py-0.2 rounded ${
+                  className={`text-xs font-extrabold px-2.5 py-0.5 rounded-lg whitespace-nowrap ${
                     trend.trendDirection === 'DOWN'
-                      ? 'bg-rose-100 text-rose-800'
+                      ? 'bg-rose-100 text-rose-800 border border-rose-200'
                       : trend.trendDirection === 'UP'
-                      ? 'bg-emerald-100 text-emerald-800'
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                       : 'bg-slate-200 text-slate-700'
                   }`}
                 >
@@ -238,122 +258,124 @@ export default function StudentDiagnosticCard({
                 </span>
               </div>
 
-              <div className="flex items-center justify-between text-[11px] font-bold">
-                <span className="text-slate-600">누적 출석률 ({attendance.totalClasses}회)</span>
-                <span className="text-slate-900 font-black">
-                  {attendance.attendanceRate}% (지각 {attendance.lateCount} · 결석 {attendance.absentCount})
-                </span>
+              <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 space-y-2.5 text-xs sm:text-[13px]">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-bold text-slate-600 whitespace-nowrap">누적 출석 현황 (총 {attendance.totalClasses}회)</span>
+                  <span className="font-black text-slate-900 whitespace-nowrap">
+                    출석 {attendance.attendCount}회 · 지각 {attendance.lateCount}회 · 결석 {attendance.absentCount}회
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                  <span className="font-bold text-slate-600 whitespace-nowrap">정시 완료율 추세 비교</span>
+                  <span className="font-black text-indigo-700 whitespace-nowrap">
+                    과거 평균 {trend.pastOnTimeRate}% ➔ 최근 {trend.recentOnTimeRate}%
+                  </span>
+                </div>
               </div>
 
-              <div className="flex items-center justify-between text-[11px] font-bold">
-                <span className="text-slate-600">최근 정시율 변화</span>
-                <span className="text-indigo-800 font-black">
-                  과거 {trend.pastOnTimeRate}% ➔ 최근 {trend.recentOnTimeRate}%
-                </span>
-              </div>
-
-              <div className="text-[10.5px] font-bold text-slate-500 pt-0.5">
+              <div className="text-xs font-extrabold px-1">
                 {trend.consecutiveIncompleteSessions >= 2 ? (
-                  <span className="text-rose-600 font-extrabold">
-                    🚨 최근 {trend.consecutiveIncompleteSessions}회차 연속 정시 완료 미달
+                  <span className="text-rose-600">
+                    🚨 최근 {trend.consecutiveIncompleteSessions}회 수업 연속으로 제때 완료하지 못하고 있습니다.
                   </span>
                 ) : attendance.recentLateCount + attendance.recentAbsentCount > 0 ? (
-                  <span className="text-amber-700 font-extrabold">
-                    ⚡ 최근 4회차 내 지각/결석 {attendance.recentLateCount + attendance.recentAbsentCount}회 발생
+                  <span className="text-amber-700">
+                    ⚡ 최근 4회 수업 내 지각/결석이 {attendance.recentLateCount + attendance.recentAbsentCount}회 발생했습니다.
                   </span>
                 ) : (
-                  <span className="text-emerald-700">✓ 최근 출결 및 과제 리듬 양호</span>
+                  <span className="text-emerald-700">✓ 최근 출결 및 과제 수행 리듬이 안정적입니다.</span>
                 )}
               </div>
             </div>
 
-            {/* ④ 성취도 교차 검증 (형식적 숙제 탐지) */}
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-black text-slate-700 flex items-center gap-1">
+            {/* ④ 숙제 × 실전 테스트 성취도 교차검증 */}
+            <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200 space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-sm font-black text-slate-800 flex items-center gap-1.5 whitespace-nowrap">
                   <span>🎯</span>
-                  <span>숙제 × 성취도 교차검증</span>
+                  <span>숙제 이행도 × 테스트 성적 비교</span>
                 </span>
                 <span
-                  className={`text-[10.5px] font-extrabold px-1.5 py-0.2 rounded ${
+                  className={`text-xs font-extrabold px-2.5 py-0.5 rounded-lg whitespace-nowrap ${
                     achievement.isSuperficialSuspect
-                      ? 'bg-purple-100 text-purple-900'
-                      : 'bg-emerald-100 text-emerald-800'
+                      ? 'bg-purple-100 text-purple-900 border border-purple-200'
+                      : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                   }`}
                 >
-                  {achievement.isSuperficialSuspect ? '🔍 소화도 점검' : '✅ 정상 연동'}
+                  {achievement.isSuperficialSuspect ? '🔍 형식적 숙제 의심' : '✅ 정상 소화 중'}
                 </span>
               </div>
 
-              <div className="flex items-center justify-between text-[11px] font-bold">
-                <span className="text-slate-600">단원/주간 테스트 평균</span>
-                <span className="text-slate-900 font-black">
-                  {achievement.avgTestScore !== null ? `${achievement.avgTestScore}점` : '기록 없음'}
-                </span>
+              <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 space-y-2.5 text-xs sm:text-[13px]">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-bold text-slate-600 whitespace-nowrap">단원 / 주간 테스트 평균</span>
+                  <span className="font-black text-slate-900 text-sm whitespace-nowrap">
+                    {achievement.avgTestScore !== null ? `${achievement.avgTestScore}점` : '기록 없음'}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                  <span className="font-bold text-slate-600 whitespace-nowrap">6대 역량 평가 평균</span>
+                  <span className="font-black text-slate-900 text-sm whitespace-nowrap">
+                    {achievement.avgCompetencyScore !== null ? `${achievement.avgCompetencyScore} / 10점` : '기록 없음'}
+                  </span>
+                </div>
               </div>
 
-              <div className="flex items-center justify-between text-[11px] font-bold">
-                <span className="text-slate-600">6대 역량 평가 평균</span>
-                <span className="text-slate-900 font-black">
-                  {achievement.avgCompetencyScore !== null ? `${achievement.avgCompetencyScore} / 10점` : '기록 없음'}
-                </span>
-              </div>
-
-              <div className="text-[10.5px] font-bold text-slate-500 pt-0.5 leading-snug">
+              <div className="text-xs font-extrabold px-1 leading-relaxed">
                 {achievement.isSuperficialSuspect ? (
-                  <span className="text-purple-800 font-extrabold">
-                    ⚠️ 숙제 이행률 대비 테스트 성취도가 낮습니다 (풀이노트 확인 권장)
+                  <span className="text-purple-800">
+                    ⚠️ 숙제 완료율은 높지만 테스트 점수가 낮습니다. 답지 베끼기나 오답 미흡 여부를 확인해 주세요.
                   </span>
                 ) : (
-                  <span>과제 이행도와 수업 이해도가 일관되게 유지 중입니다.</span>
+                  <span className="text-slate-600">과제 수행 결과가 실제 수업 이해도로 잘 이어지고 있습니다.</span>
                 )}
               </div>
             </div>
           </div>
 
-          {/* 상세 서술 & 선생님 액션 플랜 & 학부모 상담 스크립트 */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 pt-1">
-            {/* 좌측: 종합 정밀 해석 및 선생님 추천 지도 액션 */}
-            <div className="p-3 rounded-xl bg-indigo-50/50 border border-indigo-100 space-y-2">
-              <div className="font-black text-indigo-950 flex items-center gap-1.5">
+          {/* 3. 하단: 선생님 관리 가이드 & 학부모 상담 추천 멘트 */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 pt-1">
+            {/* 좌측: 선생님 관리 가이드 */}
+            <div className="p-4 rounded-2xl bg-indigo-50/60 border border-indigo-200/80 space-y-2.5">
+              <div className="text-sm font-black text-indigo-950 flex items-center gap-1.5">
                 <span>💡</span>
-                <span>선생님 맞춤 관리 가이드 (Action Plan)</span>
+                <span>선생님 추천 지도 방향</span>
               </div>
-              <ul className="space-y-1 text-[11.5px] text-slate-700 font-medium list-disc list-inside">
+              <ul className="space-y-1.5 text-[13px] text-slate-800 font-bold list-disc list-inside leading-relaxed">
                 {actionItems.map((item, idx) => (
-                  <li key={idx} className="leading-relaxed">
-                    <span className="font-bold text-slate-800">{item}</span>
-                  </li>
+                  <li key={idx}>{item}</li>
                 ))}
               </ul>
-              <div className="pt-1.5 border-t border-indigo-100/80 text-[11px] text-slate-600 space-y-1 leading-relaxed">
-                <p>• <strong className="text-slate-800">적시성 진단:</strong> {details.timelinessText}</p>
-                <p>• <strong className="text-slate-800">원인 진단:</strong> {details.causeText}</p>
+              <div className="pt-2 border-t border-indigo-200/60 text-xs text-slate-600 space-y-1 leading-relaxed font-medium">
+                <p>• <strong className="text-slate-800">적시성 요약:</strong> {details.timelinessText}</p>
+                <p>• <strong className="text-slate-800">원인 요약:</strong> {details.causeText}</p>
               </div>
             </div>
 
-            {/* 우측: 학부모 상담용 데이터 브리핑 스크립트 */}
-            <div className="p-3 rounded-xl bg-amber-50/50 border border-amber-200/80 flex flex-col justify-between space-y-2">
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="font-black text-amber-950 flex items-center gap-1.5">
+            {/* 우측: 학부모 상담 멘트 */}
+            <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-200/90 flex flex-col justify-between space-y-2.5">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-black text-amber-950 flex items-center gap-1.5">
                     <span>📞</span>
-                    <span>학부모 상담용 데이터 브리핑 멘트</span>
+                    <span>학부모 상담용 추천 브리핑 멘트</span>
                   </span>
                   <button
                     type="button"
                     onClick={handleCopyConsultScript}
-                    className="text-[10.5px] font-extrabold px-2 py-0.5 rounded-lg bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 transition cursor-pointer"
+                    className="text-xs font-extrabold px-2.5 py-1 rounded-xl bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs transition cursor-pointer whitespace-nowrap"
                   >
-                    {copied ? '✅ 복사 완료' : '멘트 복사'}
+                    {copied ? '✅ 복사 완료' : '📋 멘트 복사'}
                   </button>
                 </div>
-                <p className="text-[11.5px] text-slate-800 font-semibold leading-relaxed bg-white/80 p-2.5 rounded-xl border border-amber-200/60">
+                <p className="text-[13px] text-slate-800 font-bold leading-relaxed bg-white p-3.5 rounded-xl border border-amber-200/80">
                   &ldquo;{parentConsultScript}&rdquo;
                 </p>
               </div>
-              <div className="text-[10.5px] text-slate-500 font-medium">
-                ※ 출결·정시율·원인 분석 수치가 자동으로 반영된 맞춤형 상담 스크립트입니다.
+              <div className="text-xs text-slate-500 font-medium">
+                ※ 학생의 실제 출결·정시율·원인 분석 수치가 자동 반영된 상담 문구입니다.
               </div>
             </div>
           </div>

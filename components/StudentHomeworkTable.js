@@ -492,7 +492,7 @@ export default function StudentHomeworkTable({
                       return (
                         <React.Fragment key={bName}>
                           {/* 과제 범위 */}
-                          <td className="py-3 px-2 border-r border-slate-200 font-medium text-slate-700 text-xs whitespace-nowrap max-w-[120px] truncate">
+                          <td className="py-3 px-2.5 border-r border-slate-200 font-semibold text-slate-700 text-xs sm:text-[13px] min-w-[130px] sm:min-w-[160px] break-keep">
                             {hasData ? (
                               bookData.range
                             ) : (

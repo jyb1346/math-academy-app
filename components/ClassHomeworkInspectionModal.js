@@ -94,12 +94,19 @@ export default function ClassHomeworkInspectionModal({
   // 7. 검색어 (학생 이름 또는 반 이름)
   const [searchQuery, setSearchQuery] = useState('');
 
-  // 8. 학생별 과제 데이터 및 AI 정밀 학습 상태 집계
+  // 8. 학생별 과제 데이터 및 AI 정밀 학습 상태 집계 (O(N) 해시맵 그룹핑으로 렌더링 속도 최적화)
   const studentInspectionRows = useMemo(() => {
     if (!students || students.length === 0) return [];
 
+    const evalsByStudentMap = new Map();
+    (classAllEvals || []).forEach((ev) => {
+      const list = evalsByStudentMap.get(ev.student_id) || [];
+      list.push(ev);
+      evalsByStudentMap.set(ev.student_id, list);
+    });
+
     return students.map((st) => {
-      const studentEvals = (classAllEvals || []).filter((e) => e.student_id === st.id);
+      const studentEvals = evalsByStudentMap.get(st.id) || [];
 
       // 🧠 학생 전체 누적 기록 기반 AI 학습 상태 정밀 진단 실행
       const diagnostic = analyzeStudentLearningState(studentEvals);

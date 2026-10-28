@@ -133,11 +133,21 @@ export default function TeacherEvalPage() {
   }, [students, inspectionStudents]);
 
   const fetchInspectionData = async (classId) => {
-    setInspectionLoading(true);
+    const cacheKey = `teacher_eval_class_${classId}`;
+    const cachedData = getClientCache(cacheKey);
+    if (cachedData) {
+      setInspectionStudents(cachedData.students || []);
+      setInspectionAllEvals(cachedData.evaluations || []);
+      setInspectionLoading(false);
+    } else {
+      setInspectionLoading(true);
+    }
+
     try {
       const res = await fetch(`/api/eval/class/${classId}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '조회 실패');
+      setClientCache(cacheKey, data);
       setInspectionStudents(data.students || []);
       setInspectionAllEvals(data.evaluations || []);
     } catch (err) {
@@ -152,8 +162,8 @@ export default function TeacherEvalPage() {
     setInspectionClassId(targetClass);
     setInspectionStudents(students);
     setInspectionAllEvals(classAllEvals);
-    fetchInspectionData(targetClass);
     setShowClassHomeworkModal(true);
+    fetchInspectionData(targetClass);
   };
 
   // 🚨 현재 반의 최근 과제 미완료 학생 수 실시간 집계 (툴바 뱃지용)
@@ -429,18 +439,24 @@ export default function TeacherEvalPage() {
     }
   };
 
-  // 1:1 과제표 인라인 상태 변경
+  // 1:1 과제표 인라인 상태 변경 (⚡ 0초 낙관적 UI 즉시 반영)
   const handleInlineHomeworkStatusChange = async (evalId, bookName, newStatus) => {
+    const targetEval = studentEvals.find((e) => e.id === evalId);
+    if (!targetEval) return;
+
+    const prevComment = targetEval.teacher_comment;
+    const updatedComment = updateBookStatusInComment(prevComment, bookName, newStatus);
+
+    // ⚡ 1) 화면 상태 및 토스트 0초 즉시 업데이트
+    setStudentEvals((prev) =>
+      prev.map((item) =>
+        item.id === evalId ? { ...item, teacher_comment: updatedComment } : item
+      )
+    );
+    showToast(`✅ [${bookName}] 과제 상태가 '${newStatus}'(으)로 즉시 변경되었습니다.`);
+
+    // ⚡ 2) 백그라운드 DB 동기화 (실패 시 원복)
     try {
-      const targetEval = studentEvals.find((e) => e.id === evalId);
-      if (!targetEval) return;
-
-      const updatedComment = updateBookStatusInComment(
-        targetEval.teacher_comment,
-        bookName,
-        newStatus
-      );
-
       const res = await fetch(`/api/eval/${evalId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -450,17 +466,14 @@ export default function TeacherEvalPage() {
         const data = await res.json();
         throw new Error(data.error || '수정 실패');
       }
-
-      setStudentEvals((prev) =>
-        prev.map((item) =>
-          item.id === evalId ? { ...item, teacher_comment: updatedComment } : item
-        )
-      );
-
-      showToast(`✅ [${bookName}] 과제 상태가 '${newStatus}'(으)로 즉시 변경되었습니다.`);
     } catch (err) {
       console.error('handleInlineHomeworkStatusChange error:', err);
-      alert('과제 상태 수정 중 오류가 발생했습니다.');
+      setStudentEvals((prev) =>
+        prev.map((item) =>
+          item.id === evalId ? { ...item, teacher_comment: prevComment } : item
+        )
+      );
+      alert('과제 상태 수정 중 오류가 발생하여 이전 상태로 되돌렸습니다.');
     }
   };
 
@@ -729,18 +742,49 @@ export default function TeacherEvalPage() {
     );
   };
 
-  // 👥 판서수업(반 일괄)용 모달 내 과제표 상태 실시간 변경 핸들러
-  const handleModalHomeworkStatusChange = async (evalId, bookName, newStatus) => {
-    try {
-      const targetEval = mergedModalEvals.find((e) => e.id === evalId);
-      if (!targetEval) return;
+  // 헬퍼: 반별 클라이언트 캐시 내 평가 목록도 낙관적으로 동기화 (반 전환 시 0초 즉시 렌더링 유지)
+  const updateCachedClassEvaluations = (updaterFn) => {
+    const classKeys = new Set([
+      'teacher_eval_class_ALL',
+      ...(selectedClassId ? [`teacher_eval_class_${selectedClassId}`] : []),
+      ...(inspectionClassId ? [`teacher_eval_class_${inspectionClassId}`] : []),
+      ...(classes || []).map((c) => `teacher_eval_class_${c.id}`),
+    ]);
+    classKeys.forEach((key) => {
+      const cached = getClientCache(key);
+      if (cached && Array.isArray(cached.evaluations)) {
+        setClientCache(key, {
+          ...cached,
+          evaluations: updaterFn(cached.evaluations),
+        });
+      }
+    });
+  };
 
-      const updatedComment = updateBookStatusInComment(
-        targetEval.teacher_comment,
-        bookName,
-        newStatus
+  // 👥 판서수업(반 일괄)용 모달 내 과제표 상태 실시간 변경 핸들러 (⚡ 0초 낙관적 UI 즉시 반영)
+  const handleModalHomeworkStatusChange = async (evalId, bookName, newStatus) => {
+    const targetEval = mergedModalEvals.find((e) => e.id === evalId);
+    if (!targetEval) return;
+
+    const prevComment = targetEval.teacher_comment;
+    const updatedComment = updateBookStatusInComment(prevComment, bookName, newStatus);
+
+    const applyUpdate = (list) =>
+      list.map((item) =>
+        item.id === evalId ? { ...item, teacher_comment: updatedComment } : item
       );
 
+    // ⚡ 1) 화면 상태 + 캐시 + 토스트 0초 즉시 업데이트
+    setClassAllEvals(applyUpdate);
+    setInspectionAllEvals(applyUpdate);
+    updateCachedClassEvaluations(applyUpdate);
+
+    const targetStudent = mergedModalStudents.find((s) => s.id === targetEval.student_id);
+    const studentDisplayName = homeworkModalStudent?.name || targetStudent?.name || '학생';
+    showToast(`✅ [${studentDisplayName}]의 [${bookName}] 과제 상태가 '${newStatus}'(으)로 변경되었습니다.`);
+
+    // ⚡ 2) 백그라운드 DB 저장 (실패 시 자동 롤백)
+    try {
       const res = await fetch(`/api/eval/${evalId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -750,36 +794,42 @@ export default function TeacherEvalPage() {
         const data = await res.json();
         throw new Error(data.error || '수정 실패');
       }
-
-      setClassAllEvals((prev) =>
-        prev.map((item) =>
-          item.id === evalId ? { ...item, teacher_comment: updatedComment } : item
-        )
-      );
-      setInspectionAllEvals((prev) =>
-        prev.map((item) =>
-          item.id === evalId ? { ...item, teacher_comment: updatedComment } : item
-        )
-      );
-      invalidateClientCache('teacher_eval_class_');
-
-      const targetStudent = mergedModalStudents.find((s) => s.id === targetEval.student_id);
-      const studentDisplayName = homeworkModalStudent?.name || targetStudent?.name || '학생';
-      showToast(`✅ [${studentDisplayName}]의 [${bookName}] 과제 상태가 '${newStatus}'(으)로 변경되었습니다.`);
     } catch (err) {
       console.error('handleModalHomeworkStatusChange error:', err);
-      alert('과제 상태 수정 중 오류가 발생했습니다.');
+      const revertUpdate = (list) =>
+        list.map((item) =>
+          item.id === evalId ? { ...item, teacher_comment: prevComment } : item
+        );
+      setClassAllEvals(revertUpdate);
+      setInspectionAllEvals(revertUpdate);
+      updateCachedClassEvaluations(revertUpdate);
+      alert('과제 상태 수정 중 오류가 발생하여 이전 상태로 되돌렸습니다.');
     }
   };
 
-  // 👥 반 전체 과제 일괄 검사 모달용: 특정 학생의 모든 교재 상태 일괄 변경
+  // 👥 반 전체 과제 일괄 검사 모달용: 특정 학생의 모든 교재 상태 일괄 변경 (⚡ 0초 낙관적 UI)
   const handleBulkUpdateStudentHomeworkStatus = async (evalId, newStatus) => {
+    const targetEval = mergedModalEvals.find((e) => e.id === evalId);
+    if (!targetEval) return;
+
+    const prevComment = targetEval.teacher_comment;
+    const updatedComment = updateAllBooksStatusInComment(prevComment, newStatus);
+
+    const applyUpdate = (list) =>
+      list.map((item) =>
+        item.id === evalId ? { ...item, teacher_comment: updatedComment } : item
+      );
+
+    // ⚡ 1) 화면 상태 + 캐시 + 토스트 0초 즉시 업데이트
+    setClassAllEvals(applyUpdate);
+    setInspectionAllEvals(applyUpdate);
+    updateCachedClassEvaluations(applyUpdate);
+
+    const targetStudent = mergedModalStudents.find((s) => s.id === targetEval.student_id);
+    showToast(`✅ [${targetStudent?.name || '학생'}]의 모든 과제가 '${newStatus}'(으)로 변경되었습니다.`);
+
+    // ⚡ 2) 백그라운드 DB 저장 (실패 시 자동 롤백)
     try {
-      const targetEval = mergedModalEvals.find((e) => e.id === evalId);
-      if (!targetEval) return;
-
-      const updatedComment = updateAllBooksStatusInComment(targetEval.teacher_comment, newStatus);
-
       const res = await fetch(`/api/eval/${evalId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -789,86 +839,84 @@ export default function TeacherEvalPage() {
         const data = await res.json();
         throw new Error(data.error || '수정 실패');
       }
-
-      setClassAllEvals((prev) =>
-        prev.map((item) =>
-          item.id === evalId ? { ...item, teacher_comment: updatedComment } : item
-        )
-      );
-      setInspectionAllEvals((prev) =>
-        prev.map((item) =>
-          item.id === evalId ? { ...item, teacher_comment: updatedComment } : item
-        )
-      );
-      invalidateClientCache('teacher_eval_class_');
-
-      const targetStudent = mergedModalStudents.find((s) => s.id === targetEval.student_id);
-      showToast(`✅ [${targetStudent?.name || '학생'}]의 모든 과제가 '${newStatus}'(으)로 변경되었습니다.`);
     } catch (err) {
       console.error('handleBulkUpdateStudentHomeworkStatus error:', err);
-      alert('과제 상태 일괄 수정 중 오류가 발생했습니다.');
+      const revertUpdate = (list) =>
+        list.map((item) =>
+          item.id === evalId ? { ...item, teacher_comment: prevComment } : item
+        );
+      setClassAllEvals(revertUpdate);
+      setInspectionAllEvals(revertUpdate);
+      updateCachedClassEvaluations(revertUpdate);
+      alert('과제 상태 일괄 수정 중 오류가 발생하여 이전 상태로 되돌렸습니다.');
     }
   };
 
-  // 👥 반 전체 과제 일괄 검사 모달용: 특정 학생의 모든 누적 미완료 과제 일괄 완료 처리
+  // 👥 반 전체 과제 일괄 검사 모달용: 특정 학생의 모든 누적 미완료 과제 일괄 완료 처리 (⚡ 0초 낙관적 UI + 병렬 요청)
   const handleBulkUpdateStudentAllPending = async (studentId, newStatus = '완료') => {
-    try {
-      const studentEvals = mergedModalEvals.filter((e) => e.student_id === studentId);
-      const evalsToUpdate = [];
+    const studentEvals = mergedModalEvals.filter((e) => e.student_id === studentId);
+    const evalsToUpdate = [];
 
-      studentEvals.forEach((ev) => {
-        const parsed = parseEvaluationRecord(ev);
-        const hasPending = (parsed.homeworkBooks || []).some(
-          (b) => b.status !== newStatus
-        );
-        if (hasPending) {
-          evalsToUpdate.push(ev);
-        }
-      });
-
-      if (evalsToUpdate.length === 0) return;
-
-      for (const targetEval of evalsToUpdate) {
-        const updatedComment = updateAllBooksStatusInComment(targetEval.teacher_comment, newStatus);
-        const res = await fetch(`/api/eval/${targetEval.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ teacherComment: updatedComment }),
+    studentEvals.forEach((ev) => {
+      const parsed = parseEvaluationRecord(ev);
+      const hasPending = (parsed.homeworkBooks || []).some(
+        (b) => b.status !== newStatus
+      );
+      if (hasPending) {
+        evalsToUpdate.push({
+          id: ev.id,
+          prevComment: ev.teacher_comment,
+          updatedComment: updateAllBooksStatusInComment(ev.teacher_comment, newStatus),
         });
-        if (!res.ok) {
-          throw new Error('수정 실패');
-        }
       }
+    });
 
-      setClassAllEvals((prev) =>
-        prev.map((item) => {
-          if (item.student_id === studentId) {
-            return {
-              ...item,
-              teacher_comment: updateAllBooksStatusInComment(item.teacher_comment, newStatus),
-            };
-          }
-          return item;
-        })
-      );
-      setInspectionAllEvals((prev) =>
-        prev.map((item) => {
-          if (item.student_id === studentId) {
-            return {
-              ...item,
-              teacher_comment: updateAllBooksStatusInComment(item.teacher_comment, newStatus),
-            };
-          }
-          return item;
-        })
-      );
-      invalidateClientCache('teacher_eval_class_');
+    if (evalsToUpdate.length === 0) return;
 
-      const targetStudent = mergedModalStudents.find((s) => s.id === studentId);
-      showToast(`✅ [${targetStudent?.name || '학생'}]의 모든 누적 과제가 '${newStatus}'(으)로 일괄 변경되었습니다.`);
+    const updatedMap = new Map(evalsToUpdate.map((u) => [u.id, u.updatedComment]));
+    const prevMap = new Map(evalsToUpdate.map((u) => [u.id, u.prevComment]));
+
+    const applyUpdate = (list) =>
+      list.map((item) =>
+        updatedMap.has(item.id)
+          ? { ...item, teacher_comment: updatedMap.get(item.id) }
+          : item
+      );
+
+    // ⚡ 1) 화면 상태 + 캐시 + 토스트 0초 즉시 업데이트
+    setClassAllEvals(applyUpdate);
+    setInspectionAllEvals(applyUpdate);
+    updateCachedClassEvaluations(applyUpdate);
+
+    const targetStudent = mergedModalStudents.find((s) => s.id === studentId);
+    showToast(`✅ [${targetStudent?.name || '학생'}]의 모든 누적 과제가 '${newStatus}'(으)로 일괄 변경되었습니다.`);
+
+    // ⚡ 2) 백그라운드 병렬 DB 저장 (Promise.all)
+    try {
+      const responses = await Promise.all(
+        evalsToUpdate.map((u) =>
+          fetch(`/api/eval/${u.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ teacherComment: u.updatedComment }),
+          })
+        )
+      );
+      if (responses.some((r) => !r.ok)) {
+        throw new Error('수정 실패');
+      }
     } catch (err) {
       console.error('handleBulkUpdateStudentAllPending error:', err);
-      alert('누적 과제 일괄 수정 중 오류가 발생했습니다.');
+      const revertUpdate = (list) =>
+        list.map((item) =>
+          prevMap.has(item.id)
+            ? { ...item, teacher_comment: prevMap.get(item.id) }
+            : item
+        );
+      setClassAllEvals(revertUpdate);
+      setInspectionAllEvals(revertUpdate);
+      updateCachedClassEvaluations(revertUpdate);
+      alert('누적 과제 일괄 수정 중 오류가 발생하여 이전 상태로 되돌렸습니다.');
     }
   };
 

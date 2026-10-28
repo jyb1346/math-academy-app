@@ -1575,7 +1575,7 @@ export default function TeacherEvalPage() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 mt-6 space-y-6">
+      <main className="max-w-5xl xl:max-w-6xl mx-auto px-4 mt-6 space-y-6">
         <div className="bg-white p-5 sm:p-7 rounded-3xl border border-gray-200 shadow-xs space-y-6">
           
           {/* 타이틀 및 수업 방식(모드) 전환 탭 */}
@@ -2924,7 +2924,7 @@ export default function TeacherEvalPage() {
           {/* 📑 판서수업(반 일괄 모드)용 학생 누적 과제표 검사 팝업 모달 */}
           {homeworkModalStudent && (
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 animate-fade-in">
-              <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-4 sm:p-6 shadow-2xl border border-slate-200 space-y-4">
+              <div className="bg-white rounded-3xl max-w-6xl xl:max-w-7xl w-full max-h-[92vh] overflow-y-auto p-4 sm:p-6 shadow-2xl border border-slate-200 space-y-4">
                 <div className="flex justify-between items-center border-b border-slate-200 pb-3">
                   <div className="flex items-center gap-2">
                     <span className="text-xl">📑</span>

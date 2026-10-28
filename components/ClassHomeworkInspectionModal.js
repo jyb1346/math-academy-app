@@ -325,7 +325,7 @@ export default function ClassHomeworkInspectionModal({
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-4 animate-fade-in">
-      <div className="bg-white rounded-3xl max-w-5xl w-full max-h-[94vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-3xl max-w-6xl xl:max-w-7xl w-full max-h-[94vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
         {/* 모달 상단 헤더 */}
         <div className="p-4 sm:p-5 border-b border-slate-200 bg-slate-50/90 shrink-0">
           <div className="flex items-center justify-between gap-3">
@@ -931,7 +931,7 @@ export default function ClassHomeworkInspectionModal({
                                           </span>
                                         )}
                                       </div>
-                                      <span className="text-[10.5px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded truncate max-w-[130px] shrink-0">
+                                      <span className="text-[10.5px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded truncate max-w-[240px] shrink-0">
                                         {task.range || '범위 미지정'}
                                       </span>
                                     </div>

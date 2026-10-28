@@ -859,7 +859,7 @@ export default function ClassHomeworkInspectionModal({
                               onClick={() => toggleExpandCompleted(row.student.id)}
                               className="text-[11px] font-semibold text-slate-400 hover:text-indigo-600 transition cursor-pointer flex items-center gap-1"
                             >
-                              <span>✓ 완료된 과제 ${row.completedTasksCount}건 숨김됨</span>
+                              <span>✓ 완료된 과제 {row.completedTasksCount}건 숨김됨</span>
                               <span className="underline">(펼쳐보기)</span>
                             </button>
                           </div>

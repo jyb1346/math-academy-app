@@ -117,6 +117,21 @@ export default function TeacherEvalPage() {
   const [inspectionAllEvals, setInspectionAllEvals] = useState([]);
   const [inspectionLoading, setInspectionLoading] = useState(false);
 
+  // 반 전체 평가 기록과 일괄 검사 모달 평가 기록을 ID 기준으로 병합 (다른 반 전환 후에도 누락 방지)
+  const mergedModalEvals = useMemo(() => {
+    const map = new Map();
+    (classAllEvals || []).forEach((ev) => map.set(ev.id, ev));
+    (inspectionAllEvals || []).forEach((ev) => map.set(ev.id, ev));
+    return Array.from(map.values());
+  }, [classAllEvals, inspectionAllEvals]);
+
+  const mergedModalStudents = useMemo(() => {
+    const map = new Map();
+    (students || []).forEach((st) => map.set(st.id, st));
+    (inspectionStudents || []).forEach((st) => map.set(st.id, st));
+    return Array.from(map.values());
+  }, [students, inspectionStudents]);
+
   const fetchInspectionData = async (classId) => {
     setInspectionLoading(true);
     try {
@@ -135,6 +150,8 @@ export default function TeacherEvalPage() {
   const handleOpenClassHomeworkInspection = () => {
     const targetClass = selectedClassId || 'ALL';
     setInspectionClassId(targetClass);
+    setInspectionStudents(students);
+    setInspectionAllEvals(classAllEvals);
     fetchInspectionData(targetClass);
     setShowClassHomeworkModal(true);
   };
@@ -715,7 +732,7 @@ export default function TeacherEvalPage() {
   // 👥 판서수업(반 일괄)용 모달 내 과제표 상태 실시간 변경 핸들러
   const handleModalHomeworkStatusChange = async (evalId, bookName, newStatus) => {
     try {
-      const targetEval = classAllEvals.find((e) => e.id === evalId);
+      const targetEval = mergedModalEvals.find((e) => e.id === evalId);
       if (!targetEval) return;
 
       const updatedComment = updateBookStatusInComment(
@@ -744,8 +761,9 @@ export default function TeacherEvalPage() {
           item.id === evalId ? { ...item, teacher_comment: updatedComment } : item
         )
       );
+      invalidateClientCache('teacher_eval_class_');
 
-      const targetStudent = (inspectionStudents.length > 0 ? inspectionStudents : students).find((s) => s.id === targetEval.student_id);
+      const targetStudent = mergedModalStudents.find((s) => s.id === targetEval.student_id);
       const studentDisplayName = homeworkModalStudent?.name || targetStudent?.name || '학생';
       showToast(`✅ [${studentDisplayName}]의 [${bookName}] 과제 상태가 '${newStatus}'(으)로 변경되었습니다.`);
     } catch (err) {
@@ -757,7 +775,7 @@ export default function TeacherEvalPage() {
   // 👥 반 전체 과제 일괄 검사 모달용: 특정 학생의 모든 교재 상태 일괄 변경
   const handleBulkUpdateStudentHomeworkStatus = async (evalId, newStatus) => {
     try {
-      const targetEval = classAllEvals.find((e) => e.id === evalId);
+      const targetEval = mergedModalEvals.find((e) => e.id === evalId);
       if (!targetEval) return;
 
       const updatedComment = updateAllBooksStatusInComment(targetEval.teacher_comment, newStatus);
@@ -782,8 +800,9 @@ export default function TeacherEvalPage() {
           item.id === evalId ? { ...item, teacher_comment: updatedComment } : item
         )
       );
+      invalidateClientCache('teacher_eval_class_');
 
-      const targetStudent = (inspectionStudents.length > 0 ? inspectionStudents : students).find((s) => s.id === targetEval.student_id);
+      const targetStudent = mergedModalStudents.find((s) => s.id === targetEval.student_id);
       showToast(`✅ [${targetStudent?.name || '학생'}]의 모든 과제가 '${newStatus}'(으)로 변경되었습니다.`);
     } catch (err) {
       console.error('handleBulkUpdateStudentHomeworkStatus error:', err);
@@ -794,7 +813,7 @@ export default function TeacherEvalPage() {
   // 👥 반 전체 과제 일괄 검사 모달용: 특정 학생의 모든 누적 미완료 과제 일괄 완료 처리
   const handleBulkUpdateStudentAllPending = async (studentId, newStatus = '완료') => {
     try {
-      const studentEvals = classAllEvals.filter((e) => e.student_id === studentId);
+      const studentEvals = mergedModalEvals.filter((e) => e.student_id === studentId);
       const evalsToUpdate = [];
 
       studentEvals.forEach((ev) => {
@@ -843,8 +862,9 @@ export default function TeacherEvalPage() {
           return item;
         })
       );
+      invalidateClientCache('teacher_eval_class_');
 
-      const targetStudent = (inspectionStudents.length > 0 ? inspectionStudents : students).find((s) => s.id === studentId);
+      const targetStudent = mergedModalStudents.find((s) => s.id === studentId);
       showToast(`✅ [${targetStudent?.name || '학생'}]의 모든 누적 과제가 '${newStatus}'(으)로 일괄 변경되었습니다.`);
     } catch (err) {
       console.error('handleBulkUpdateStudentAllPending error:', err);
@@ -854,7 +874,7 @@ export default function TeacherEvalPage() {
 
   const handleModalUpdateEvaluation = async (evalId, updatedProgress, updatedBooks) => {
     try {
-      const targetEval = classAllEvals.find((e) => e.id === evalId);
+      const targetEval = mergedModalEvals.find((e) => e.id === evalId);
       if (!targetEval) return;
 
       const updatedComment = updateEvaluationProgressAndBooksInComment(
@@ -878,6 +898,12 @@ export default function TeacherEvalPage() {
           item.id === evalId ? { ...item, teacher_comment: updatedComment } : item
         )
       );
+      setInspectionAllEvals((prev) =>
+        prev.map((item) =>
+          item.id === evalId ? { ...item, teacher_comment: updatedComment } : item
+        )
+      );
+      invalidateClientCache('teacher_eval_class_');
 
       showToast(`✅ ${targetEval.eval_date} 수업의 진도 및 과제 정보가 성공적으로 수정되었습니다.`);
     } catch (err) {
@@ -895,6 +921,8 @@ export default function TeacherEvalPage() {
       }
 
       setClassAllEvals((prev) => prev.filter((item) => item.id !== evalId));
+      setInspectionAllEvals((prev) => prev.filter((item) => item.id !== evalId));
+      invalidateClientCache('teacher_eval_class_');
       showToast(`🗑️ ${formattedDate} 피드백 및 과제 기록이 성공적으로 삭제되었습니다.`);
     } catch (err) {
       console.error('handleModalDeleteEvaluation error:', err);
@@ -2948,11 +2976,11 @@ export default function TeacherEvalPage() {
                 <div className="bg-slate-50 p-3 sm:p-4 rounded-2xl border border-slate-200">
                   <StudentHomeworkTable
                     studentName={homeworkModalStudent.name}
-                    evaluations={classAllEvals.filter((e) => e.student_id === homeworkModalStudent.student_id)}
+                    evaluations={mergedModalEvals.filter((e) => e.student_id === homeworkModalStudent.student_id)}
                     isEditable={true}
                     currentUserId={user?.id}
                     userRole={user?.role}
-                    usedBooks={extractAllUniqueBookNamesFromEvaluations(classAllEvals.filter((e) => e.student_id === homeworkModalStudent.student_id))}
+                    usedBooks={extractAllUniqueBookNamesFromEvaluations(mergedModalEvals.filter((e) => e.student_id === homeworkModalStudent.student_id))}
                     onStatusChange={handleModalHomeworkStatusChange}
                     onUpdateEvaluation={handleModalUpdateEvaluation}
                     onDeleteEvaluation={handleModalDeleteEvaluation}

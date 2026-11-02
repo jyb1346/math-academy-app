@@ -37,13 +37,22 @@ export async function GET(req) {
     }
   }
 
+  // 🎯 학생 목록 가나다(이름) 순 정렬
+  allTeacherStudents.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
+
   const evalData = evalRes.data;
 
-  // 학부모 리포트 1클릭 열람 및 링크 복사용 HMAC 서명 토큰 첨부
-  const evalDataWithTokens = (evalData || []).map((ev) => ({
-    ...ev,
-    report_token: generateReportToken(ev.id),
-  }));
+  // 학부모 리포트 1클릭 열람 및 링크 복사용 HMAC 서명 토큰 첨부 + 동일 날짜 내 학생 이름 가나다순 정렬
+  const evalDataWithTokens = (evalData || [])
+    .map((ev) => ({
+      ...ev,
+      report_token: generateReportToken(ev.id),
+    }))
+    .sort((a, b) => {
+      const dateCmp = (b.eval_date || '').localeCompare(a.eval_date || '');
+      if (dateCmp !== 0) return dateCmp;
+      return (a.users?.name || '').localeCompare(b.users?.name || '', 'ko');
+    });
 
   return NextResponse.json({
     students: allTeacherStudents,

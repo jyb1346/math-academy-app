@@ -23,7 +23,7 @@ export async function GET(req) {
       .eq('teacher_id', user.id);
 
     if (stErr) return NextResponse.json({ error: stErr.message }, { status: 500 });
-    directStudents = stData || [];
+    directStudents = (stData || []).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
   }
 
   return NextResponse.json({ classes, directStudents });

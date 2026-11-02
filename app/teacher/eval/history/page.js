@@ -377,29 +377,38 @@ export default function EvalHistoryPage() {
     );
   };
 
-  const filteredStudents = selectedClassId === 'ALL'
+  const filteredStudents = (selectedClassId === 'ALL'
     ? students
     : students.filter((st) =>
         classStudents.some(
           (cs) => String(cs.class_id) === String(selectedClassId) && String(cs.student_id) === String(st.id)
         )
-      );
+      )
+  )
+    .slice()
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
 
-  const filteredEvals = evaluations.filter((item) => {
-    if (selectedStudentId !== 'ALL' && item.student_id !== selectedStudentId) {
-      return false;
-    }
-    if (selectedClassId !== 'ALL') {
-      const inClass = classStudents.some(
-        (cs) => String(cs.class_id) === String(selectedClassId) && cs.student_id === item.student_id
-      );
-      if (!inClass) return false;
-    }
-    if (selectedDate && item.eval_date !== selectedDate) {
-      return false;
-    }
-    return true;
-  });
+  const filteredEvals = evaluations
+    .filter((item) => {
+      if (selectedStudentId !== 'ALL' && item.student_id !== selectedStudentId) {
+        return false;
+      }
+      if (selectedClassId !== 'ALL') {
+        const inClass = classStudents.some(
+          (cs) => String(cs.class_id) === String(selectedClassId) && cs.student_id === item.student_id
+        );
+        if (!inClass) return false;
+      }
+      if (selectedDate && item.eval_date !== selectedDate) {
+        return false;
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      const dateCmp = (b.eval_date || '').localeCompare(a.eval_date || '');
+      if (dateCmp !== 0) return dateCmp;
+      return (a.users?.name || '').localeCompare(b.users?.name || '', 'ko');
+    });
 
   const parsedFiltered = filteredEvals.map((e) => ({
     eval: e,

@@ -6,6 +6,7 @@ import PushNotificationManager from '@/components/PushNotificationManager';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import StudentHomeworkTable from '@/components/StudentHomeworkTable';
 import StudentClinicModal from '@/components/StudentClinicModal';
+import StudentStickerMarketModal from '@/components/StudentStickerMarketModal';
 import { logout } from '@/lib/useSession';
 import { getClientCache, setClientCache } from '@/lib/clientCache';
 
@@ -14,15 +15,27 @@ export default function StudentDashboard() {
   const [evaluations, setEvaluations] = useState([]);
   const [qnaStats, setQnaStats] = useState({ pending: 0, answered: 0, resolved: 0, total: 0 });
   const [clinicInfo, setClinicInfo] = useState({ hasActive: false, activeDate: '', myBooking: null, bookingTimeLabel: '', activeScheduleId: null });
+  const [stickerStats, setStickerStats] = useState({ openCount: 0, myConfirmedCount: 0, myNewCommentsCount: 0 });
   const [loadingEvals, setLoadingEvals] = useState(true);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showClinicModal, setShowClinicModal] = useState(false);
+  const [showStickerMarketModal, setShowStickerMarketModal] = useState(false);
   const router = useRouter();
+
+  const computeStickerStats = (posts = []) => {
+    const openCount = posts.filter((p) => p.status === 'OPEN').length;
+    const myConfirmedCount = posts.filter((p) => p.status === 'COMPLETED' && p.isMatchedParty).length;
+    const myNewCommentsCount = posts
+      .filter((p) => p.isMine && p.status === 'OPEN')
+      .reduce((acc, p) => acc + (p.comments || []).filter((c) => !c.isMine).length, 0);
+    return { openCount, myConfirmedCount, myNewCommentsCount };
+  };
 
   const applyCachedStudentData = (cached) => {
     if (cached.evaluations) setEvaluations(cached.evaluations);
     if (cached.clinicInfo) setClinicInfo(cached.clinicInfo);
     if (cached.qnaStats) setQnaStats(cached.qnaStats);
+    if (cached.stickerStats) setStickerStats(cached.stickerStats);
   };
 
   const fetchStudentData = async (studentId, showLoading = false) => {
@@ -104,13 +117,30 @@ export default function StudentDashboard() {
         })
         .catch(() => ({ pending: 0, answered: 0, resolved: 0, total: 0 }));
 
-      const [evList, cInfo, qStats] = await Promise.all([evalPromise, clinicPromise, qnaPromise]);
+      // ✨ 띠부띠부씰 교환 장터 현황 조회
+      const stickerPromise = fetch('/api/sticker-trades')
+        .then(async (res) => {
+          if (!res.ok) return { openCount: 0, myConfirmedCount: 0, myNewCommentsCount: 0 };
+          const stJson = await res.json();
+          const stStats = computeStickerStats(stJson.posts || []);
+          setStickerStats(stStats);
+          return stStats;
+        })
+        .catch(() => ({ openCount: 0, myConfirmedCount: 0, myNewCommentsCount: 0 }));
+
+      const [evList, cInfo, qStats, stStats] = await Promise.all([
+        evalPromise,
+        clinicPromise,
+        qnaPromise,
+        stickerPromise,
+      ]);
 
       // 캐시 저장 (새로고침/재방문 시 0.0초 즉시 복원)
       setClientCache(`student_dashboard_${studentId}`, {
         evaluations: evList,
         clinicInfo: cInfo,
         qnaStats: qStats,
+        stickerStats: stStats,
       });
     } catch (err) {
       console.error('fetchStudentData error:', err);
@@ -136,6 +166,10 @@ export default function StudentDashboard() {
     try {
       const parsedUser = JSON.parse(userData);
       setUser(parsedUser);
+
+      if (typeof window !== 'undefined' && window.location.search.includes('openStickerMarket=1')) {
+        setShowStickerMarketModal(true);
+      }
 
       // ⚡ 1. 캐시가 있으면 0초 만에 대시보드 즉시 복원
       const cached = getClientCache(`student_dashboard_${parsedUser.id}`);
@@ -320,7 +354,56 @@ export default function StudentDashboard() {
 
         </div>
 
+        {/* ✨ 3. 품수학 띠부띠부씰 로비 교환 장터 배너 (학생 계정 전용) */}
+        <div
+          onClick={() => setShowStickerMarketModal(true)}
+          className="group relative bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white p-6 rounded-3xl shadow-md cursor-pointer overflow-hidden transition-all duration-300 hover:scale-[1.01] hover:shadow-lg border border-amber-400/40"
+        >
+          <div className="flex justify-between items-start gap-2 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
+              {stickerStats.myConfirmedCount > 0 ? (
+                <span className="bg-emerald-400 text-slate-950 text-[11px] px-3.5 py-1 rounded-full font-black flex items-center gap-1.5 shadow-md">
+                  <span>🎉 내 확정된 로비 교환 약속 {stickerStats.myConfirmedCount}건!</span>
+                </span>
+              ) : stickerStats.myNewCommentsCount > 0 ? (
+                <span className="bg-white text-rose-600 text-[11px] px-3.5 py-1 rounded-full font-black flex items-center gap-1.5 shadow-md animate-pulse">
+                  <span>💬 내 교환글에 신청 댓글 {stickerStats.myNewCommentsCount}건 도착!</span>
+                </span>
+              ) : (
+                <span className="bg-white/25 text-white text-[11px] px-3.5 py-1 rounded-full font-black flex items-center gap-1.5">
+                  <span>✨ 25종 띠부띠부씰 이벤트</span>
+                </span>
+              )}
+              {stickerStats.openCount > 0 && (
+                <span className="bg-slate-900/35 text-white text-[11px] px-3 py-1 rounded-full font-black">
+                  🔥 현재 교환 가능 {stickerStats.openCount}건
+                </span>
+              )}
+            </div>
+            <span className="text-2xl text-white/80 group-hover:text-white group-hover:translate-x-1 transition-all">
+              →
+            </span>
+          </div>
+          <div className="mt-4">
+            <h3 className="text-xl font-extrabold text-white flex items-center gap-2">
+              <span>🎁 띠부띠부씰 로비 교환 장터</span>
+            </h3>
+            <p className="text-xs text-amber-50 font-bold mt-1 leading-relaxed">
+              중복으로 나온 띠부씰을 올리고 &ldquo;저 이거 가지고 있어요!&rdquo; 댓글을 채택해 학원 로비에서 교환하세요!
+            </p>
+          </div>
+        </div>
+
       </main>
+
+      {/* ✨ 띠부띠부씰 로비 교환 장터 모달 */}
+      {showStickerMarketModal && user && (
+        <StudentStickerMarketModal
+          user={user}
+          onClose={() => setShowStickerMarketModal(false)}
+          onStatsChange={(posts) => setStickerStats(computeStickerStats(posts))}
+        />
+      )}
 
       {/* ⏰ 주말 클리닉 예약 모달 */}
       {showClinicModal && user && (

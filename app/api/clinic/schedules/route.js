@@ -7,6 +7,8 @@ import {
   generateTeacherTimetableGrid,
   normalizeClinicSchedule,
   serializeTargetMeta,
+  getNowKSTDateAndTime,
+  isClinicScheduleActiveAndUpcoming,
 } from '@/lib/clinicUtils';
 
 // GET /api/clinic/schedules — 클리닉 일정 및 예약 현황 조회
@@ -18,6 +20,8 @@ export async function GET(req) {
   const isStudent = user.role === 'STUDENT';
 
   try {
+    const { todayStr, currentTimeStr } = getNowKSTDateAndTime();
+
     // 1. 활성 클리닉 일정 조회 (최근 및 향후 일정 중심)
     let query = db
       .from('clinic_schedules')
@@ -25,9 +29,9 @@ export async function GET(req) {
       .order('date', { ascending: false })
       .order('start_time', { ascending: true });
 
-    // 학생인 경우 활성화된 일정만 노출
+    // 학생인 경우 활성화된 오늘 이후 일정만 조회
     if (isStudent) {
-      query = query.eq('is_active', true);
+      query = query.eq('is_active', true).gte('date', todayStr);
     }
 
     const { data: schedules, error: schedErr } = await query;
@@ -44,9 +48,30 @@ export async function GET(req) {
       return NextResponse.json({ error: schedErr.message }, { status: 500 });
     }
 
-    let rawSchedules = (schedules || []).map(normalizeClinicSchedule);
+    // ⏰ 이미 날짜(또는 당일 종료 시각)가 지난 활성 일정은 자동으로 마감(is_active: false) 처리
+    const expiredActiveIds = [];
+    let rawSchedules = (schedules || []).map((raw) => {
+      const norm = normalizeClinicSchedule(raw);
+      const isExpired =
+        norm.is_active &&
+        (norm.date < todayStr ||
+          (norm.date === todayStr && norm.end_time && norm.end_time <= currentTimeStr));
+      if (isExpired) {
+        expiredActiveIds.push(norm.id);
+        return { ...norm, is_active: false };
+      }
+      return norm;
+    });
 
-    // 🎯 학생인 경우: 대상(내 담당 교사 / 소속 반 / 지정 학생 / 전체)에 맞는 일정만 필터링
+    if (expiredActiveIds.length > 0) {
+      db.from('clinic_schedules')
+        .update({ is_active: false })
+        .in('id', expiredActiveIds)
+        .then(() => {})
+        .catch((err) => console.warn('Auto-deactivate expired clinic schedules warning:', err));
+    }
+
+    // 🎯 학생인 경우: 아직 지나지 않은 활성 일정 중 대상(내 담당 교사 / 소속 반 / 지정 학생 / 전체)에 맞는 일정만 필터링
     if (isStudent) {
       const directTeacherId = user.teacher_id || null;
 
@@ -70,7 +95,7 @@ export async function GET(req) {
       const allMyTeacherIds = new Set([directTeacherId, ...classTeacherIds].filter(Boolean));
 
       rawSchedules = rawSchedules.filter((sched) => {
-        if (!sched.is_active) return false;
+        if (!isClinicScheduleActiveAndUpcoming(sched)) return false;
 
         const targetType = sched.target_type || (sched.target_class_id ? 'CLASS' : 'TEACHER_STUDENTS');
 

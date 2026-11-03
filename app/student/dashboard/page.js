@@ -9,6 +9,7 @@ import StudentClinicModal from '@/components/StudentClinicModal';
 import StudentStickerMarketModal from '@/components/StudentStickerMarketModal';
 import { logout } from '@/lib/useSession';
 import { getClientCache, setClientCache } from '@/lib/clientCache';
+import { getNowKSTDateAndTime, isClinicScheduleActiveAndUpcoming } from '@/lib/clinicUtils';
 
 export default function StudentDashboard() {
   const [user, setUser] = useState(null);
@@ -33,7 +34,14 @@ export default function StudentDashboard() {
 
   const applyCachedStudentData = (cached) => {
     if (cached.evaluations) setEvaluations(cached.evaluations);
-    if (cached.clinicInfo) setClinicInfo(cached.clinicInfo);
+    if (cached.clinicInfo) {
+      const { todayStr } = getNowKSTDateAndTime();
+      if (cached.clinicInfo.activeDate && cached.clinicInfo.activeDate < todayStr) {
+        setClinicInfo({ hasActive: false, activeDate: '', myBooking: null, bookingTimeLabel: '', activeScheduleId: null });
+      } else {
+        setClinicInfo(cached.clinicInfo);
+      }
+    }
     if (cached.qnaStats) setQnaStats(cached.qnaStats);
     if (cached.stickerStats) setStickerStats(cached.stickerStats);
   };
@@ -53,12 +61,14 @@ export default function StudentDashboard() {
         })
         .catch(() => []);
 
-      // ⏰ 클리닉 일정 및 내 예약 상태 조회
+      // ⏰ 클리닉 일정 및 내 예약 상태 조회 (오늘 이후 예정된 유효한 일정만 표시)
       const clinicPromise = fetch('/api/clinic/schedules')
         .then(async (res) => {
           if (!res.ok) return { hasActive: false, activeDate: '', myBooking: null, bookingTimeLabel: '', activeScheduleId: null };
           const data = await res.json();
-          const activeSchedules = (data.schedules || []).filter((s) => s.is_active);
+          const activeSchedules = (data.schedules || [])
+            .filter((s) => isClinicScheduleActiveAndUpcoming(s))
+            .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
           let cInfo = { hasActive: false, activeDate: '', myBooking: null, bookingTimeLabel: '', activeScheduleId: null };
           if (activeSchedules.length > 0) {
             // 학생이 이미 예약한 일정이 있다면 그 일정을 우선 표시!

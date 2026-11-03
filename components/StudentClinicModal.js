@@ -10,6 +10,7 @@ import {
   formatRangesSummary,
   formatRangesButtonLabel,
   checkMultipleRangesCapacity,
+  isClinicScheduleActiveAndUpcoming,
 } from '@/lib/clinicUtils';
 import { getClientCache, setClientCache } from '@/lib/clientCache';
 
@@ -34,7 +35,9 @@ export default function StudentClinicModal({ user, initialScheduleId = null, onC
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '조회 실패');
 
-      const activeList = (data.schedules || []).filter((s) => s.is_active);
+      const activeList = (data.schedules || [])
+        .filter((s) => isClinicScheduleActiveAndUpcoming(s))
+        .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
       setSchedules(activeList);
       setClientCache('clinic_schedules_student', activeList);
 
@@ -86,9 +89,12 @@ export default function StudentClinicModal({ user, initialScheduleId = null, onC
   };
 
   useEffect(() => {
-    // ⚡ 캐시가 있다면 모달을 열자마자 0초 만에 이전 일정 표시!
-    const cached = getClientCache('clinic_schedules_student');
-    if (cached && Array.isArray(cached) && cached.length > 0) {
+    // ⚡ 캐시가 있다면 모달을 열자마자 0초 만에 유효한 일정만 표시!
+    const cachedRaw = getClientCache('clinic_schedules_student');
+    const cached = Array.isArray(cachedRaw)
+      ? cachedRaw.filter((s) => isClinicScheduleActiveAndUpcoming(s))
+      : [];
+    if (cached.length > 0) {
       setSchedules(cached);
       let targetSched = null;
       if (initialScheduleId) {

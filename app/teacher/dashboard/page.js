@@ -7,6 +7,7 @@ import PushNotificationManager from '@/components/PushNotificationManager';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import { logout } from '@/lib/useSession';
 import { getClientCache, setClientCache } from '@/lib/clientCache';
+import { isParentReplyUnread, markParentReplyCheckedInComment } from '@/lib/evalUtils';
 
 export default function TeacherDashboard() {
   const [user, setUser] = useState(null);
@@ -16,6 +17,7 @@ export default function TeacherDashboard() {
   const [classStudents, setClassStudents] = useState([]);
   const [qnaStats, setQnaStats] = useState({ pending: 0, inProgress: 0, resolved: 0, total: 0 });
   const [clinicPendingCount, setClinicPendingCount] = useState(0);
+  const [repliedEvaluations, setRepliedEvaluations] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // 모달 상태
@@ -98,6 +100,7 @@ export default function TeacherDashboard() {
     setStudents(sortedStudents);
     setTeachers(data.teachers || []);
     setClassStudents(data.classStudents || []);
+    setRepliedEvaluations(data.repliedEvaluations || []);
 
     const parsedQna = (data.qna || []).map((q) => {
       let replies = [];
@@ -164,6 +167,7 @@ export default function TeacherDashboard() {
       router.prefetch('/admin/dashboard');
       router.prefetch('/teacher/eval');
       router.prefetch('/teacher/eval/history');
+      router.prefetch('/teacher/eval/history?tab=PARENT_REPLY');
       router.prefetch('/teacher/timer');
     } catch (e) {}
 
@@ -413,6 +417,95 @@ export default function TeacherDashboard() {
     }
   };
 
+  // 💌 교무실 대시보드에서 학부모 답장 1클릭 확인 완료 처리 (0초 낙관적 UI)
+  const syncReplyCommentToCaches = (updatedMap) => {
+    if (!user?.id) return;
+    const cachedDashboard = getClientCache(`teacher_data_${user.id}`);
+    if (cachedDashboard && Array.isArray(cachedDashboard.repliedEvaluations)) {
+      setClientCache(`teacher_data_${user.id}`, {
+        ...cachedDashboard,
+        repliedEvaluations: cachedDashboard.repliedEvaluations.map((ev) =>
+          updatedMap.has(ev.id) ? { ...ev, teacher_comment: updatedMap.get(ev.id) } : ev
+        ),
+      });
+    }
+    const cachedHistory = getClientCache(`teacher_eval_history_${user.id}`);
+    if (cachedHistory && Array.isArray(cachedHistory.evaluations)) {
+      setClientCache(`teacher_eval_history_${user.id}`, {
+        ...cachedHistory,
+        evaluations: cachedHistory.evaluations.map((ev) =>
+          updatedMap.has(ev.id) ? { ...ev, teacher_comment: updatedMap.get(ev.id) } : ev
+        ),
+      });
+    }
+  };
+
+  const handleMarkReplyCheckedOnDashboard = async (evalItem) => {
+    const nowIso = new Date().toISOString();
+    const prevComment = evalItem.teacher_comment;
+    const updatedComment = markParentReplyCheckedInComment(prevComment, nowIso);
+    const updatedMap = new Map([[evalItem.id, updatedComment]]);
+
+    setRepliedEvaluations((prev) =>
+      prev.map((ev) => (ev.id === evalItem.id ? { ...ev, teacher_comment: updatedComment } : ev))
+    );
+    syncReplyCommentToCaches(updatedMap);
+
+    try {
+      const res = await fetch(`/api/eval/${evalItem.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teacherComment: updatedComment }),
+      });
+      if (!res.ok) throw new Error('저장 실패');
+    } catch (err) {
+      console.error('handleMarkReplyCheckedOnDashboard error:', err);
+      const revertMap = new Map([[evalItem.id, prevComment]]);
+      setRepliedEvaluations((prev) =>
+        prev.map((ev) => (ev.id === evalItem.id ? { ...ev, teacher_comment: prevComment } : ev))
+      );
+      syncReplyCommentToCaches(revertMap);
+      alert('답장 확인 상태 저장 중 오류가 발생했습니다.');
+    }
+  };
+
+  const handleMarkAllRepliesCheckedOnDashboard = async (unreadList) => {
+    if (!unreadList || unreadList.length === 0) return;
+    const nowIso = new Date().toISOString();
+    const updatedMap = new Map();
+    const prevMap = new Map();
+
+    unreadList.forEach((ev) => {
+      prevMap.set(ev.id, ev.teacher_comment);
+      updatedMap.set(ev.id, markParentReplyCheckedInComment(ev.teacher_comment, nowIso));
+    });
+
+    setRepliedEvaluations((prev) =>
+      prev.map((ev) => (updatedMap.has(ev.id) ? { ...ev, teacher_comment: updatedMap.get(ev.id) } : ev))
+    );
+    syncReplyCommentToCaches(updatedMap);
+
+    try {
+      const responses = await Promise.all(
+        unreadList.map((ev) =>
+          fetch(`/api/eval/${ev.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ teacherComment: updatedMap.get(ev.id) }),
+          })
+        )
+      );
+      if (responses.some((r) => !r.ok)) throw new Error('일괄 저장 실패');
+    } catch (err) {
+      console.error('handleMarkAllRepliesCheckedOnDashboard error:', err);
+      setRepliedEvaluations((prev) =>
+        prev.map((ev) => (prevMap.has(ev.id) ? { ...ev, teacher_comment: prevMap.get(ev.id) } : ev))
+      );
+      syncReplyCommentToCaches(prevMap);
+      alert('일괄 확인 처리 중 오류가 발생했습니다.');
+    }
+  };
+
   if (loading) return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center font-bold text-slate-600">
       교무실 대시보드 로딩 중...
@@ -420,6 +513,7 @@ export default function TeacherDashboard() {
   );
 
   const isHeadTeacher = user?.role === 'HEAD_TEACHER';
+  const unreadParentReplies = repliedEvaluations.filter((ev) => isParentReplyUnread(ev));
 
   return (
     <div className="min-h-screen bg-slate-100/70 pb-32 font-sans text-slate-800">
@@ -631,6 +725,110 @@ export default function TeacherDashboard() {
 
           </div>
 
+          {/* 💌 미확인 학부모 피드백 답장 도착 알림 배너 */}
+          {unreadParentReplies.length > 0 && (
+            <div className="bg-gradient-to-r from-rose-50 via-amber-50/80 to-rose-50 border-2 border-rose-300 rounded-3xl p-4 sm:p-5 shadow-md space-y-3.5 animate-in fade-in duration-200">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start sm:items-center gap-3">
+                  <span className="w-10 h-10 rounded-2xl bg-rose-600 text-white flex items-center justify-center text-xl shadow-xs shrink-0 animate-bounce">
+                    💌
+                  </span>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-sm sm:text-base font-black text-rose-950">
+                        미확인 학부모 피드백 답장 {unreadParentReplies.length}건이 도착했습니다!
+                      </h3>
+                      <span className="text-[11px] font-black bg-rose-600 text-white px-2.5 py-0.5 rounded-full">
+                        NEW 미확인 {unreadParentReplies.length}건
+                      </span>
+                    </div>
+                    <p className="text-xs text-rose-800/90 font-semibold mt-0.5">
+                      학부모님께서 일일 피드백 리포트에 남기신 소중한 답장입니다. 확인 완료를 체크하거나 답장 모아보기에서 전체 내역을 확인하세요.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleMarkAllRepliesCheckedOnDashboard(unreadParentReplies)}
+                    className="text-xs font-black bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-300 px-3.5 py-2 rounded-xl transition shadow-2xs cursor-pointer"
+                  >
+                    ✓ 미확인 {unreadParentReplies.length}건 모두 확인 완료
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.push('/teacher/eval/history?tab=PARENT_REPLY')}
+                    className="text-xs font-black bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>💌 답장 모아보기 ({unreadParentReplies.length})</span>
+                    <span>→</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 미확인 답장 미리보기 리스트 (최대 3건) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
+                {unreadParentReplies.slice(0, 3).map((ev) => {
+                  const studentName = ev.users?.name || students.find((s) => s.id === ev.student_id)?.name || '학생';
+                  return (
+                    <div
+                      key={ev.id}
+                      className="bg-white/95 border border-rose-200 rounded-2xl p-3.5 flex flex-col justify-between gap-2.5 shadow-2xs"
+                    >
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-xs font-black text-slate-900 truncate">{studentName} 학부모님</span>
+                            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md shrink-0">
+                              {ev.eval_date} 수업
+                            </span>
+                          </div>
+                          {ev.parent_reply_at && (
+                            <span className="text-[10px] font-bold text-rose-600 shrink-0">
+                              {new Date(ev.parent_reply_at).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })} 답장
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs font-bold text-slate-700 line-clamp-2 whitespace-pre-wrap leading-relaxed bg-rose-50/50 px-2.5 py-2 rounded-xl border border-rose-100">
+                          &ldquo;{ev.parent_reply}&rdquo;
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 pt-0.5">
+                        <button
+                          type="button"
+                          onClick={() => router.push('/teacher/eval/history?tab=PARENT_REPLY')}
+                          className="text-[11px] font-bold text-slate-500 hover:text-indigo-600 transition cursor-pointer"
+                        >
+                          상세 리포트 보기 →
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMarkReplyCheckedOnDashboard(ev)}
+                          className="text-[11px] font-black bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg transition shadow-2xs cursor-pointer"
+                        >
+                          ✓ 확인 완료 체크
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {unreadParentReplies.length > 3 && (
+                <div className="text-right">
+                  <button
+                    type="button"
+                    onClick={() => router.push('/teacher/eval/history?tab=PARENT_REPLY')}
+                    className="text-xs font-black text-rose-700 hover:underline cursor-pointer"
+                  >
+                    + 외 {unreadParentReplies.length - 3}건의 미확인 답장 더 보기 →
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* 📈 중·고등 수학 내신·모의고사 성적 추이 & 패인 분석 배너 + 피드백 내역 바로가기 */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             <div
@@ -657,10 +855,29 @@ export default function TeacherDashboard() {
             </div>
 
             <button
-              onClick={() => router.push('/teacher/eval/history')}
-              className="text-xs bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/80 px-4 py-3.5 rounded-2xl font-bold transition shadow-xs flex items-center justify-center gap-2 shrink-0"
+              onClick={() =>
+                router.push(
+                  unreadParentReplies.length > 0
+                    ? '/teacher/eval/history?tab=PARENT_REPLY'
+                    : '/teacher/eval/history'
+                )
+              }
+              className={`text-xs px-4 py-3.5 rounded-2xl font-bold transition shadow-xs flex items-center justify-center gap-2 shrink-0 cursor-pointer ${
+                unreadParentReplies.length > 0
+                  ? 'bg-rose-600 hover:bg-rose-700 text-white border border-rose-500 ring-2 ring-rose-200'
+                  : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/80'
+              }`}
             >
               <span>📋 일일 피드백 내역 및 학부모 답장 보기</span>
+              {unreadParentReplies.length > 0 ? (
+                <span className="bg-white text-rose-700 text-[11px] font-black px-2 py-0.5 rounded-full animate-pulse">
+                  💌 미확인 {unreadParentReplies.length}건
+                </span>
+              ) : repliedEvaluations.length > 0 ? (
+                <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-black px-2 py-0.5 rounded-full">
+                  💌 답장 {repliedEvaluations.length}건
+                </span>
+              ) : null}
               <span>→</span>
             </button>
           </div>

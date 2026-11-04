@@ -112,7 +112,7 @@ export async function POST(req, { params }) {
     sendPushToUsers(req, [evalData.teacher_id], {
       title: `💌 [학부모 답장] ${studentName} 학생 학부모님`,
       message: `"${preview}"`,
-      url: '/teacher/eval/history',
+      url: '/teacher/eval/history?tab=PARENT_REPLY',
     }).catch((err) => console.warn('Parent reply push send warning:', err));
   }
 

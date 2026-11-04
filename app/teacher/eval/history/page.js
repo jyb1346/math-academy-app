@@ -3,7 +3,12 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import EvaluationBarChart from '@/components/EvaluationBarChart';
-import { parseEvaluationRecord, markAlimtalkSentInComment } from '@/lib/evalUtils';
+import {
+  parseEvaluationRecord,
+  markAlimtalkSentInComment,
+  markParentReplyCheckedInComment,
+  isParentReplyUnread,
+} from '@/lib/evalUtils';
 import { getClientCache, setClientCache } from '@/lib/clientCache';
 
 function HexagonRadarChart({ scores, twoWeekAvgScores }) {
@@ -122,7 +127,7 @@ export default function EvalHistoryPage() {
   const [selectedClassId, setSelectedClassId] = useState('ALL');
   const [selectedStudentId, setSelectedStudentId] = useState('ALL');
   const [selectedDate, setSelectedDate] = useState('');
-  const [filterTab, setFilterTab] = useState('ALL'); // 'ALL' | 'UNSENT' | 'SENT'
+  const [filterTab, setFilterTab] = useState('ALL'); // 'ALL' | 'UNSENT' | 'SENT' | 'PARENT_REPLY'
   const [loading, setLoading] = useState(true);
 
   const [sendingId, setSendingId] = useState(null);
@@ -132,6 +137,14 @@ export default function EvalHistoryPage() {
   const router = useRouter();
 
   useEffect(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const tabParam = sp.get('tab');
+      if (tabParam === 'PARENT_REPLY' || tabParam === 'UNSENT' || tabParam === 'SENT') {
+        setFilterTab(tabParam);
+      }
+    } catch (e) {}
+
     const userData = localStorage.getItem('user');
     if (!userData) {
       router.push('/login');
@@ -300,6 +313,102 @@ export default function EvalHistoryPage() {
     window.open(url, '_blank');
   };
 
+  // 💌 학부모 답장 확인 상태 변경 시 캐시 동기화 (교무실 대시보드 & 피드백 히스토리 캐시 모두 갱신)
+  const syncReplyStatusToCaches = (updatedMap) => {
+    if (!user?.id) return;
+    const cachedHistory = getClientCache(`teacher_eval_history_${user.id}`);
+    if (cachedHistory && Array.isArray(cachedHistory.evaluations)) {
+      setClientCache(`teacher_eval_history_${user.id}`, {
+        ...cachedHistory,
+        evaluations: cachedHistory.evaluations.map((ev) =>
+          updatedMap.has(ev.id) ? { ...ev, teacher_comment: updatedMap.get(ev.id) } : ev
+        ),
+      });
+    }
+    const cachedDashboard = getClientCache(`teacher_data_${user.id}`);
+    if (cachedDashboard && Array.isArray(cachedDashboard.repliedEvaluations)) {
+      setClientCache(`teacher_data_${user.id}`, {
+        ...cachedDashboard,
+        repliedEvaluations: cachedDashboard.repliedEvaluations.map((ev) =>
+          updatedMap.has(ev.id) ? { ...ev, teacher_comment: updatedMap.get(ev.id) } : ev
+        ),
+      });
+    }
+  };
+
+  // 💌 학부모 답장 개별 확인 완료 / 미확인 토글 핸들러 (⚡ 0초 낙관적 UI)
+  const handleToggleReplyChecked = async (item, markChecked = true) => {
+    const prevComment = item.teacher_comment;
+    const nextTimestamp = markChecked ? new Date().toISOString() : null;
+    const updatedComment = markParentReplyCheckedInComment(prevComment, nextTimestamp);
+    const updatedMap = new Map([[item.id, updatedComment]]);
+
+    setEvaluations((prev) =>
+      prev.map((ev) => (ev.id === item.id ? { ...ev, teacher_comment: updatedComment } : ev))
+    );
+    syncReplyStatusToCaches(updatedMap);
+
+    try {
+      const res = await fetch(`/api/eval/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teacherComment: updatedComment }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || '상태 저장 실패');
+      }
+    } catch (err) {
+      console.error('handleToggleReplyChecked error:', err);
+      const revertMap = new Map([[item.id, prevComment]]);
+      setEvaluations((prev) =>
+        prev.map((ev) => (ev.id === item.id ? { ...ev, teacher_comment: prevComment } : ev))
+      );
+      syncReplyStatusToCaches(revertMap);
+      alert(`답장 확인 상태 변경 실패: ${err.message}`);
+    }
+  };
+
+  // 💌 미확인 학부모 답장 일괄 확인 완료 처리 핸들러 (⚡ 0초 낙관적 UI + 병렬 저장)
+  const handleBatchMarkAllRepliesChecked = async (unreadItems) => {
+    if (!unreadItems || unreadItems.length === 0) return;
+    const nowIso = new Date().toISOString();
+    const updatedMap = new Map();
+    const prevMap = new Map();
+
+    unreadItems.forEach((ev) => {
+      prevMap.set(ev.id, ev.teacher_comment);
+      updatedMap.set(ev.id, markParentReplyCheckedInComment(ev.teacher_comment, nowIso));
+    });
+
+    setEvaluations((prev) =>
+      prev.map((ev) => (updatedMap.has(ev.id) ? { ...ev, teacher_comment: updatedMap.get(ev.id) } : ev))
+    );
+    syncReplyStatusToCaches(updatedMap);
+
+    try {
+      const responses = await Promise.all(
+        unreadItems.map((ev) =>
+          fetch(`/api/eval/${ev.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ teacherComment: updatedMap.get(ev.id) }),
+          })
+        )
+      );
+      if (responses.some((r) => !r.ok)) {
+        throw new Error('일괄 저장 중 일부 요청 실패');
+      }
+    } catch (err) {
+      console.error('handleBatchMarkAllRepliesChecked error:', err);
+      setEvaluations((prev) =>
+        prev.map((ev) => (prevMap.has(ev.id) ? { ...ev, teacher_comment: prevMap.get(ev.id) } : ev))
+      );
+      syncReplyStatusToCaches(prevMap);
+      alert(`일괄 확인 처리 중 오류가 발생했습니다: ${err.message}`);
+    }
+  };
+
   const handleDeleteEval = async (id, studentName, evalDate) => {
     if (!confirm(`[${studentName}] 학생의 ${evalDate} 피드백을 삭제하시겠습니까?`)) return;
 
@@ -420,11 +529,33 @@ export default function EvalHistoryPage() {
   const unsentCount = totalCount - sentCount;
   const unsentList = parsedFiltered.filter((p) => !p.parsed.alimtalkSentAt).map((p) => p.eval);
 
-  const displayedList = parsedFiltered.filter((p) => {
-    if (filterTab === 'UNSENT') return !p.parsed.alimtalkSentAt;
-    if (filterTab === 'SENT') return !!p.parsed.alimtalkSentAt;
-    return true;
-  });
+  const repliedList = parsedFiltered.filter((p) =>
+    Boolean(p.eval.parent_reply && String(p.eval.parent_reply).trim())
+  );
+  const unreadReplyEntries = repliedList.filter((p) => isParentReplyUnread(p.eval, p.parsed));
+  const replyTotalCount = repliedList.length;
+  const replyUnreadCount = unreadReplyEntries.length;
+  const unreadReplyEvalItems = unreadReplyEntries.map((p) => p.eval);
+
+  const displayedList = (() => {
+    if (filterTab === 'UNSENT') {
+      return parsedFiltered.filter((p) => !p.parsed.alimtalkSentAt);
+    }
+    if (filterTab === 'SENT') {
+      return parsedFiltered.filter((p) => !!p.parsed.alimtalkSentAt);
+    }
+    if (filterTab === 'PARENT_REPLY') {
+      return [...repliedList].sort((a, b) => {
+        const aUnread = isParentReplyUnread(a.eval, a.parsed) ? 1 : 0;
+        const bUnread = isParentReplyUnread(b.eval, b.parsed) ? 1 : 0;
+        if (bUnread !== aUnread) return bUnread - aUnread;
+        const aReplyTime = a.eval.parent_reply_at || a.eval.eval_date || '';
+        const bReplyTime = b.eval.parent_reply_at || b.eval.eval_date || '';
+        return bReplyTime.localeCompare(aReplyTime);
+      });
+    }
+    return parsedFiltered;
+  })();
 
   if (loading) return <div className="p-8 text-center font-bold">로딩 중...</div>;
 
@@ -554,11 +685,74 @@ export default function EvalHistoryPage() {
             </div>
           </div>
 
-          {/* 🏷️ 발송 필터 탭 */}
+          {/* 💌 학부모 피드백 답장 수신 및 확인 현황 대시보드 (답장이 1건 이상 있거나 답장 탭 선택 시 표시) */}
+          {(replyTotalCount > 0 || filterTab === 'PARENT_REPLY') && (
+            <div
+              className={`p-4 sm:p-5 rounded-2xl border transition ${
+                replyUnreadCount > 0
+                  ? 'bg-gradient-to-r from-rose-50 via-amber-50/70 to-rose-50 border-rose-300 shadow-xs'
+                  : 'bg-gradient-to-r from-indigo-50/70 via-slate-50 to-emerald-50/70 border-indigo-200 shadow-2xs'
+              }`}
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">{replyUnreadCount > 0 ? '💌' : '✅'}</span>
+                    <span className="text-xs sm:text-sm font-black text-slate-800">
+                      학부모 피드백 답장 확인 현황 {selectedDate ? `(${selectedDate} 기준)` : '(조회 결과 기준)'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap text-xs font-bold">
+                    <span className="bg-white text-slate-700 px-2.5 py-1 rounded-lg border border-slate-200">
+                      총 답장 {replyTotalCount}건 수신
+                    </span>
+                    <span className="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-lg border border-emerald-300">
+                      ✓ 확인 완료 {replyTotalCount - replyUnreadCount}건
+                    </span>
+                    <span
+                      className={`px-2.5 py-1 rounded-lg border font-black ${
+                        replyUnreadCount > 0
+                          ? 'bg-rose-600 text-white border-rose-700 animate-pulse'
+                          : 'bg-slate-100 text-slate-500 border-slate-200'
+                      }`}
+                    >
+                      {replyUnreadCount > 0
+                        ? `🚨 미확인 새 답장 ${replyUnreadCount}건`
+                        : '🎉 미확인 답장 0건 (모두 확인 완료)'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 self-stretch sm:self-auto">
+                  {filterTab !== 'PARENT_REPLY' && replyTotalCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setFilterTab('PARENT_REPLY')}
+                      className="px-3.5 py-2.5 rounded-xl text-xs font-black bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-300 shadow-2xs transition cursor-pointer whitespace-nowrap"
+                    >
+                      💌 학부모 답장만 모아보기 ({replyTotalCount})
+                    </button>
+                  )}
+                  {replyUnreadCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handleBatchMarkAllRepliesChecked(unreadReplyEvalItems)}
+                      className="px-4 py-2.5 rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition flex items-center justify-center gap-1.5 whitespace-nowrap active:scale-95 cursor-pointer"
+                    >
+                      <span>✓</span>
+                      <span>미확인 답장 ({replyUnreadCount}건) 모두 확인 완료 체크</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 🏷️ 발송 및 학부모 답장 필터 탭 */}
           <div className="flex items-center gap-1.5 border-b pb-2 overflow-x-auto">
             <button
               onClick={() => setFilterTab('ALL')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 whitespace-nowrap ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                 filterTab === 'ALL'
                   ? 'bg-slate-800 text-white shadow-xs'
                   : 'text-slate-600 hover:bg-slate-100'
@@ -573,8 +767,36 @@ export default function EvalHistoryPage() {
             </button>
 
             <button
+              onClick={() => setFilterTab('PARENT_REPLY')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                filterTab === 'PARENT_REPLY'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : replyUnreadCount > 0
+                  ? 'bg-rose-50 text-rose-700 border border-rose-300 hover:bg-rose-100'
+                  : 'text-indigo-700 hover:bg-indigo-50'
+              }`}
+            >
+              <span>💌 학부모 답장 모아보기</span>
+              {replyUnreadCount > 0 ? (
+                <span className={`text-[10px] px-2 py-0.2 rounded-full font-black ${
+                  filterTab === 'PARENT_REPLY'
+                    ? 'bg-rose-500 text-white'
+                    : 'bg-rose-600 text-white animate-pulse'
+                }`}>
+                  미확인 {replyUnreadCount} / 전체 {replyTotalCount}
+                </span>
+              ) : (
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                  filterTab === 'PARENT_REPLY' ? 'bg-indigo-800 text-white' : 'bg-indigo-100 text-indigo-800'
+                }`}>
+                  {replyTotalCount}
+                </span>
+              )}
+            </button>
+
+            <button
               onClick={() => setFilterTab('UNSENT')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 whitespace-nowrap ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                 filterTab === 'UNSENT'
                   ? 'bg-rose-600 text-white shadow-xs'
                   : 'text-rose-700 hover:bg-rose-50'
@@ -590,7 +812,7 @@ export default function EvalHistoryPage() {
 
             <button
               onClick={() => setFilterTab('SENT')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 whitespace-nowrap ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                 filterTab === 'SENT'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'text-emerald-700 hover:bg-emerald-50'
@@ -610,13 +832,24 @@ export default function EvalHistoryPage() {
               <p className="text-center py-12 text-slate-400 text-xs font-bold">
                 {filterTab === 'UNSENT'
                   ? '🎉 미발송 상태의 피드백이 없습니다. 모든 학생에게 알림톡이 발송되었습니다!'
+                  : filterTab === 'PARENT_REPLY'
+                  ? '💌 도착한 학부모님 피드백 답장이 아직 없습니다.'
                   : '작성하신 학습 피드백 내역이 없습니다.'}
               </p>
             ) : (
               displayedList.map(({ eval: item, parsed }) => {
+                const hasParentReply = Boolean(item.parent_reply && String(item.parent_reply).trim());
+                const isReplyUnread = hasParentReply && isParentReplyUnread(item, parsed);
 
                 return (
-                  <div key={item.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                  <div
+                    key={item.id}
+                    className={`bg-white p-5 rounded-2xl border shadow-sm space-y-4 transition ${
+                      isReplyUnread
+                        ? 'border-rose-300 ring-2 ring-rose-100'
+                        : 'border-slate-200'
+                    }`}
+                  >
                     
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b pb-3 text-xs">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -638,6 +871,21 @@ export default function EvalHistoryPage() {
                             <span>⚠️</span>
                             <span>알림톡 미발송</span>
                           </span>
+                        )}
+
+                        {/* 💌 학부모 답장 수신/확인 상태 상단 요약 뱃지 */}
+                        {hasParentReply && (
+                          isReplyUnread ? (
+                            <span className="bg-rose-600 text-white text-xs font-black px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-2xs animate-pulse">
+                              <span>💌</span>
+                              <span>학부모 새 답장 (미확인)</span>
+                            </span>
+                          ) : (
+                            <span className="bg-teal-50 text-teal-800 border border-teal-300 text-xs font-extrabold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                              <span>💌</span>
+                              <span>학부모 답장 확인됨</span>
+                            </span>
+                          )
                         )}
 
                         {parsed.lessonProgress && (
@@ -739,14 +987,78 @@ export default function EvalHistoryPage() {
                         )}
 
                         {item.parent_reply && (
-                          <div className="bg-emerald-50/70 p-4 rounded-xl border border-emerald-200 space-y-1">
-                            <div className="flex justify-between items-center text-xs font-bold text-emerald-800">
-                              <span>💌 학부모님 수신 답장</span>
-                              <span className="text-emerald-600 text-[10px]">
-                                {item.parent_reply_at ? new Date(item.parent_reply_at).toLocaleDateString() : ''}
-                              </span>
+                          <div
+                            className={`p-4 rounded-xl border transition space-y-2.5 ${
+                              isReplyUnread
+                                ? 'bg-gradient-to-r from-rose-50/90 via-amber-50/60 to-rose-50/90 border-2 border-rose-300 shadow-xs'
+                                : 'bg-emerald-50/70 border border-emerald-200'
+                            }`}
+                          >
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span
+                                  className={`text-xs font-extrabold ${
+                                    isReplyUnread ? 'text-rose-900' : 'text-emerald-800'
+                                  }`}
+                                >
+                                  💌 학부모님 수신 답장
+                                </span>
+                                {isReplyUnread ? (
+                                  <span className="bg-rose-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse">
+                                    🚨 미확인 새 답장
+                                  </span>
+                                ) : (
+                                  <span className="bg-emerald-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+                                    ✓ 확인 완료
+                                    {parsed.parentReplyCheckedAt
+                                      ? ` (${new Date(parsed.parentReplyCheckedAt).toLocaleString('ko-KR', {
+                                          month: 'numeric',
+                                          day: 'numeric',
+                                          hour: '2-digit',
+                                          minute: '2-digit',
+                                          hour12: false,
+                                        })})`
+                                      : ''}
+                                  </span>
+                                )}
+                                {item.parent_reply_at && (
+                                  <span className="text-slate-500 text-[11px] font-semibold">
+                                    수신: {new Date(item.parent_reply_at).toLocaleString('ko-KR', {
+                                      month: 'numeric',
+                                      day: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                      hour12: false,
+                                    })}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {isReplyUnread ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleReplyChecked(item, true)}
+                                    className="px-3 py-1.5 rounded-lg text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition active:scale-95 cursor-pointer flex items-center gap-1"
+                                  >
+                                    <span>✓</span>
+                                    <span>확인 완료 체크</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleReplyChecked(item, false)}
+                                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white hover:bg-rose-50 text-slate-500 hover:text-rose-600 border border-slate-200 hover:border-rose-200 transition cursor-pointer"
+                                    title="다시 미확인 상태로 되돌리기"
+                                  >
+                                    미확인으로 변경
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                            <p className="text-xs text-slate-800 font-bold">"{item.parent_reply}"</p>
+                            <p className="text-xs sm:text-sm text-slate-800 font-bold whitespace-pre-wrap leading-relaxed bg-white/80 p-3 rounded-lg border border-slate-200/70">
+                              &ldquo;{item.parent_reply}&rdquo;
+                            </p>
                           </div>
                         )}
                       </div>

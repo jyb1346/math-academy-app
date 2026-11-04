@@ -9,12 +9,18 @@ export async function GET(req) {
 
   const db = getSupabaseAdmin(req);
 
-  // 서로 무관한 조회 4개를 병렬 실행
-  const [classesRes, directStRes, teachersRes, qnaRes] = await Promise.all([
+  // 서로 무관한 조회 5개를 병렬 실행
+  const [classesRes, directStRes, teachersRes, qnaRes, repliedEvalRes] = await Promise.all([
     db.from('classes').select('*').eq('teacher_id', user.id),
     db.from('users').select('id, name, email, role, parent_phone, teacher_id, created_at').eq('role', 'STUDENT').eq('teacher_id', user.id),
     db.from('users').select('id, name, email, role').in('role', ['TEACHER', 'HEAD_TEACHER', 'ADMIN']).order('name'),
     db.from('qna').select('id, status, replies').eq('teacher_id', user.id),
+    db
+      .from('daily_evaluations')
+      .select('id, student_id, eval_date, parent_reply, parent_reply_at, teacher_comment, users!daily_evaluations_student_id_fkey(name)')
+      .eq('teacher_id', user.id)
+      .not('parent_reply', 'is', null)
+      .order('parent_reply_at', { ascending: false }),
   ]);
 
   if (classesRes.error) return NextResponse.json({ error: classesRes.error.message }, { status: 500 });
@@ -52,6 +58,9 @@ export async function GET(req) {
 
   const tData = teachersRes.data;
   const qnaData = qnaRes.data;
+  const repliedEvaluations = (repliedEvalRes.data || []).filter(
+    (ev) => ev.parent_reply && String(ev.parent_reply).trim()
+  );
 
   return NextResponse.json({
     classes: myClasses,
@@ -59,5 +68,6 @@ export async function GET(req) {
     teachers: tData || [],
     classStudents: myClassStudents,
     qna: qnaData || [],
+    repliedEvaluations,
   });
 }

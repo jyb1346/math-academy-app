@@ -1251,6 +1251,7 @@ export default function TeacherEvalPage() {
         prevEvalSummary: prev ? `${prev.eval_date} 피드백` : '첫 피드백',
         isSaved: !!todayEval,
         alimtalkSentAt: parsedToday?.alimtalkSentAt || null,
+        parentReplyCheckedAt: parsedToday?.parentReplyCheckedAt || null,
       };
     });
 
@@ -1364,6 +1365,7 @@ export default function TeacherEvalPage() {
       }
 
       const effectiveTestType = testType === '기타' ? (customTestType.trim() || '기타평가') : testType;
+      const existingParsed = existingEval ? parseEvaluationRecord(existingEval) : null;
 
       const combinedComment = formatTeacherCommentWithTestScoreAndItems({
         comment: teacherComment,
@@ -1372,6 +1374,8 @@ export default function TeacherEvalPage() {
         customItems,
         lessonProgress: todayLessonProgress,
         homeworkBooks: todayHomeworkBooks.filter((b) => b.name && b.range),
+        alimtalkSentAt: existingParsed?.alimtalkSentAt || null,
+        parentReplyCheckedAt: existingParsed?.parentReplyCheckedAt || null,
       });
 
       const payload = {
@@ -1497,6 +1501,8 @@ export default function TeacherEvalPage() {
           customItems: st.customItems || [],
           lessonProgress: commonLessonProgress,
           homeworkBooks: validBooks,
+          alimtalkSentAt: st.alimtalkSentAt || null,
+          parentReplyCheckedAt: st.parentReplyCheckedAt || null,
         });
 
         return {

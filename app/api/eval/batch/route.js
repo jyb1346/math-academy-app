@@ -15,54 +15,72 @@ export async function POST(req) {
   }
 
   const db = getSupabaseAdmin(req);
-  const results = [];
 
-  for (const target of targets) {
-    const { studentId, payload } = target;
-    if (!studentId || !payload) {
-      results.push({ studentId, ok: false, error: 'invalid target' });
-      continue;
+  // ⚡ 1) 대상 학생들의 해당 날짜 기존 피드백을 단 1번의 쿼리로 일괄 조회
+  const validStudentIds = [
+    ...new Set(targets.map((t) => t?.studentId).filter(Boolean)),
+  ];
+
+  const existingMap = new Map();
+  if (validStudentIds.length > 0) {
+    const { data: existingRows, error: findErr } = await db
+      .from('daily_evaluations')
+      .select('id, student_id, teacher_id')
+      .eq('eval_date', evalDate)
+      .in('student_id', validStudentIds);
+
+    if (findErr) {
+      return NextResponse.json({ error: findErr.message }, { status: 500 });
     }
 
-    try {
-      const { data: existing, error: findErr } = await db
-        .from('daily_evaluations')
-        .select('id, teacher_id')
-        .eq('student_id', studentId)
-        .eq('eval_date', evalDate)
-        .maybeSingle();
-
-      if (findErr) throw findErr;
-
-      if (existing && existing.teacher_id !== user.id) {
-        results.push({ studentId, ok: false, error: '다른 강사가 이미 이 날짜에 기록을 남겼습니다.' });
-        continue;
-      }
-
-      const finalPayload = {
-        ...payload,
-        teacher_id: user.id,
-        student_id: studentId,
-        eval_date: evalDate,
-      };
-
-      if (existing) {
-        const { error: updErr } = await db.from('daily_evaluations').update(finalPayload).eq('id', existing.id);
-        if (updErr) throw updErr;
-        results.push({ studentId, ok: true, id: existing.id, updated: true });
-      } else {
-        const { data: inserted, error: insErr } = await db
-          .from('daily_evaluations')
-          .insert([finalPayload])
-          .select('id')
-          .single();
-        if (insErr) throw insErr;
-        results.push({ studentId, ok: true, id: inserted.id, updated: false });
-      }
-    } catch (err) {
-      results.push({ studentId, ok: false, error: err.message });
-    }
+    (existingRows || []).forEach((row) => {
+      existingMap.set(row.student_id, row);
+    });
   }
+
+  // ⚡ 2) 학생별 INSERT / UPDATE 작업을 병렬(Promise.all)로 동시 처리하되 개별 try/catch로 격리
+  const results = await Promise.all(
+    targets.map(async (target) => {
+      const { studentId, payload } = target || {};
+      if (!studentId || !payload) {
+        return { studentId, ok: false, error: 'invalid target' };
+      }
+
+      try {
+        const existing = existingMap.get(studentId);
+
+        if (existing && existing.teacher_id !== user.id) {
+          return { studentId, ok: false, error: '다른 강사가 이미 이 날짜에 기록을 남겼습니다.' };
+        }
+
+        const finalPayload = {
+          ...payload,
+          teacher_id: user.id,
+          student_id: studentId,
+          eval_date: evalDate,
+        };
+
+        if (existing) {
+          const { error: updErr } = await db
+            .from('daily_evaluations')
+            .update(finalPayload)
+            .eq('id', existing.id);
+          if (updErr) throw updErr;
+          return { studentId, ok: true, id: existing.id, updated: true };
+        } else {
+          const { data: inserted, error: insErr } = await db
+            .from('daily_evaluations')
+            .insert([finalPayload])
+            .select('id')
+            .single();
+          if (insErr) throw insErr;
+          return { studentId, ok: true, id: inserted.id, updated: false };
+        }
+      } catch (err) {
+        return { studentId, ok: false, error: err.message };
+      }
+    })
+  );
 
   return NextResponse.json({ results });
 }

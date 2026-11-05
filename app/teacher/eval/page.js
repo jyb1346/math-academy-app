@@ -1530,6 +1530,7 @@ export default function TeacherEvalPage() {
       if (!batchRes.ok) throw new Error(batchData.error || '일괄 저장 실패');
 
       const resultByStudentId = new Map((batchData.results || []).map((r) => [r.studentId, r]));
+      const alimtalkTargets = [];
 
       for (let i = 0; i < targets.length; i++) {
         const st = targets[i];
@@ -1542,27 +1543,49 @@ export default function TeacherEvalPage() {
         successCount++;
         const savedEvalId = result.id;
 
-        // 📲 알림톡 발송 체크 시 전송
         if (sendAlimtalk && savedEvalId && st.parent_phone) {
-          setBatchProgressText(`(${i + 1}/${targets.length}) [${st.name}] 학부모님께 알림톡 발송 중...`);
-          try {
-            const res = await fetch('/api/solapi/send-eval', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                evalId: savedEvalId,
-                studentId: st.student_id,
-                studentName: st.name,
-                evalDate,
-                parentPhone: st.parent_phone,
-                teacherName: user?.name,
-              }),
-            });
-            const alimRes = await res.json();
-            if (alimRes.success) alimtalkSentCount++;
-          } catch (alimErr) {
-            console.error('Alimtalk send error for student:', st.name, alimErr);
-          }
+          alimtalkTargets.push({ st, savedEvalId });
+        }
+      }
+
+      // 📲 알림톡 발송 체크 시 5명씩 안전한 묶음 병렬(Chunked Parallel)로 고속 전송
+      const sentStudentIds = new Set();
+      if (alimtalkTargets.length > 0) {
+        const CHUNK_SIZE = 5;
+        for (let i = 0; i < alimtalkTargets.length; i += CHUNK_SIZE) {
+          const chunk = alimtalkTargets.slice(i, i + CHUNK_SIZE);
+          const startIdx = i + 1;
+          const endIdx = Math.min(i + CHUNK_SIZE, alimtalkTargets.length);
+          const namesPreview = chunk.map((c) => c.st.name).join(', ');
+          setBatchProgressText(
+            `📲 학부모 알림톡 발송 중... (${startIdx}~${endIdx}/${alimtalkTargets.length}명: ${namesPreview})`
+          );
+
+          await Promise.all(
+            chunk.map(async ({ st, savedEvalId }) => {
+              try {
+                const res = await fetch('/api/solapi/send-eval', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    evalId: savedEvalId,
+                    studentId: st.student_id,
+                    studentName: st.name,
+                    evalDate,
+                    parentPhone: st.parent_phone,
+                    teacherName: user?.name,
+                  }),
+                });
+                const alimRes = await res.json();
+                if (alimRes.success) {
+                  alimtalkSentCount++;
+                  sentStudentIds.add(st.student_id);
+                }
+              } catch (alimErr) {
+                console.error('Alimtalk send error for student:', st.name, alimErr);
+              }
+            })
+          );
         }
       }
 
@@ -1582,7 +1605,7 @@ export default function TeacherEvalPage() {
           return {
             ...s,
             isSaved: true,
-            alimtalkSentAt: sendAlimtalk && s.parent_phone ? sentTime : s.alimtalkSentAt,
+            alimtalkSentAt: sentStudentIds.has(s.student_id) ? sentTime : s.alimtalkSentAt,
           };
         })
       );

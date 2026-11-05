@@ -821,23 +821,25 @@ export default function TeacherDashboard() {
                     : '/teacher/eval/history'
                 )
               }
-              className={`text-xs px-4 py-2.5 rounded-2xl font-bold transition shadow-xs flex items-center gap-2 cursor-pointer ${
+              className={`w-full sm:w-auto text-xs px-4 py-3.5 rounded-2xl font-extrabold transition shadow-xs flex items-center justify-between sm:justify-center gap-2.5 shrink-0 cursor-pointer ${
                 unreadParentReplies.length > 0
                   ? 'bg-rose-600 hover:bg-rose-700 text-white border border-rose-500 ring-2 ring-rose-200'
                   : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/80'
               }`}
             >
-              <span>📋 작성된 일일 피드백 리포트 내역 및 학부모 답장 보기</span>
-              {unreadParentReplies.length > 0 ? (
-                <span className="bg-white text-rose-700 text-[11px] font-black px-2 py-0.5 rounded-full animate-pulse">
-                  💌 미확인 {unreadParentReplies.length}건
-                </span>
-              ) : repliedEvaluations.length > 0 ? (
-                <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-black px-2 py-0.5 rounded-full">
-                  💌 답장 {repliedEvaluations.length}건
-                </span>
-              ) : null}
-              <span>→</span>
+              <span className="whitespace-nowrap truncate">📋 피드백 내역 · 학부모 답장 보기</span>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {unreadParentReplies.length > 0 ? (
+                  <span className="bg-white text-rose-700 text-[11px] font-black px-2.5 py-0.5 rounded-full animate-pulse whitespace-nowrap shrink-0">
+                    💌 미확인 {unreadParentReplies.length}건
+                  </span>
+                ) : repliedEvaluations.length > 0 ? (
+                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-black px-2.5 py-0.5 rounded-full whitespace-nowrap shrink-0">
+                    💌 답장 {repliedEvaluations.length}건
+                  </span>
+                ) : null}
+                <span className="shrink-0">→</span>
+              </div>
             </button>
           </div>
         </section>

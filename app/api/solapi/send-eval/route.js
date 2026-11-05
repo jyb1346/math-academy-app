@@ -20,10 +20,10 @@ export async function POST(req) {
 
     const dbClient = getSupabaseAdmin(req);
 
-    // 🛑 본인이 작성한 과제표에 대해서만 알림톡 발송 가능 (evalId 조작을 통한 임의 발송 차단)
+    // 🛑 본인이 작성한 과제표에 대해서만 알림톡 발송 가능 (evalId 조작을 통한 임의 발송 차단 + teacher_comment 동시 조회로 중복 SELECT 제거)
     const { data: evalRow, error: evalErr } = await dbClient
       .from('daily_evaluations')
-      .select('id, teacher_id, student_id, users!daily_evaluations_student_id_fkey(name, parent_phone)')
+      .select('id, teacher_id, student_id, teacher_comment, users!daily_evaluations_student_id_fkey(name, parent_phone)')
       .eq('id', evalId)
       .maybeSingle();
 
@@ -91,22 +91,14 @@ ${reportUrl}`;
       kakaoOptions,
     });
 
-    // 🎯 발송 성공 시 daily_evaluations 에 [ALIMTALK_SENT:ISO_STRING] 기록
+    // 🎯 발송 성공 시 daily_evaluations 에 [ALIMTALK_SENT:ISO_STRING] 기록 (재조회 없이 즉시 UPDATE)
     const sentAt = new Date().toISOString();
     try {
-      const { data: currentEval } = await dbClient
+      const updatedComment = markAlimtalkSentInComment(evalRow.teacher_comment, sentAt);
+      await dbClient
         .from('daily_evaluations')
-        .select('teacher_comment')
-        .eq('id', evalId)
-        .maybeSingle();
-
-      if (currentEval) {
-        const updatedComment = markAlimtalkSentInComment(currentEval.teacher_comment, sentAt);
-        await dbClient
-          .from('daily_evaluations')
-          .update({ teacher_comment: updatedComment })
-          .eq('id', evalId);
-      }
+        .update({ teacher_comment: updatedComment })
+        .eq('id', evalId);
     } catch (updateErr) {
       console.error('Failed to update alimtalk_sent timestamp in daily_evaluations:', updateErr);
     }

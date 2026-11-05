@@ -246,48 +246,65 @@ export default function EvalHistoryPage() {
     let skippedCount = 0;
 
     let currentEvals = [...evaluations];
+    const sendableList = [];
 
-    for (let i = 0; i < unsentList.length; i++) {
-      const item = unsentList[i];
-      const studentName = item.users?.name || '학생';
-      const parentPhone = item.users?.parent_phone;
-
-      setBatchSendProgress(`(${i + 1}/${unsentList.length}) [${studentName}] 학생 알림톡 발송 중...`);
-
-      if (!parentPhone) {
+    for (const item of unsentList) {
+      if (!item.users?.parent_phone) {
         skippedCount++;
-        continue;
+      } else {
+        sendableList.push(item);
       }
+    }
 
-      try {
-        const res = await fetch('/api/solapi/send-eval', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            evalId: item.id,
-            studentId: item.student_id,
-            studentName,
-            evalDate: item.eval_date,
-            parentPhone,
-            teacherName: user?.name,
-          }),
-        });
-        const data = await res.json();
-        if (data.success) {
-          successCount++;
-          const sentTime = data.alimtalkSentAt || new Date().toISOString();
-          currentEvals = currentEvals.map((ev) =>
-            ev.id === item.id
-              ? { ...ev, teacher_comment: markAlimtalkSentInComment(ev.teacher_comment, sentTime) }
-              : ev
-          );
-        } else {
-          failCount++;
-        }
-      } catch (err) {
-        console.error('Batch send error:', err);
-        failCount++;
-      }
+    // ⚡ 5명씩 안전한 묶음 병렬(Chunked Parallel)로 고속 발송
+    const CHUNK_SIZE = 5;
+    const sentTimeByEvalId = new Map();
+
+    for (let i = 0; i < sendableList.length; i += CHUNK_SIZE) {
+      const chunk = sendableList.slice(i, i + CHUNK_SIZE);
+      const startIdx = i + 1;
+      const endIdx = Math.min(i + CHUNK_SIZE, sendableList.length);
+      const namesPreview = chunk.map((it) => it.users?.name || '학생').join(', ');
+      setBatchSendProgress(`📲 알림톡 발송 중... (${startIdx}~${endIdx}/${sendableList.length}명: ${namesPreview})`);
+
+      await Promise.all(
+        chunk.map(async (item) => {
+          const studentName = item.users?.name || '학생';
+          const parentPhone = item.users?.parent_phone;
+          try {
+            const res = await fetch('/api/solapi/send-eval', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                evalId: item.id,
+                studentId: item.student_id,
+                studentName,
+                evalDate: item.eval_date,
+                parentPhone,
+                teacherName: user?.name,
+              }),
+            });
+            const data = await res.json();
+            if (data.success) {
+              successCount++;
+              sentTimeByEvalId.set(item.id, data.alimtalkSentAt || new Date().toISOString());
+            } else {
+              failCount++;
+            }
+          } catch (err) {
+            console.error('Batch send error:', err);
+            failCount++;
+          }
+        })
+      );
+    }
+
+    if (sentTimeByEvalId.size > 0) {
+      currentEvals = currentEvals.map((ev) =>
+        sentTimeByEvalId.has(ev.id)
+          ? { ...ev, teacher_comment: markAlimtalkSentInComment(ev.teacher_comment, sentTimeByEvalId.get(ev.id)) }
+          : ev
+      );
     }
 
     setEvaluations(currentEvals);

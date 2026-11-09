@@ -1,5 +1,6 @@
 'use client';
 import TeacherClinicModal from "@/components/TeacherClinicModal";
+import StudentStickerMarketModal from "@/components/StudentStickerMarketModal";
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -23,6 +24,7 @@ export default function TeacherDashboard() {
   // 모달 상태
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showClinicModal, setShowClinicModal] = useState(false);
+  const [showStickerMarketModal, setShowStickerMarketModal] = useState(false);
 
   // 반 생성 폼 및 수업 유형 (판서수업 LECTURE / 개별수업 INDIVIDUAL)
   const [newClassName, setNewClassName] = useState('');
@@ -186,6 +188,10 @@ export default function TeacherDashboard() {
         fetchTeacherData(parsedUser.id, false);
       } else {
         fetchTeacherData(parsedUser.id, true);
+      }
+      // 🎁 푸시 알림 등으로 띠부씰 장터 열기 요청 파라미터가 있을 경우
+      if (typeof window !== 'undefined' && window.location.search.includes('openStickerMarket=1')) {
+        setShowStickerMarketModal(true);
       }
     } catch (e) {
       console.error(e);
@@ -563,6 +569,15 @@ export default function TeacherDashboard() {
             >
               <span>💬</span>
               <span>카톡 앱 초대</span>
+            </button>
+
+            <button
+              onClick={() => setShowStickerMarketModal(true)}
+              className="text-xs bg-rose-500 hover:bg-rose-600 text-white font-black px-3.5 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0"
+              title="학생 띠부씰 교환 장터 열람 및 감독"
+            >
+              <span>🎁</span>
+              <span>띠부씰 장터</span>
             </button>
 
             {isHeadTeacher && (
@@ -1301,6 +1316,14 @@ export default function TeacherDashboard() {
           user={user}
           onClose={() => setShowPasswordModal(false)}
           onPasswordUpdated={(updatedUser) => setUser(updatedUser)}
+        />
+      )}
+
+      {/* 🎁 모달: 띠부씰 장터 (선생님 감독 뷰) */}
+      {showStickerMarketModal && user && (
+        <StudentStickerMarketModal
+          user={user}
+          onClose={() => setShowStickerMarketModal(false)}
         />
       )}
 

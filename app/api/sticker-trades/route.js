@@ -13,9 +13,9 @@ import {
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-// GET /api/sticker-trades — 학생 전용 띠부띠부씰 교환 장터 전체 목록 조회
+// GET /api/sticker-trades — 띠부띠부씰 교환 장터 전체 목록 조회 (학생 & 선생님)
 export async function GET(req) {
-  const { user, error } = requireRole(req, ['STUDENT']);
+  const { user, error } = requireRole(req, ['STUDENT', 'TEACHER', 'HEAD_TEACHER', 'ADMIN']);
   if (error) return error;
 
   const db = getSupabaseAdmin(req);
@@ -25,7 +25,9 @@ export async function GET(req) {
     (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
   );
 
-  const sanitizedPosts = sortedPosts.map((p) => sanitizeTradePostForViewer(p, user.id));
+  const sanitizedPosts = sortedPosts.map((p) =>
+    sanitizeTradePostForViewer(p, user.id, user.role)
+  );
 
   return NextResponse.json(
     { posts: sanitizedPosts },
@@ -96,7 +98,7 @@ export async function POST(req) {
     await saveStickerTradeStore(db, { posts: updatedPosts });
 
     return NextResponse.json({
-      post: sanitizeTradePostForViewer(newPost, user.id),
+      post: sanitizeTradePostForViewer(newPost, user.id, user.role),
     });
   } catch (err) {
     console.error('POST /api/sticker-trades error:', err);

@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import EvaluationBarChart from '@/components/EvaluationBarChart';
 import StudentHomeworkTable from '@/components/StudentHomeworkTable';
+import RecentAttendanceWidget from '@/components/RecentAttendanceWidget';
 import { parseEvaluationRecord } from '@/lib/evalUtils';
 
 export default function StudentReportPage() {
@@ -133,6 +134,14 @@ function StudentReportContent() {
             </span>
           </div>
         </div>
+
+        {/* ⏰ 최근 3주간 출결 & 지각 현황 요약 카드 (학부모 안심 리포트) */}
+        <RecentAttendanceWidget
+          evaluations={studentAllEvals && studentAllEvals.length > 0 ? studentAllEvals : (evalData ? [evalData] : [])}
+          baseDate={evalData.eval_date}
+          variant="parent"
+          studentName={studentName}
+        />
 
         {/* 📖 1. 오늘의 수업 진도 & 숙제 요약 카드 */}
         {(parsed.lessonProgress || (parsed.homeworkBooks && parsed.homeworkBooks.length > 0)) && (

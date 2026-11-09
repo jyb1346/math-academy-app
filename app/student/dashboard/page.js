@@ -8,6 +8,7 @@ import StudentHomeworkTable from '@/components/StudentHomeworkTable';
 import StudentClinicModal from '@/components/StudentClinicModal';
 import StudentStickerMarketModal from '@/components/StudentStickerMarketModal';
 import StudentScoreSummaryWidget from '@/components/StudentScoreSummaryWidget';
+import RecentAttendanceWidget from '@/components/RecentAttendanceWidget';
 import { logout } from '@/lib/useSession';
 import { getClientCache, setClientCache } from '@/lib/clientCache';
 import { getNowKSTDateAndTime, isClinicScheduleActiveAndUpcoming } from '@/lib/clinicUtils';
@@ -284,7 +285,16 @@ export default function StudentDashboard() {
       <main className="max-w-4xl mx-auto px-4 mt-6 space-y-6">
         <PushNotificationManager user={user} />
 
-        {/* 📑 1. 최상단: 내 최근 진도 & 교재별 과제표 위젯 */}
+        {/* ⏰ 최상단: 최근 3주간 출결 & 지각 현황 위젯 (정시 출석 경각심 및 모범 출결 독려) */}
+        {!loadingEvals && evaluations.length > 0 && (
+          <RecentAttendanceWidget
+            evaluations={evaluations}
+            variant="student"
+            studentName={user?.name || ''}
+          />
+        )}
+
+        {/* 📑 1. 내 최근 진도 & 교재별 과제표 위젯 */}
         <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
           {loadingEvals ? (
             <div className="py-8 text-center text-xs font-bold text-slate-400">과제표 불러오는 중...</div>

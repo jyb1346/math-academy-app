@@ -17,13 +17,14 @@ export const revalidate = 0;
 
 // PATCH /api/sticker-trades/[id] — 댓글 등록(ADD_COMMENT) | 댓글 채택(ACCEPT_COMMENT) | 댓글 삭제(DELETE_COMMENT)
 export async function PATCH(req, { params }) {
-  const { user, error } = requireRole(req, ['STUDENT']);
+  const { user, error } = requireRole(req, ['STUDENT', 'TEACHER', 'HEAD_TEACHER', 'ADMIN']);
   if (error) return error;
 
   try {
     const { id: postId } = await params;
     const body = await req.json();
     const { action } = body;
+    const isTeacher = ['TEACHER', 'HEAD_TEACHER', 'ADMIN'].includes(user.role);
 
     const db = getSupabaseAdmin(req);
     const store = await loadStickerTradeStore(db);
@@ -41,6 +42,13 @@ export async function PATCH(req, { params }) {
 
     // 1️⃣ 댓글 달기 ("저 이거 가지고 있어요!")
     if (action === 'ADD_COMMENT') {
+      if (isTeacher) {
+        return NextResponse.json(
+          { error: '학생만 교환 신청 댓글을 작성할 수 있습니다.' },
+          { status: 403 }
+        );
+      }
+
       if (post.status === 'COMPLETED') {
         return NextResponse.json(
           { error: '이미 교환 채택이 완료된 글입니다.' },
@@ -93,7 +101,7 @@ export async function PATCH(req, { params }) {
       }
 
       return NextResponse.json({
-        post: sanitizeTradePostForViewer(post, user.id),
+        post: sanitizeTradePostForViewer(post, user.id, user.role),
       });
     }
 
@@ -156,7 +164,7 @@ export async function PATCH(req, { params }) {
             return sendPushToUsers(req, teacherIds, {
               title: '🤝 [띠부씰 교환 확정] 담당 학생 교환 알림',
               message: `${post.authorName} 학생 ↔ ${targetComment.authorName} 학생이 [${scheduleLabel}]에서 띠부씰(${authorGiveLabel} ↔ ${partnerGiveLabel}) 교환을 확정했습니다.`,
-              url: '/teacher/dashboard',
+              url: '/teacher/dashboard?openStickerMarket=1',
               tag: `sticker_teacher_${post.id}`,
               renotify: true,
             });
@@ -165,18 +173,18 @@ export async function PATCH(req, { params }) {
         .catch((err) => console.warn('Sticker accept teacher push warning:', err));
 
       return NextResponse.json({
-        post: sanitizeTradePostForViewer(post, user.id),
+        post: sanitizeTradePostForViewer(post, user.id, user.role),
       });
     }
 
-    // 3️⃣ 본인 댓글 삭제
+    // 3️⃣ 본인 댓글 또는 관리자 삭제
     if (action === 'DELETE_COMMENT') {
       const { commentId } = body;
       const targetComment = post.comments.find((c) => c.id === commentId);
       if (!targetComment) {
         return NextResponse.json({ error: '댓글을 찾을 수 없습니다.' }, { status: 404 });
       }
-      if (String(targetComment.authorId) !== String(user.id)) {
+      if (String(targetComment.authorId) !== String(user.id) && !isTeacher) {
         return NextResponse.json({ error: '본인의 댓글만 삭제할 수 있습니다.' }, { status: 403 });
       }
       if (post.status === 'COMPLETED' && post.acceptedCommentId === commentId) {
@@ -191,7 +199,7 @@ export async function PATCH(req, { params }) {
       await saveStickerTradeStore(db, { posts });
 
       return NextResponse.json({
-        post: sanitizeTradePostForViewer(post, user.id),
+        post: sanitizeTradePostForViewer(post, user.id, user.role),
       });
     }
 
@@ -202,13 +210,15 @@ export async function PATCH(req, { params }) {
   }
 }
 
-// DELETE /api/sticker-trades/[id] — 작성자 본인의 교환글 삭제
+// DELETE /api/sticker-trades/[id] — 작성자 본인 또는 관리자의 교환글 삭제
 export async function DELETE(req, { params }) {
-  const { user, error } = requireRole(req, ['STUDENT']);
+  const { user, error } = requireRole(req, ['STUDENT', 'TEACHER', 'HEAD_TEACHER', 'ADMIN']);
   if (error) return error;
 
   try {
     const { id: postId } = await params;
+    const isTeacher = ['TEACHER', 'HEAD_TEACHER', 'ADMIN'].includes(user.role);
+
     const db = getSupabaseAdmin(req);
     const store = await loadStickerTradeStore(db);
     const posts = Array.isArray(store.posts) ? store.posts : [];
@@ -218,7 +228,7 @@ export async function DELETE(req, { params }) {
       return NextResponse.json({ error: '존재하지 않는 교환글입니다.' }, { status: 404 });
     }
 
-    if (String(target.authorId) !== String(user.id)) {
+    if (String(target.authorId) !== String(user.id) && !isTeacher) {
       return NextResponse.json(
         { error: '본인이 작성한 교환글만 삭제할 수 있습니다.' },
         { status: 403 }

@@ -12,6 +12,7 @@ import {
 const CHARACTER_FILTERS = ['전체', '나라T', '성우T', '영배T', '동희T', '몽돌'];
 
 export default function StudentStickerMarketModal({ user, onClose, onStatsChange }) {
+  const isTeacher = ['TEACHER', 'HEAD_TEACHER', 'ADMIN'].includes(user?.role);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -345,12 +346,16 @@ export default function StudentStickerMarketModal({ user, onClose, onStatsChange
               <h2 className="text-base sm:text-lg font-black tracking-tight">
                 품수학 띠부띠부씰 로비 교환 장터
               </h2>
-              <span className="bg-white/25 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full">
-                학생 전용
+              <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
+                isTeacher ? 'bg-amber-300 text-slate-950 font-black' : 'bg-white/25 text-white'
+              }`}>
+                {isTeacher ? '👀 선생님 감독 뷰' : '학생 전용'}
               </span>
             </div>
             <p className="text-[11px] sm:text-xs text-amber-50 font-bold mt-0.5">
-              중복 씰을 올리고 댓글을 채택하면 두 사람에게만 실명이 공개됩니다 · 📍 교환 장소: 학원 로비 고정
+              {isTeacher
+                ? '모든 학생의 비밀 제안 댓글 및 실명이 실시간으로 모니터링됩니다 · 📍 교환 장소: 학원 로비 고정'
+                : '중복 씰을 올리고 제안을 채택하면 두 사람에게만 실명이 공개됩니다 · 🔒 댓글은 작성자와 신청자만 열람 가능'}
             </p>
           </div>
           <button
@@ -432,17 +437,19 @@ export default function StudentStickerMarketModal({ user, onClose, onStatsChange
               >
                 🔥 교환 가능 ({openPostsCount})
               </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('MINE')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
-                  activeTab === 'MINE'
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                🙋 내 글·내 참여 ({myPostsOrCommentsCount})
-              </button>
+              {!isTeacher && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('MINE')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
+                    activeTab === 'MINE'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  🙋 내 글·내 제안 ({myPostsOrCommentsCount})
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setActiveTab('ALL')}
@@ -470,17 +477,19 @@ export default function StudentStickerMarketModal({ user, onClose, onStatsChange
                 ))}
               </select>
 
-              <button
-                type="button"
-                onClick={() => setShowWriteForm((prev) => !prev)}
-                className={`px-4 py-2 rounded-xl text-xs font-black shadow-sm transition cursor-pointer whitespace-nowrap ${
-                  showWriteForm
-                    ? 'bg-slate-700 text-white'
-                    : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white'
-                }`}
-              >
-                {showWriteForm ? '✕ 작성 닫기' : '+ 새 교환글 올리기'}
-              </button>
+              {!isTeacher && (
+                <button
+                  type="button"
+                  onClick={() => setShowWriteForm((prev) => !prev)}
+                  className={`px-4 py-2 rounded-xl text-xs font-black shadow-sm transition cursor-pointer whitespace-nowrap ${
+                    showWriteForm
+                      ? 'bg-slate-700 text-white'
+                      : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white'
+                  }`}
+                >
+                  {showWriteForm ? '✕ 작성 닫기' : '+ 새 교환글 올리기'}
+                </button>
+              )}
             </div>
           </div>
 
@@ -772,14 +781,14 @@ export default function StudentStickerMarketModal({ user, onClose, onStatsChange
                         <span className="bg-slate-800 text-white text-xs font-black px-2.5 py-1 rounded-xl">
                           📍 {post.meetPlace || FIXED_MEET_PLACE}
                         </span>
-                        {post.isMine && (
+                        {(post.isMine || isTeacher) && (
                           <button
                             type="button"
                             onClick={() => handleDeletePost(post.id)}
                             disabled={actionLoadingId === `del_post_${post.id}`}
                             className="text-xs font-bold text-rose-500 hover:underline px-2 py-1 cursor-pointer"
                           >
-                            삭제
+                            {isTeacher && !post.isMine ? '글 관리 삭제' : '삭제'}
                           </button>
                         )}
                       </div>
@@ -819,13 +828,38 @@ export default function StudentStickerMarketModal({ user, onClose, onStatsChange
                     {/* 💬 댓글 목록 및 댓글 작성 영역 */}
                     <div className="space-y-2.5 pt-1">
                       <div className="text-xs font-black text-slate-700 flex items-center justify-between">
-                        <span>💬 교환 신청 댓글 ({(post.comments || []).length}건)</span>
+                        <div className="flex items-center gap-2">
+                          <span>💬 교환 신청 댓글 ({post.totalCommentsCount ?? (post.comments || []).length}건)</span>
+                          {!isTeacher && !post.isMine && (
+                            <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1">
+                              <span>🔒</span>
+                              <span>비밀 댓글</span>
+                            </span>
+                          )}
+                          {isTeacher && (
+                            <span className="bg-indigo-100 text-indigo-900 border border-indigo-200 text-[10px] font-black px-2 py-0.5 rounded-md">
+                              👀 선생님 감독: 전체 열람 중
+                            </span>
+                          )}
+                        </div>
                         {!isCompleted && post.isMine && (post.comments || []).length > 0 && (
                           <span className="text-[11px] font-extrabold text-amber-700">
                             💡 마음에 드는 친구의 댓글에서 [채택하기]를 누르면 교환이 확정됩니다!
                           </span>
                         )}
                       </div>
+
+                      {/* 타 학생의 비밀 제안 건수 안내 (글 작성자나 선생님이 아닐 때) */}
+                      {!isTeacher && !post.isMine && (
+                        <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl px-3 py-2 text-[11px] font-bold text-amber-900 flex items-center gap-1.5">
+                          <span>🔒</span>
+                          <span>
+                            {post.hiddenCommentsCount > 0
+                              ? `다른 학생들의 비밀 제안 ${post.hiddenCommentsCount}건은 글 작성자와 제안자에게만 보여집니다.`
+                              : '내가 남긴 제안 댓글은 글 작성자와 나에게만 보이는 비밀 댓글로 등록됩니다.'}
+                          </span>
+                        </div>
+                      )}
 
                       {(post.comments || []).length > 0 && (
                         <div className="space-y-2">
@@ -849,8 +883,18 @@ export default function StudentStickerMarketModal({ user, onClose, onStatsChange
                                         ✓ 채택된 교환 상대
                                       </span>
                                     )}
+                                    {!isAccepted && cmt.isMine && !post.isMine && (
+                                      <span className="bg-indigo-100 text-indigo-800 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-0.5">
+                                        <span>🔒</span>
+                                        <span>내 비밀 제안</span>
+                                      </span>
+                                    )}
                                     <span className="font-black text-slate-800">
-                                      {cmt.isMine ? (
+                                      {isTeacher ? (
+                                        <span className="text-indigo-900 font-black">
+                                          👤 {cmt.displayAuthorName} 학생
+                                        </span>
+                                      ) : cmt.isMine ? (
                                         <span className="text-indigo-700">
                                           🙋 내 댓글 ({cmt.displayAuthorName})
                                         </span>
@@ -883,15 +927,15 @@ export default function StudentStickerMarketModal({ user, onClose, onStatsChange
                                     </button>
                                   )}
 
-                                  {/* 본인 댓글 삭제 버튼 (채택 전) */}
-                                  {cmt.isMine && !isAccepted && (
+                                  {/* 본인 댓글 또는 선생님 삭제 버튼 */}
+                                  {(cmt.isMine || isTeacher) && !isAccepted && (
                                     <button
                                       type="button"
                                       onClick={() => handleDeleteComment(post, cmt.id)}
                                       disabled={actionLoadingId === `del_cmt_${cmt.id}`}
                                       className="text-[11px] font-bold text-rose-500 hover:underline px-1.5 py-1 cursor-pointer"
                                     >
-                                      삭제
+                                      {isTeacher && !cmt.isMine ? '관리자 삭제' : '삭제'}
                                     </button>
                                   )}
                                 </div>
@@ -901,8 +945,8 @@ export default function StudentStickerMarketModal({ user, onClose, onStatsChange
                         </div>
                       )}
 
-                      {/* 아직 진행 중인 글일 때 댓글 작성 폼 */}
-                      {!isCompleted && (
+                      {/* 아직 진행 중인 글일 때 학생 전용 댓글 작성 폼 (선생님은 작성 폼 숨김) */}
+                      {!isCompleted && !isTeacher && (
                         <div className="bg-slate-100/80 p-2.5 sm:p-3 rounded-2xl border border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                           <select
                             value={cmtInput.offeredStickerId}
@@ -928,7 +972,7 @@ export default function StudentStickerMarketModal({ user, onClose, onStatsChange
                             onChange={(e) =>
                               updateCommentInput(post, 'content', e.target.value)
                             }
-                            placeholder="저 이거 가지고 있어요! 로비에서 교환해요 🙋"
+                            placeholder="저 이거 가지고 있어요! 로비에서 교환해요 (글 작성자에게만 보임) 🔒"
                             maxLength={120}
                             className="flex-1 p-2 border border-slate-300 rounded-xl text-xs font-bold bg-white text-slate-800"
                           />
@@ -937,11 +981,14 @@ export default function StudentStickerMarketModal({ user, onClose, onStatsChange
                             type="button"
                             onClick={() => handleAddComment(post)}
                             disabled={actionLoadingId === `cmt_${post.id}`}
-                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-xl shadow-xs transition cursor-pointer shrink-0 disabled:opacity-50"
+                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-xl shadow-xs transition cursor-pointer shrink-0 disabled:opacity-50 flex items-center gap-1"
                           >
-                            {actionLoadingId === `cmt_${post.id}`
-                              ? '등록 중...'
-                              : '🙋 저 이거 있어요! (댓글)'}
+                            <span>🔒</span>
+                            <span>
+                              {actionLoadingId === `cmt_${post.id}`
+                                ? '등록 중...'
+                                : '비밀 제안 댓글 남기기'}
+                            </span>
                           </button>
                         </div>
                       )}

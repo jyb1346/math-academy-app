@@ -92,9 +92,9 @@ export default function RecentAttendanceWidget({
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-[11px] text-slate-300 font-bold">
             <span>수업일자별 출결 기록</span>
-            <span className="text-[10.5px] text-slate-400">최근 수업 순</span>
+            <span className="text-[10.5px] text-slate-400">총 {stats.records.length}회</span>
           </div>
-          <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 scrollbar-none">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             {stats.records.map((r) => {
               const isLate = r.status === 'LATE';
               const isAbsent = r.status === 'ABSENT';
@@ -181,8 +181,8 @@ export default function RecentAttendanceWidget({
         </div>
       </div>
 
-      {/* 날짜별 출결 도트 칩 */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+      {/* 날짜별 출결 도트 칩 (자동 줄바꿈으로 모든 회차 한눈에 표시) */}
+      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
         {stats.records.map((r) => {
           const isLate = r.status === 'LATE';
           const isAbsent = r.status === 'ABSENT';

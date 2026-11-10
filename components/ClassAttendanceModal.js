@@ -397,63 +397,52 @@ export default function ClassAttendanceModal({
       : classes.find((c) => String(c.id) === String(selectedClassId))?.name || '선택된 반';
 
   return (
-    <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-4 animate-fade-in font-sans">
-      <div className="bg-white w-full max-w-7xl h-[94vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
+    <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-50 flex items-center justify-center p-1 sm:p-4 animate-fade-in font-sans">
+      <div className="bg-white w-full max-w-7xl h-full sm:h-[94vh] rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
         
-        {/* 1️⃣ 모달 상단 헤더 */}
-        <div className="bg-slate-900 text-white p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-teal-500/20 text-teal-400 flex items-center justify-center text-xl font-black border border-teal-500/30 shrink-0">
-              📋
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-base sm:text-lg font-black tracking-tight text-white">
-                  [{currentClassName}] 출석부 & 지각 관리 엑셀표
-                </h2>
-                <span className="bg-teal-400 text-slate-950 text-[10.5px] font-black px-2 py-0.5 rounded-full">
-                  실시간 연동
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 font-semibold mt-0.5">
-                학생별 출석·지각(분)·결석 현황을 스프레드시트 형태로 한눈에 점검하고 셀을 클릭해 즉시 수정합니다.
-              </p>
+        {/* 1️⃣ 모달 상단 헤더 (모바일 초슬림화) */}
+        <div className="bg-slate-900 text-white px-3 sm:px-5 py-2.5 sm:py-3.5 flex items-center justify-between gap-2 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-base sm:text-xl shrink-0">📋</span>
+            <div className="min-w-0">
+              <h2 className="text-xs sm:text-base font-black tracking-tight text-white truncate">
+                [{currentClassName}] 출석부 & 지각 관리 엑셀표
+              </h2>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 self-end sm:self-auto">
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               onClick={handleCopyExcel}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black px-3.5 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] sm:text-xs font-black px-2.5 sm:px-3.5 py-1.5 rounded-xl transition shadow-xs flex items-center gap-1 cursor-pointer"
               title="클립보드 복사 후 엑셀에 Ctrl+V로 붙여넣기"
             >
               <span>📑</span>
-              <span className="hidden sm:inline">엑셀 복사 (Ctrl+V)</span>
-              <span className="sm:hidden">엑셀 복사</span>
+              <span className="hidden sm:inline">엑셀 복사</span>
             </button>
             <button
               onClick={onClose}
-              className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold px-3 py-2 rounded-xl transition cursor-pointer"
+              className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold px-2.5 py-1.5 rounded-xl transition cursor-pointer"
             >
               ✕ 닫기
             </button>
           </div>
         </div>
 
-        {/* 2️⃣ 반 탭 & 조회 기간 & 필터 툴바 */}
-        <div className="bg-slate-50 border-b border-slate-200 p-3 sm:p-4 space-y-3 shrink-0">
+        {/* 2️⃣ 반 탭 & 조회 기간 & 필터 툴바 (초슬림 2줄 통합) */}
+        <div className="bg-slate-50 border-b border-slate-200 px-3 py-1.5 sm:py-2 space-y-1.5 shrink-0 text-xs">
           
-          {/* 상단 1열: 반 선택 탭 */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+          {/* 1열: 반 선택 가로 스크롤 */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
             <button
               onClick={() => handleSelectClass('ALL')}
-              className={`text-xs font-black px-3.5 py-1.5 rounded-xl transition whitespace-nowrap cursor-pointer ${
+              className={`text-[11px] sm:text-xs font-black px-2.5 sm:px-3 py-1 rounded-lg transition whitespace-nowrap cursor-pointer shrink-0 ${
                 selectedClassId === 'ALL'
-                  ? 'bg-slate-900 text-white shadow-xs'
+                  ? 'bg-slate-900 text-white shadow-2xs'
                   : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
               }`}
             >
-              🌐 전체 반 통합 ({students.length}명)
+              🌐 전체 반 ({students.length}명)
             </button>
             {classes.map((c) => {
               const count = classStudents.filter((cs) => String(cs.class_id) === String(c.id)).length;
@@ -462,127 +451,114 @@ export default function ClassAttendanceModal({
                 <button
                   key={c.id}
                   onClick={() => handleSelectClass(c.id)}
-                  className={`text-xs font-black px-3.5 py-1.5 rounded-xl transition whitespace-nowrap cursor-pointer ${
+                  className={`text-[11px] sm:text-xs font-black px-2.5 sm:px-3 py-1 rounded-lg transition whitespace-nowrap cursor-pointer shrink-0 ${
                     isSelected
-                      ? 'bg-teal-600 text-white shadow-xs'
+                      ? 'bg-teal-600 text-white shadow-2xs'
                       : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
                   }`}
                 >
-                  {c.name} ({count}명)
+                  {c.name} ({count})
                 </button>
               );
             })}
           </div>
 
-          {/* 상단 2열: 기간 선택 / 학생 필터 / 검색창 */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5">
-            
-            {/* 좌측: 기간 탭 */}
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-xs font-extrabold text-slate-500 mr-1">📅 조회 기간:</span>
-              {[
-                { key: '3WEEKS', label: '최근 3주 (권장)' },
-                { key: '1MONTH', label: '최근 1개월' },
-                { key: '2MONTHS', label: '최근 2개월' },
-                { key: 'ALL', label: '전체 누적' },
-              ].map((t) => (
-                <button
-                  key={t.key}
-                  onClick={() => setDateRangeFilter(t.key)}
-                  className={`text-xs font-bold px-3 py-1 rounded-lg transition cursor-pointer ${
-                    dateRangeFilter === t.key
-                      ? 'bg-teal-600 text-white font-black shadow-xs'
-                      : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
+          {/* 2열: 기간 + 상태 필터 + 검색창을 한 줄 가로 스크롤로 통합 */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+            {/* 기간 필터 */}
+            <span className="text-[10.5px] font-bold text-slate-400 shrink-0">기간:</span>
+            {[
+              { key: '3WEEKS', label: '최근 3주' },
+              { key: '1MONTH', label: '1개월' },
+              { key: '2MONTHS', label: '2개월' },
+              { key: 'ALL', label: '전체' },
+            ].map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setDateRangeFilter(t.key)}
+                className={`text-[11px] font-bold px-2 py-0.5 rounded-md transition cursor-pointer whitespace-nowrap shrink-0 ${
+                  dateRangeFilter === t.key
+                    ? 'bg-teal-600 text-white font-black'
+                    : 'bg-white text-slate-600 border border-slate-200'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
 
-            {/* 우측: 상태 필터 & 검색 */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200">
-                <button
-                  onClick={() => setStatusFilter('ALL')}
-                  className={`text-xs font-bold px-2.5 py-1 rounded-lg transition cursor-pointer ${
-                    statusFilter === 'ALL'
-                      ? 'bg-slate-800 text-white font-black'
-                      : 'text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  전체 ({enrolledStudents.length})
-                </button>
-                <button
-                  onClick={() => setStatusFilter('LATE_OR_ABSENT')}
-                  className={`text-xs font-bold px-2.5 py-1 rounded-lg transition cursor-pointer flex items-center gap-1 ${
-                    statusFilter === 'LATE_OR_ABSENT'
-                      ? 'bg-amber-600 text-white font-black'
-                      : 'text-amber-800 hover:bg-amber-50'
-                  }`}
-                >
-                  <span>⚠️ 지각/결석자만</span>
-                </button>
-                <button
-                  onClick={() => setStatusFilter('PERFECT')}
-                  className={`text-xs font-bold px-2.5 py-1 rounded-lg transition cursor-pointer flex items-center gap-1 ${
-                    statusFilter === 'PERFECT'
-                      ? 'bg-emerald-600 text-white font-black'
-                      : 'text-emerald-800 hover:bg-emerald-50'
-                  }`}
-                >
-                  <span>🔥 올출석만</span>
-                </button>
-              </div>
+            <span className="text-slate-300 shrink-0">|</span>
 
-              <input
-                type="text"
-                placeholder="학생 이름 검색..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="text-xs bg-white border border-slate-200 rounded-xl px-3 py-1.5 focus:outline-teal-500 w-32 sm:w-40 font-semibold"
-              />
-            </div>
+            {/* 상태 필터 */}
+            <button
+              onClick={() => setStatusFilter('ALL')}
+              className={`text-[11px] font-bold px-2 py-0.5 rounded-md transition cursor-pointer whitespace-nowrap shrink-0 ${
+                statusFilter === 'ALL'
+                  ? 'bg-slate-800 text-white font-black'
+                  : 'bg-white text-slate-600 border border-slate-200'
+              }`}
+            >
+              전체({enrolledStudents.length})
+            </button>
+            <button
+              onClick={() => setStatusFilter('LATE_OR_ABSENT')}
+              className={`text-[11px] font-bold px-2 py-0.5 rounded-md transition cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-0.5 ${
+                statusFilter === 'LATE_OR_ABSENT'
+                  ? 'bg-amber-600 text-white font-black'
+                  : 'bg-amber-50 text-amber-900 border border-amber-200'
+              }`}
+            >
+              <span>⚠️ 지각·결석만</span>
+            </button>
+            <button
+              onClick={() => setStatusFilter('PERFECT')}
+              className={`text-[11px] font-bold px-2 py-0.5 rounded-md transition cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-0.5 ${
+                statusFilter === 'PERFECT'
+                  ? 'bg-emerald-600 text-white font-black'
+                  : 'bg-emerald-50 text-emerald-900 border border-emerald-200'
+              }`}
+            >
+              <span>🔥 올출석</span>
+            </button>
+
+            <span className="text-slate-300 shrink-0">|</span>
+
+            <input
+              type="text"
+              placeholder="이름 검색..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="text-[11px] bg-white border border-slate-200 rounded-md px-2 py-0.5 focus:outline-teal-500 w-24 shrink-0 font-semibold"
+            />
           </div>
         </div>
 
-        {/* 3️⃣ 상단 KPI 요약 카드 */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 px-4 py-2.5 bg-slate-100 border-b border-slate-200 text-xs shrink-0">
-          <div className="bg-white p-2.5 rounded-xl border border-slate-200">
-            <span className="text-[11px] text-slate-500 font-bold block">조회 대상 수업</span>
-            <span className="text-base font-black text-slate-800 mt-0.5 block">
-              총 {overallKPI.totalSessions}회차
-            </span>
-          </div>
-          <div className="bg-white p-2.5 rounded-xl border border-slate-200">
-            <span className="text-[11px] text-slate-500 font-bold block">반 전체 정시출석률</span>
-            <span className={`text-base font-black mt-0.5 block ${
+        {/* 3️⃣ 초슬림 한 줄 KPI 요약 바 (거대 카드 5개 완전 제거) */}
+        <div className="bg-slate-100 px-3 py-1.5 border-b border-slate-200 flex items-center justify-between text-xs font-bold text-slate-700 overflow-x-auto scrollbar-none shrink-0 gap-3">
+          <div className="flex items-center gap-2 whitespace-nowrap shrink-0">
+            <span className="text-[11px] text-slate-500">수업 {overallKPI.totalSessions}회</span>
+            <span className="text-slate-300">·</span>
+            <span>정시출석률 <strong className={`text-xs font-black ${
               overallKPI.avgOnTimeRate >= 90 ? 'text-emerald-600' : overallKPI.avgOnTimeRate >= 75 ? 'text-amber-600' : 'text-rose-600'
-            }`}>
-              {overallKPI.avgOnTimeRate}%
-            </span>
+            }`}>{overallKPI.avgOnTimeRate}%</strong></span>
           </div>
-          <div className="bg-white p-2.5 rounded-xl border border-slate-200">
-            <span className="text-[11px] text-slate-500 font-bold block">정상 출석 누적</span>
-            <span className="text-base font-black text-emerald-600 mt-0.5 block">
-              {overallKPI.totalAttends}건 🟢
+
+          <div className="flex items-center gap-2 whitespace-nowrap shrink-0 text-[11px]">
+            <span className="text-emerald-700 font-extrabold flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              정상 {overallKPI.totalAttends}건
             </span>
-          </div>
-          <div className="bg-white p-2.5 rounded-xl border border-slate-200">
-            <span className="text-[11px] text-slate-500 font-bold block">지각 발생 누적</span>
-            <span className="text-base font-black text-amber-600 mt-0.5 block">
-              {overallKPI.totalLates}건 🟡
+            <span className="text-slate-300">·</span>
+            <span className="text-amber-700 font-extrabold flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+              지각 {overallKPI.totalLates}건
               {overallKPI.totalLateMinutes > 0 && (
-                <span className="text-[11px] font-bold text-slate-400 ml-1">
-                  (총 {overallKPI.totalLateMinutes}분)
-                </span>
+                <span className="text-[10px] text-slate-500 font-normal">({overallKPI.totalLateMinutes}분)</span>
               )}
             </span>
-          </div>
-          <div className="bg-white p-2.5 rounded-xl border border-slate-200 col-span-2 sm:col-span-1">
-            <span className="text-[11px] text-slate-500 font-bold block">결석 누적</span>
-            <span className="text-base font-black text-rose-600 mt-0.5 block">
-              {overallKPI.totalAbsents}건 🔴
+            <span className="text-slate-300">·</span>
+            <span className="text-rose-700 font-extrabold flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+              결석 {overallKPI.totalAbsents}건
             </span>
           </div>
         </div>
@@ -785,17 +761,16 @@ export default function ClassAttendanceModal({
           )}
         </div>
 
-        {/* 5️⃣ 모달 푸터 */}
-        <div className="bg-slate-100 p-3 sm:p-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-600 shrink-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-bold">💡 셀 클릭 안내:</span>
-            <span>표 안의 임의의 칸을 클릭하면 그 자리에서 바로 <strong>정상 출석 / 지각(분) / 결석</strong> 상태를 즉시 변경할 수 있습니다.</span>
-          </div>
+        {/* 5️⃣ 모달 푸터 (초슬림 닫기 바) */}
+        <div className="bg-slate-50 px-3 py-2 border-t border-slate-200 flex items-center justify-between text-xs shrink-0">
+          <span className="text-[11px] text-slate-500 truncate">
+            💡 셀을 클릭하면 <strong>정상 / 지각(분) / 결석</strong> 상태를 즉시 변경할 수 있습니다.
+          </span>
           <button
             onClick={onClose}
-            className="w-full sm:w-auto bg-slate-800 hover:bg-slate-900 text-white font-bold px-6 py-2 rounded-xl transition cursor-pointer"
+            className="bg-slate-800 hover:bg-slate-900 text-white font-bold px-4 py-1.5 rounded-xl transition cursor-pointer text-xs shrink-0 ml-2"
           >
-            확인 및 닫기
+            닫기
           </button>
         </div>
       </div>

@@ -1644,50 +1644,70 @@ export default function TeacherEvalPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 pb-16">
-      {/* 상단 헤더 바 */}
-      <header className="bg-white border-b sticky top-0 z-30 px-4 py-3 sm:py-4 flex justify-between items-center shadow-xs">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">📊</span>
-          <h1 className="text-sm sm:text-base font-black text-slate-800">
-            학습 피드백 및 과제표 관리
-          </h1>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* 📋 반 과제 일괄 검사 툴바 버튼 (피드백 히스토리 왼쪽) */}
-          <button
-            type="button"
-            onClick={handleOpenClassHomeworkInspection}
-            className="text-xs font-extrabold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-3 py-1.5 rounded-xl shadow-2xs transition flex items-center gap-1.5 active:scale-95 cursor-pointer"
-            title="반 전체 학생의 최근 교재별 과제 상태를 한눈에 검사하고 미완료자를 확인합니다"
-          >
-            <span>📋</span>
-            <span>반 과제 일괄 검사</span>
-            {classIncompleteHomeworkCount > 0 && (
-              <span className="bg-rose-500 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full animate-pulse">
-                미완 {classIncompleteHomeworkCount}
-              </span>
-            )}
-          </button>
+      {/* 상단 헤더 바 (모바일 2층 구조로 줄바꿈/글씨 깨짐 완전 방지) */}
+      <header className="bg-white border-b sticky top-0 z-30 px-3 sm:px-6 py-2.5 sm:py-3.5 shadow-xs">
+        <div className="max-w-5xl xl:max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3">
+          {/* 1층: 타이틀 & 모바일 뒤로가기 */}
+          <div className="flex items-center justify-between w-full sm:w-auto">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">📊</span>
+              <h1 className="text-sm sm:text-base font-black text-slate-800">
+                학습 피드백 및 과제표 관리
+              </h1>
+            </div>
+            <button
+              onClick={() => router.back()}
+              className="text-xs text-gray-500 hover:text-gray-800 hover:underline sm:hidden font-bold cursor-pointer"
+            >
+              ← 뒤로가기
+            </button>
+          </div>
 
-          <button
-            type="button"
-            onClick={() => setShowAttendanceModal(true)}
-            className="text-xs font-extrabold bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white px-3 py-1.5 rounded-xl shadow-2xs transition flex items-center gap-1.5 active:scale-95 cursor-pointer"
-            title="반별 출석부 & 지각 관리 엑셀표를 열어 출결 상황을 한눈에 점검합니다"
-          >
-            <span>📅</span>
-            <span>반 출석부</span>
-          </button>
+          {/* 2층(모바일)/우측(PC): 액션 버튼 그룹 (가로 스크롤 & 글씨 깨짐 방지) */}
+          <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-0.5 sm:pb-0 scrollbar-none w-full sm:w-auto">
+            {/* 📋 반 과제 일괄 검사 */}
+            <button
+              type="button"
+              onClick={handleOpenClassHomeworkInspection}
+              className="text-xs font-black bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-3 py-1.5 rounded-xl shadow-2xs transition flex items-center gap-1.5 active:scale-95 whitespace-nowrap shrink-0 cursor-pointer"
+              title="반 전체 학생의 최근 교재별 과제 상태를 한눈에 검사하고 미완료자를 확인합니다"
+            >
+              <span>📋</span>
+              <span>반 과제 검사</span>
+              {classIncompleteHomeworkCount > 0 && (
+                <span className="bg-rose-500 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full animate-pulse">
+                  미완 {classIncompleteHomeworkCount}
+                </span>
+              )}
+            </button>
 
-          <button
-            onClick={() => router.push('/teacher/eval/history')}
-            className="text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-xl border border-indigo-200 transition"
-          >
-            📋 피드백 히스토리
-          </button>
-          <button onClick={() => router.back()} className="text-xs sm:text-sm text-gray-600 hover:underline">
-            ← 뒤로가기
-          </button>
+            {/* 📅 반 출석부 */}
+            <button
+              type="button"
+              onClick={() => setShowAttendanceModal(true)}
+              className="text-xs font-black bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white px-3 py-1.5 rounded-xl shadow-2xs transition flex items-center gap-1.5 active:scale-95 whitespace-nowrap shrink-0 cursor-pointer"
+              title="반별 출석부 & 지각 관리 엑셀표를 열어 출결 상황을 한눈에 점검합니다"
+            >
+              <span>📅</span>
+              <span>반 출석부</span>
+            </button>
+
+            {/* 📋 피드백 히스토리 */}
+            <button
+              onClick={() => router.push('/teacher/eval/history')}
+              className="text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-xl border border-indigo-200 transition whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              📋 피드백 히스토리
+            </button>
+
+            {/* PC 전용 뒤로가기 */}
+            <button
+              onClick={() => router.back()}
+              className="text-xs sm:text-sm text-gray-600 hover:underline hidden sm:inline-block whitespace-nowrap shrink-0 ml-1 cursor-pointer"
+            >
+              ← 뒤로가기
+            </button>
+          </div>
         </div>
       </header>
 

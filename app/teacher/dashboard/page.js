@@ -1,6 +1,7 @@
 'use client';
 import TeacherClinicModal from "@/components/TeacherClinicModal";
 import StudentStickerMarketModal from "@/components/StudentStickerMarketModal";
+import ClassAttendanceModal from "@/components/ClassAttendanceModal";
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -25,6 +26,8 @@ export default function TeacherDashboard() {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showClinicModal, setShowClinicModal] = useState(false);
   const [showStickerMarketModal, setShowStickerMarketModal] = useState(false);
+  const [showAttendanceModal, setShowAttendanceModal] = useState(false);
+  const [attendanceTargetClassId, setAttendanceTargetClassId] = useState('ALL');
 
   // 반 생성 폼 및 수업 유형 (판서수업 LECTURE / 개별수업 INDIVIDUAL)
   const [newClassName, setNewClassName] = useState('');
@@ -192,6 +195,9 @@ export default function TeacherDashboard() {
       // 🎁 푸시 알림 등으로 띠부씰 장터 열기 요청 파라미터가 있을 경우
       if (typeof window !== 'undefined' && window.location.search.includes('openStickerMarket=1')) {
         setShowStickerMarketModal(true);
+      }
+      if (typeof window !== 'undefined' && window.location.search.includes('openAttendance=1')) {
+        setShowAttendanceModal(true);
       }
     } catch (e) {
       console.error(e);
@@ -580,6 +586,18 @@ export default function TeacherDashboard() {
               <span>띠부씰 장터</span>
             </button>
 
+            <button
+              onClick={() => {
+                setAttendanceTargetClassId('ALL');
+                setShowAttendanceModal(true);
+              }}
+              className="text-xs bg-teal-600 hover:bg-teal-700 text-white font-black px-3.5 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+              title="반별 출석부 & 지각 관리 엑셀표 열기"
+            >
+              <span>📋</span>
+              <span>반별 출석부</span>
+            </button>
+
             {isHeadTeacher && (
               <button
                 onClick={() => router.push('/admin/dashboard')}
@@ -959,12 +977,25 @@ export default function TeacherDashboard() {
                     <div className="flex justify-between items-center pt-1 border-t border-slate-200/60">
                       <span className="text-xs text-slate-500 font-bold">소속 학생: <span className="text-indigo-600 font-extrabold">{count}명</span></span>
                       
-                      <button
-                        onClick={() => openClassAssignModal(cls)}
-                        className="bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold text-xs px-3 py-1.5 rounded-xl transition shadow-xs"
-                      >
-                        + 학생 지정 배정
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => {
+                            setAttendanceTargetClassId(cls.id);
+                            setShowAttendanceModal(true);
+                          }}
+                          className="bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 font-bold text-xs px-2.5 py-1.5 rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1"
+                          title={`[${cls.name}] 출석부 엑셀표 열기`}
+                        >
+                          <span>📋</span>
+                          <span>출석부</span>
+                        </button>
+                        <button
+                          onClick={() => openClassAssignModal(cls)}
+                          className="bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold text-xs px-3 py-1.5 rounded-xl transition shadow-xs cursor-pointer"
+                        >
+                          + 학생 지정 배정
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -1324,6 +1355,19 @@ export default function TeacherDashboard() {
         <StudentStickerMarketModal
           user={user}
           onClose={() => setShowStickerMarketModal(false)}
+        />
+      )}
+
+      {/* 📋 모달: 반별 출석부 & 지각 관리 엑셀표 */}
+      {showAttendanceModal && user && (
+        <ClassAttendanceModal
+          isOpen={showAttendanceModal}
+          onClose={() => setShowAttendanceModal(false)}
+          initialClassId={attendanceTargetClassId}
+          classes={classes}
+          students={students}
+          classStudents={classStudents}
+          user={user}
         />
       )}
 

@@ -32,14 +32,25 @@ export async function PATCH(req, { params }) {
   if (ownershipError) return ownershipError;
 
   const body = await req.json();
-  const { teacherComment } = body;
-  if (typeof teacherComment !== 'string') {
-    return NextResponse.json({ error: 'teacherComment가 필요합니다.' }, { status: 400 });
+  const updatePayload = {};
+
+  if (typeof body.teacherComment === 'string') {
+    updatePayload.teacher_comment = body.teacherComment;
+  }
+  if (body.attendance_status) {
+    updatePayload.attendance_status = body.attendance_status;
+  }
+  if (body.lateness_minutes !== undefined) {
+    updatePayload.lateness_minutes = parseInt(body.lateness_minutes, 10) || 0;
+  }
+
+  if (Object.keys(updatePayload).length === 0) {
+    return NextResponse.json({ error: '수정할 데이터가 없습니다.' }, { status: 400 });
   }
 
   const { error: updateError } = await db
     .from('daily_evaluations')
-    .update({ teacher_comment: teacherComment })
+    .update(updatePayload)
     .eq('id', id);
 
   if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });

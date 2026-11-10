@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import ClassHomeworkInspectionModal from '@/components/ClassHomeworkInspectionModal';
+import ClassAttendanceModal from '@/components/ClassAttendanceModal';
 import { useRouter } from 'next/navigation';
 import StudentHomeworkTable from '@/components/StudentHomeworkTable';
 import { getClientCache, setClientCache, invalidateClientCache } from '@/lib/clientCache';
@@ -109,6 +110,7 @@ export default function TeacherEvalPage() {
   // 👥 판서수업(반 일괄)용 누적 과제표 검사 모달 상태 및 반 전체 평가 기록
   const [homeworkModalStudent, setHomeworkModalStudent] = useState(null);
   const [showClassHomeworkModal, setShowClassHomeworkModal] = useState(false);
+  const [showAttendanceModal, setShowAttendanceModal] = useState(false);
   const [classAllEvals, setClassAllEvals] = useState([]);
 
   // 📋 반 과제 일괄 검사 모달 독립 상태 (전체 반 보기 및 개별 반 전환 지원)
@@ -1668,6 +1670,16 @@ export default function TeacherEvalPage() {
           </button>
 
           <button
+            type="button"
+            onClick={() => setShowAttendanceModal(true)}
+            className="text-xs font-extrabold bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white px-3 py-1.5 rounded-xl shadow-2xs transition flex items-center gap-1.5 active:scale-95 cursor-pointer"
+            title="반별 출석부 & 지각 관리 엑셀표를 열어 출결 상황을 한눈에 점검합니다"
+          >
+            <span>📅</span>
+            <span>반 출석부</span>
+          </button>
+
+          <button
             onClick={() => router.push('/teacher/eval/history')}
             className="text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-xl border border-indigo-200 transition"
           >
@@ -3024,6 +3036,19 @@ export default function TeacherEvalPage() {
             onOpenStudentModal={(st) => setHomeworkModalStudent(st)}
             showToast={showToast}
           />
+
+          {/* 📅 반별 출석부 & 지각 관리 엑셀표 모달 */}
+          {showAttendanceModal && (
+            <ClassAttendanceModal
+              isOpen={showAttendanceModal}
+              onClose={() => setShowAttendanceModal(false)}
+              initialClassId={selectedClassId || 'ALL'}
+              classes={classes}
+              students={students}
+              classStudents={classStudents}
+              user={user}
+            />
+          )}
 
           {/* 📑 판서수업(반 일괄 모드)용 학생 누적 과제표 검사 팝업 모달 */}
           {homeworkModalStudent && (

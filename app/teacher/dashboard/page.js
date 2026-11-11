@@ -1560,7 +1560,6 @@ export default function TeacherDashboard() {
           initialClassId={attendanceTargetClassId}
           classes={classes}
           students={students}
-          classStudents={classStudents}
           user={user}
         />
       )}

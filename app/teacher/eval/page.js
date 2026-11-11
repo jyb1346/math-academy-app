@@ -3065,7 +3065,6 @@ export default function TeacherEvalPage() {
               initialClassId={selectedClassId || 'ALL'}
               classes={classes}
               students={students}
-              classStudents={classStudents}
               user={user}
             />
           )}

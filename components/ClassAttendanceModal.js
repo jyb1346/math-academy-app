@@ -18,7 +18,6 @@ export default function ClassAttendanceModal({
   initialClassId = 'ALL',
   classes = [],
   students = [],
-  classStudents = [],
   user = null,
 }) {
   const [selectedClassId, setSelectedClassId] = useState(initialClassId || 'ALL');
@@ -26,6 +25,7 @@ export default function ClassAttendanceModal({
   const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'LATE_OR_ABSENT' | 'PERFECT'
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [modalStudents, setModalStudents] = useState(Array.isArray(students) ? students : []);
   const [evaluations, setEvaluations] = useState([]);
   const [editingCell, setEditingCell] = useState(null); // { evalId, studentId, studentName, evalDate, currentStatus, currentMinutes }
   const [toastMsg, setToastMsg] = useState('');
@@ -34,10 +34,14 @@ export default function ClassAttendanceModal({
   // 모달이 열릴 때 초기 반 세팅
   useEffect(() => {
     if (isOpen) {
-      setSelectedClassId(initialClassId || 'ALL');
-      fetchClassData(initialClassId || 'ALL');
+      const targetClass = initialClassId || 'ALL';
+      setSelectedClassId(targetClass);
+      if (Array.isArray(students) && students.length > 0) {
+        setModalStudents(students);
+      }
+      fetchClassData(targetClass);
     }
-  }, [isOpen, initialClassId]);
+  }, [isOpen, initialClassId, students]);
 
   // 반 변경 시 데이터 조회
   const fetchClassData = async (classId) => {
@@ -46,6 +50,9 @@ export default function ClassAttendanceModal({
       const res = await fetch(`/api/eval/class/${classId}`);
       if (!res.ok) throw new Error('출결 데이터를 불러오지 못했습니다.');
       const data = await res.json();
+      if (Array.isArray(data.students)) {
+        setModalStudents(data.students);
+      }
       setEvaluations(data.evaluations || []);
     } catch (err) {
       console.error(err);
@@ -66,23 +73,12 @@ export default function ClassAttendanceModal({
     setTimeout(() => setToastMsg(''), 2500);
   };
 
-  // 1. 해당 반에 소속된 학생 목록 필터링
+  // 1. 해당 반에 소속된 학생 목록 (API에서 반별로 자동 필터링되어 제공됨)
   const enrolledStudents = useMemo(() => {
-    let list = [];
-    if (selectedClassId === 'ALL') {
-      list = [...students];
-    } else {
-      const validStudentIds = new Set(
-        classStudents
-          .filter((cs) => String(cs.class_id) === String(selectedClassId))
-          .map((cs) => cs.student_id)
-      );
-      list = students.filter((s) => validStudentIds.has(s.id));
-    }
-
+    const list = Array.isArray(modalStudents) ? [...modalStudents] : [];
     // 이름순(가나다) 정렬
     return list.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
-  }, [selectedClassId, students, classStudents]);
+  }, [modalStudents]);
 
   // 2. 수업 일자 목록 추출 및 기간 필터링
   const availableDates = useMemo(() => {
@@ -442,10 +438,9 @@ export default function ClassAttendanceModal({
                   : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
               }`}
             >
-              🌐 전체 반 ({students.length}명)
+              🌐 전체 반 통합
             </button>
             {classes.map((c) => {
-              const count = classStudents.filter((cs) => String(cs.class_id) === String(c.id)).length;
               const isSelected = String(selectedClassId) === String(c.id);
               return (
                 <button
@@ -457,7 +452,7 @@ export default function ClassAttendanceModal({
                       : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
                   }`}
                 >
-                  {c.name} ({count})
+                  {c.name}
                 </button>
               );
             })}

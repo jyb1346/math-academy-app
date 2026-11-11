@@ -100,7 +100,11 @@ export default function StudentScoreSummaryWidget({
             </h2>
             {profile?.school_name && (
               <span className="text-[11px] bg-slate-100 text-slate-700 border border-slate-200 font-bold px-2.5 py-0.5 rounded-md whitespace-nowrap">
-                {profile.school_name} · {studentGradeParsed.label} ({gradeSystem}등급제)
+                {profile.school_name} · {studentGradeParsed.label} (
+                {studentGradeParsed.school_level === 'MIDDLE'
+                  ? '성취평가 A~E · 고교 5등급제 대비'
+                  : `${gradeSystem}등급제`}
+                )
               </span>
             )}
             {(targetGrade || targetScore) && (
@@ -252,9 +256,30 @@ export default function StudentScoreSummaryWidget({
                     </span>
                   </div>
                   <div className="mt-2.5 flex items-baseline justify-between gap-2">
-                    <span className="text-2xl sm:text-3xl font-black text-slate-900 tabular-nums tracking-tight">
-                      {activeExam.raw_score !== null ? `${activeExam.raw_score}점` : '-'}
-                    </span>
+                    <div>
+                      <span className="text-2xl sm:text-3xl font-black text-slate-900 tabular-nums tracking-tight">
+                        {activeExam.raw_score !== null ? `${activeExam.raw_score}점` : '-'}
+                      </span>
+                      {(activeExam.objective_score !== null && activeExam.objective_score !== undefined && activeExam.objective_score !== '') ||
+                      (activeExam.essay_score !== null && activeExam.essay_score !== undefined && activeExam.essay_score !== '') ? (
+                        <div className="text-[10.5px] font-bold text-slate-500 mt-1 tabular-nums">
+                          {activeExam.objective_score !== null && activeExam.objective_score !== undefined && activeExam.objective_score !== ''
+                            ? `객관식 ${activeExam.objective_score}점`
+                            : ''}
+                          {activeExam.objective_score !== null &&
+                          activeExam.objective_score !== undefined &&
+                          activeExam.objective_score !== '' &&
+                          activeExam.essay_score !== null &&
+                          activeExam.essay_score !== undefined &&
+                          activeExam.essay_score !== ''
+                            ? ' · '
+                            : ''}
+                          {activeExam.essay_score !== null && activeExam.essay_score !== undefined && activeExam.essay_score !== ''
+                            ? `서술형 ${activeExam.essay_score}점`
+                            : ''}
+                        </div>
+                      ) : null}
+                    </div>
                     {posInfo?.isMiddle ? (
                       <div className="flex flex-col items-end">
                         <span className="bg-indigo-600 text-white text-xs font-black px-2.5 py-1 rounded-lg tabular-nums whitespace-nowrap">

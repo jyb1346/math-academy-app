@@ -67,13 +67,13 @@ export default function StudentDashboard() {
         })
         .catch(() => []);
 
-      // 📈 내 고교 수학 성적 추이 & 패인 분석 데이터 조회
+      // 📈 내 중·고교 수학 성적 추이 & 패인 분석 데이터 조회
       const scorePromise = fetch(`/api/scores?studentId=${encodeURIComponent(studentId)}`)
         .then(async (res) => {
           if (!res.ok) return { scores: [], profile: {} };
           const sJson = await res.json();
-          const myScores = (sJson.scores || []).filter((sc) => sc.student_id === studentId);
-          const myProf = (sJson.studentProfiles && sJson.studentProfiles[studentId]) || {};
+          const myScores = (sJson.scores || []).filter((sc) => String(sc.student_id) === String(studentId));
+          const myProf = sJson.profile || (sJson.studentProfiles && sJson.studentProfiles[studentId]) || {};
           setStudentScores(myScores);
           setStudentScoreProfile(myProf);
           return { scores: myScores, profile: myProf };

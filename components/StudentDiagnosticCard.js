@@ -9,6 +9,8 @@ export default function StudentDiagnosticCard({
   studentName = '학생',
   diagnostic,
   defaultExpanded = false,
+  periodScope,
+  onPeriodScopeChange,
 }) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [copied, setCopied] = useState(false);
@@ -17,13 +19,27 @@ export default function StudentDiagnosticCard({
     return null;
   }
 
-  const { grade, headline, attendance, homework, causes, trend, achievement, details, actionItems, parentConsultScript } =
-    diagnostic;
+  const {
+    grade,
+    headline,
+    attendance,
+    homework,
+    causes,
+    trend,
+    achievement,
+    details,
+    actionItems,
+    parentConsultScript,
+    periodLabel,
+    totalCumulativeClasses,
+  } = diagnostic;
+
+  const activeScope = periodScope || diagnostic.periodScope || 'RECENT_4W';
 
   const handleCopyConsultScript = (e) => {
     e.stopPropagation();
     const fullText = [
-      `📊 [${studentName}] 학습 상태 정밀 진단 브리핑`,
+      `📊 [${studentName}] 학습 상태 정밀 진단 브리핑 (${periodLabel || '최근 4주 집중'})`,
       `• 종합 진단: ${grade.shortLabel} (${grade.badgeText})`,
       `• 출결 현황: 총 ${attendance.totalClasses}회 중 출석 ${attendance.attendCount}회 / 지각 ${attendance.lateCount}회 / 결석 ${attendance.absentCount}회 (출석률 ${attendance.attendanceRate}%)`,
       `• 과제 수행: 정시 완료율 ${homework.onTimeRate}% / 최종 완료율 ${homework.finalCompletionRate}% (미해결 ${homework.incompleteCount}건${homework.delayedCount > 0 ? `, 지연 완료 평균 +${homework.avgDelayDays}일` : ''})`,
@@ -74,7 +90,43 @@ export default function StudentDiagnosticCard({
           </span>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          {onPeriodScopeChange ? (
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center p-0.5 bg-white rounded-xl border border-slate-200 shadow-2xs text-[11px] font-extrabold"
+            >
+              <button
+                type="button"
+                onClick={() => onPeriodScopeChange('RECENT_4W')}
+                className={`px-2.5 py-1 rounded-lg transition whitespace-nowrap cursor-pointer ${
+                  activeScope === 'RECENT_4W'
+                    ? 'bg-indigo-600 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="최근 4주(28일)간의 수업 및 과제 수행 패턴을 집중 진단합니다"
+              >
+                ⚡ 최근 4주 집중
+              </button>
+              <button
+                type="button"
+                onClick={() => onPeriodScopeChange('ALL')}
+                className={`px-2.5 py-1 rounded-lg transition whitespace-nowrap cursor-pointer ${
+                  activeScope === 'ALL'
+                    ? 'bg-slate-800 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="첫 수업부터 전체 누적 기록을 기준으로 진단합니다"
+              >
+                📚 전체 누적{totalCumulativeClasses ? ` (${totalCumulativeClasses}회)` : ''}
+              </button>
+            </div>
+          ) : periodLabel ? (
+            <span className="text-[11px] font-extrabold text-indigo-700 bg-white px-2.5 py-1 rounded-xl border border-indigo-200 whitespace-nowrap">
+              {periodLabel}
+            </span>
+          ) : null}
+
           {!isExpanded && homework.evaluatedCount > 0 && (
             <div className="hidden xl:flex items-center gap-2 text-xs font-bold text-slate-600 bg-white px-3 py-1.5 rounded-xl border border-slate-200 whitespace-nowrap">
               <span>정시 {homework.onTimeRate}%</span>
@@ -303,7 +355,7 @@ export default function StudentDiagnosticCard({
                       : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                   }`}
                 >
-                  {achievement.isSuperficialSuspect ? '🔍 형식적 숙제 의심' : '✅ 정상 소화 중'}
+                  {achievement.isSuperficialSuspect ? '🔍 오답 소화도 점검' : '✅ 정상 소화 중'}
                 </span>
               </div>
 
@@ -326,7 +378,7 @@ export default function StudentDiagnosticCard({
               <div className="text-xs font-extrabold px-1 leading-relaxed">
                 {achievement.isSuperficialSuspect ? (
                   <span className="text-purple-800">
-                    ⚠️ 숙제 완료율은 높지만 테스트 점수가 낮습니다. 답지 베끼기나 오답 미흡 여부를 확인해 주세요.
+                    💡 숙제 완료율은 높으나 실전 테스트 연결이 아쉽습니다. 풀이 과정 점검 및 오답 유사문항 확인을 권장합니다.
                   </span>
                 ) : (
                   <span className="text-slate-600">과제 수행 결과가 실제 수업 이해도로 잘 이어지고 있습니다.</span>

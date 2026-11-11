@@ -30,8 +30,6 @@ export default function ClassHomeworkInspectionModal({
   showToast,
   isLoading = false,
 }) {
-  if (!isOpen) return null;
-
   // 1. 과제가 부여된 과거/현재 수업 날짜 목록 추출 (최신순 정렬)
   const availableDates = useMemo(() => {
     const datesMap = new Map();
@@ -69,9 +67,10 @@ export default function ClassHomeworkInspectionModal({
     });
   };
 
-  // 🧠 개별 학생별 AI 정밀 진단 카드 펼침 상태 Set & 전체 진단 펼침 토글
+  // 🧠 개별 학생별 AI 정밀 진단 카드 펼침 상태 Set & 전체 진단 펼침 토글 & 진단 기간 범위 ('RECENT_4W' | 'ALL')
   const [expandedDiagnosticStudentIds, setExpandedDiagnosticStudentIds] = useState(new Set());
   const [showAllDiagnostics, setShowAllDiagnostics] = useState(false);
+  const [diagnosticPeriodScope, setDiagnosticPeriodScope] = useState('RECENT_4W');
 
   const toggleDiagnosticForStudent = (studentId) => {
     setExpandedDiagnosticStudentIds((prev) => {
@@ -108,8 +107,10 @@ export default function ClassHomeworkInspectionModal({
     return students.map((st) => {
       const studentEvals = evalsByStudentMap.get(st.id) || [];
 
-      // 🧠 학생 전체 누적 기록 기반 AI 학습 상태 정밀 진단 실행
-      const diagnostic = analyzeStudentLearningState(studentEvals);
+      // 🧠 학생 기록 기반 AI 학습 상태 정밀 진단 실행 (최근 4주 집중 or 전체 누적)
+      const diagnostic = analyzeStudentLearningState(studentEvals, {
+        periodScope: diagnosticPeriodScope,
+      });
 
       // 과제가 부여된 평가들을 최신순 정렬
       const evalsWithBooks = studentEvals
@@ -189,7 +190,7 @@ export default function ClassHomeworkInspectionModal({
         hasIncomplete,
       };
     });
-  }, [students, classAllEvals, selectedDateFilter, excludeLatestHomework]);
+  }, [students, classAllEvals, selectedDateFilter, excludeLatestHomework, diagnosticPeriodScope]);
 
   // 9. 통계 계산
   const stats = useMemo(() => {
@@ -330,6 +331,8 @@ export default function ClassHomeworkInspectionModal({
   const currentClassObj = classes.find((c) => String(c.id) === String(selectedClassId));
   const isAllClasses = selectedClassId === 'ALL';
 
+  if (!isOpen) return null;
+
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-4 animate-fade-in">
       <div className="bg-white rounded-3xl max-w-6xl xl:max-w-7xl w-full max-h-[94vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
@@ -440,7 +443,34 @@ export default function ClassHomeworkInspectionModal({
                 <span>✅ 완료 과제 숨김</span>
               </label>
 
-              {/* 5. 🧠 AI 진단 리포트 일괄 펼침 토글 */}
+              {/* 5. 🧠 AI 진단 기간 범위 & 리포트 일괄 펼침 토글 */}
+              <div className="flex items-center p-0.5 bg-slate-200/70 rounded-xl border border-slate-200 text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setDiagnosticPeriodScope('RECENT_4W')}
+                  className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                    diagnosticPeriodScope === 'RECENT_4W'
+                      ? 'bg-white text-indigo-700 font-extrabold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  title="최근 4주(28일)간의 수업·과제 수행 패턴으로 현재 상태를 집중 진단합니다"
+                >
+                  ⚡ 최근 4주 진단
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDiagnosticPeriodScope('ALL')}
+                  className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                    diagnosticPeriodScope === 'ALL'
+                      ? 'bg-white text-slate-900 font-extrabold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  title="첫 수업부터 전체 누적 데이터를 기준으로 진단합니다"
+                >
+                  📚 전체 누적 진단
+                </button>
+              </div>
+
               <label
                 className={`flex items-center gap-1.5 cursor-pointer px-2.5 py-1 rounded-xl border text-xs font-black transition select-none shadow-2xs ${
                   showAllDiagnostics
@@ -861,6 +891,8 @@ export default function ClassHomeworkInspectionModal({
                           studentName={row.student.name}
                           diagnostic={row.diagnostic}
                           defaultExpanded={true}
+                          periodScope={diagnosticPeriodScope}
+                          onPeriodScopeChange={setDiagnosticPeriodScope}
                         />
                       </div>
                     )}

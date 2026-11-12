@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/session';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { isEvalMatchingClass } from '@/lib/evalUtils';
 
-// GET /api/eval/class/[classId] — 반 소속 학생 목록 + 최근 과제표 일괄 조회 (판서수업 모드 및 반 전체/전체반 과제 검사)
+// GET /api/eval/class/[classId] — 반 소속 학생 목록 + 최근 과제표 일괄 조회 (판서수업 모드 및 반별/전체반 출석부·과제 검사)
 export async function GET(req, { params }) {
   const { user, error } = requireRole(req, ['TEACHER', 'HEAD_TEACHER']);
   if (error) return error;
@@ -44,17 +45,35 @@ export async function GET(req, { params }) {
     const studentMap = new Map();
     csData.forEach((item) => {
       if (item.users) {
-        studentMap.set(item.users.id, {
-          ...item.users,
-          className: classMap[item.class_id] || '반 소속',
-          classId: item.class_id,
-        });
+        const cName = classMap[item.class_id] || '반 소속';
+        const existing = studentMap.get(item.users.id);
+        if (existing) {
+          if (!existing.classIds.includes(item.class_id)) {
+            existing.classIds.push(item.class_id);
+            existing.classNames.push(cName);
+            existing.className = existing.classNames.join(' · ');
+          }
+        } else {
+          studentMap.set(item.users.id, {
+            ...item.users,
+            className: cName,
+            classId: item.class_id,
+            classIds: [item.class_id],
+            classNames: [cName],
+          });
+        }
       }
     });
 
     (directStudents || []).forEach((st) => {
       if (!studentMap.has(st.id)) {
-        studentMap.set(st.id, { ...st, className: '1:1 개별', classId: null });
+        studentMap.set(st.id, {
+          ...st,
+          className: '1:1 개별',
+          classId: null,
+          classIds: [],
+          classNames: ['1:1 개별'],
+        });
       }
     });
 
@@ -72,7 +91,10 @@ export async function GET(req, { params }) {
         .order('eval_date', { ascending: false });
 
       if (evalErr) return NextResponse.json({ error: evalErr.message }, { status: 500 });
-      evaluations = evalData || [];
+      // 전체 반 조회 시에도 본인(해당 선생님)이 작성한 피드백만 필터링하여 타 강사 특강 기록과 혼선 방지
+      evaluations = (evalData || []).filter(
+        (ev) => !ev.teacher_id || String(ev.teacher_id) === String(user.id)
+      );
     }
 
     return NextResponse.json({ students, evaluations });
@@ -113,7 +135,10 @@ export async function GET(req, { params }) {
       .order('eval_date', { ascending: false });
 
     if (evalErr) return NextResponse.json({ error: evalErr.message }, { status: 500 });
-    evaluations = evalData || [];
+    // 해당 반(classRow.id)에 속한 평가(또는 반 태그 없는 동일 강사의 기존 평가)만 필터링하여 정규반/특강반 분리
+    evaluations = (evalData || []).filter((ev) =>
+      isEvalMatchingClass(ev, classRow.id, classRow.teacher_id)
+    );
   }
 
   return NextResponse.json({ students, evaluations });

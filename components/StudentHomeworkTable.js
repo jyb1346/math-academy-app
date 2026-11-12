@@ -87,6 +87,8 @@ export default function StudentHomeworkTable({
         formattedDate,
         teacherId: ev.teacher_id,
         teacherName,
+        classId: parsed.classId || '',
+        className: parsed.className || '',
         lessonProgress: parsed.lessonProgress || '-',
         testType: parsed.testType,
         testScore: parsed.testScore,
@@ -439,6 +441,11 @@ export default function StudentHomeworkTable({
                     >
                       <div className="flex flex-col items-center justify-center">
                         <span>{row.formattedDate}</span>
+                        {row.className && (
+                          <span className="inline-block mt-0.5 text-[9px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.2 rounded-md leading-tight whitespace-nowrap max-w-[76px] truncate" title={row.className}>
+                            {row.className}
+                          </span>
+                        )}
                         {row.teacherName && (
                           <span className="inline-block mt-0.5 text-[9.5px] font-black bg-indigo-50 text-indigo-700 border border-indigo-200/90 px-1.5 py-0.2 rounded-md leading-tight whitespace-nowrap shadow-2xs">
                             {row.teacherName}T
@@ -607,6 +614,11 @@ export default function StudentHomeworkTable({
                     <span className="text-sm font-black text-slate-900 bg-slate-100 px-2.5 py-1 rounded-xl">
                       📅 {row.formattedDate} ({row.rawDate})
                     </span>
+                    {row.className && (
+                      <span className="text-xs font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg">
+                        📘 {row.className}
+                      </span>
+                    )}
                     {row.teacherName && (
                       <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-lg">
                         {row.teacherName}T

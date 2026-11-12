@@ -11,6 +11,7 @@ import {
   HOMEWORK_STATUS_OPTIONS,
   formatTeacherCommentWithTestScoreAndItems,
   parseEvaluationRecord,
+  isEvalMatchingClass,
   extractRecentBookNamesFromEvaluations,
   extractAllUniqueBookNamesFromEvaluations,
   updateBookStatusInComment,
@@ -317,20 +318,20 @@ export default function TeacherEvalPage() {
     }
   }, [evalDate]);
 
-  // 선택된 학생이나 날짜가 변경될 때 해당 학생의 전체 기록 및 직전 기록 조회 (1:1 개별 모드)
+  // 선택된 학생, 반 또는 날짜가 변경될 때 해당 학생의 전체 기록 및 직전 기록 조회 (1:1 개별 모드)
   useEffect(() => {
     if (selectedStudentId) {
-      fetchStudentEvaluationHistory(selectedStudentId, evalDate);
+      fetchStudentEvaluationHistory(selectedStudentId, evalDate, selectedClassId);
     } else {
       setStudentEvals([]);
       setPrevEval(null);
       setTodayEvalRecord(null);
       setTodayParsedRecord(null);
     }
-  }, [selectedStudentId, evalDate]);
+  }, [selectedStudentId, evalDate, selectedClassId]);
 
-  // 개별 모드용 학생 기록 조회
-  const fetchStudentEvaluationHistory = async (studentId, currentDate) => {
+  // 개별 모드용 학생 기록 조회 (다중 수강/특강 반별 분리 및 타 강사 기록 분리 지원)
+  const fetchStudentEvaluationHistory = async (studentId, currentDate, targetClassId = selectedClassId) => {
     try {
       setLoadingPrevEval(true);
       const res = await fetch(`/api/eval?studentId=${encodeURIComponent(studentId)}`);
@@ -340,13 +341,31 @@ export default function TeacherEvalPage() {
       const evals = resData.evaluations || [];
       setStudentEvals(evals);
 
-      // 현재 선택된 날짜의 평가가 이미 작성되었는지 확인
-      const todayEval = evals.find((e) => e.eval_date === currentDate);
+      // 현재 선택된 날짜 + 현재 선생님 + 현재 선택된 반(targetClassId)의 평가가 이미 작성되었는지 확인
+      const myDateEvals = evals.filter(
+        (e) => e.eval_date === currentDate && (!user?.id || !e.teacher_id || e.teacher_id === user.id)
+      );
+      let todayEval = null;
+      if (targetClassId) {
+        todayEval =
+          myDateEvals.find((e) => String(parseEvaluationRecord(e).classId || '') === String(targetClassId)) ||
+          myDateEvals.find((e) => !parseEvaluationRecord(e).classId) ||
+          null;
+      } else {
+        todayEval =
+          myDateEvals.find((e) => !parseEvaluationRecord(e).classId) || myDateEvals[0] || null;
+      }
       setTodayEvalRecord(todayEval || null);
       setTodayParsedRecord(todayEval ? parseEvaluationRecord(todayEval) : null);
 
-      // 현재 선택된 날짜 이전의 가장 최근 평가 1건 찾기
-      const prev = evals.find((e) => e.eval_date < currentDate) || (evals.length > 0 ? evals[0] : null);
+      // 현재 선택된 반(또는 내 담당 수업) 기준 직전 평가 1건 찾기
+      const classMatchedEvals = targetClassId
+        ? evals.filter((e) => isEvalMatchingClass(e, targetClassId, user?.id))
+        : evals.filter((e) => !user?.id || !e.teacher_id || e.teacher_id === user.id);
+      const sourcePool = classMatchedEvals.length > 0 ? classMatchedEvals : evals;
+      const prev =
+        sourcePool.find((e) => e.eval_date < currentDate) ||
+        (sourcePool.length > 0 ? sourcePool[0] : null);
       setPrevEval(prev);
 
       // 🎯 역량 평가 항목 및 점수 게이지 자동 반영
@@ -1368,6 +1387,7 @@ export default function TeacherEvalPage() {
 
       const effectiveTestType = testType === '기타' ? (customTestType.trim() || '기타평가') : testType;
       const existingParsed = existingEval ? parseEvaluationRecord(existingEval) : null;
+      const selectedClassObj = classes.find((c) => String(c.id) === String(selectedClassId));
 
       const combinedComment = formatTeacherCommentWithTestScoreAndItems({
         comment: teacherComment,
@@ -1378,6 +1398,8 @@ export default function TeacherEvalPage() {
         homeworkBooks: todayHomeworkBooks.filter((b) => b.name && b.range),
         alimtalkSentAt: existingParsed?.alimtalkSentAt || null,
         parentReplyCheckedAt: existingParsed?.parentReplyCheckedAt || null,
+        classId: selectedClassObj ? String(selectedClassObj.id) : (existingParsed?.classId || ''),
+        className: selectedClassObj ? selectedClassObj.name : (existingParsed?.className || ''),
       });
 
       const payload = {
@@ -1396,8 +1418,9 @@ export default function TeacherEvalPage() {
       };
 
       if (existingEval) {
+        const classLabel = selectedClassObj ? `[${selectedClassObj.name}] ` : '';
         const confirmOverwrite = confirm(
-          `⚠️ [${studentName}] 학생의 ${evalDate} 날짜 피드백이 이미 작성되어 있습니다.\n\n새로 작성한 내용으로 수정(덮어쓰기)하시겠습니까?`
+          `⚠️ ${classLabel}[${studentName}] 학생의 ${evalDate} 날짜 피드백이 이미 작성되어 있습니다.\n\n새로 작성한 내용으로 수정(덮어쓰기)하시겠습니까?`
         );
 
         if (!confirmOverwrite) {
@@ -1409,7 +1432,13 @@ export default function TeacherEvalPage() {
       const saveRes = await fetch('/api/eval', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId: selectedStudentId, evalDate, payload }),
+        body: JSON.stringify({
+          studentId: selectedStudentId,
+          evalDate,
+          evalId: existingEval?.id || null,
+          classId: selectedClassObj ? String(selectedClassObj.id) : '',
+          payload,
+        }),
       });
       const saveData = await saveRes.json();
       if (!saveRes.ok) throw new Error(saveData.error || '저장 실패');
@@ -1505,10 +1534,13 @@ export default function TeacherEvalPage() {
           homeworkBooks: validBooks,
           alimtalkSentAt: st.alimtalkSentAt || null,
           parentReplyCheckedAt: st.parentReplyCheckedAt || null,
+          classId: currentClass ? String(currentClass.id) : (selectedClassId || ''),
+          className: currentClass ? currentClass.name : '',
         });
 
         return {
           studentId: st.student_id,
+          classId: currentClass ? String(currentClass.id) : (selectedClassId || ''),
           payload: {
             attendance_status: st.attendanceStatus,
             lateness_minutes: st.attendanceStatus === 'LATE' ? parseInt(st.latenessMinutes || 5) : 0,
@@ -1526,7 +1558,11 @@ export default function TeacherEvalPage() {
       const batchRes = await fetch('/api/eval/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ evalDate, targets: batchTargets }),
+        body: JSON.stringify({
+          evalDate,
+          classId: currentClass ? String(currentClass.id) : (selectedClassId || ''),
+          targets: batchTargets,
+        }),
       });
       const batchData = await batchRes.json();
       if (!batchRes.ok) throw new Error(batchData.error || '일괄 저장 실패');

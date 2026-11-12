@@ -14,9 +14,12 @@ import { isParentReplyUnread, markParentReplyCheckedInComment } from '@/lib/eval
 export default function TeacherDashboard() {
   const [user, setUser] = useState(null);
   const [classes, setClasses] = useState([]);
+  const [allClasses, setAllClasses] = useState([]);
   const [students, setStudents] = useState([]);
+  const [allAcademyStudents, setAllAcademyStudents] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [classStudents, setClassStudents] = useState([]);
+  const [allClassStudents, setAllClassStudents] = useState([]);
   const [qnaStats, setQnaStats] = useState({ pending: 0, inProgress: 0, resolved: 0, total: 0 });
   const [clinicPendingCount, setClinicPendingCount] = useState(0);
   const [repliedEvaluations, setRepliedEvaluations] = useState([]);
@@ -78,16 +81,21 @@ export default function TeacherDashboard() {
     }
   };
 
-  // 🎯 메인에 배치된 엑셀 2박스 일괄 학생 등록 상태
+  // 🎯 메인에 배치된 엑셀 2박스 일괄 학생 등록 상태 (+ 학년/학교 선택 지원)
   const [batchNamesText, setBatchNamesText] = useState('');   // 이름 세로 박스
   const [batchPhonesText, setBatchPhonesText] = useState(''); // 전화번호 세로 박스
+  const [batchGradeCode, setBatchGradeCode] = useState('');   // 일괄 등록 기본 학년 (선택: M1~M3, H1~H3)
+  const [batchSchoolName, setBatchSchoolName] = useState(''); // 일괄 등록 기본 학교명 (선택)
+  const [studentGradeFilter, setStudentGradeFilter] = useState('ALL'); // ALL | MIDDLE | HIGH | M1..H3
 
   // 학생 수정 모달 상태
   const [editingStudent, setEditingStudent] = useState(null);
 
-  // 특정 반에 학생 일괄 배정 모달 상태
+  // 특정 반에 학생 일괄 배정 모달 상태 (타 선생님 학생 특강 배정 지원)
   const [assignTargetClass, setAssignTargetClass] = useState(null);
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+  const [assignModalScope, setAssignModalScope] = useState('MY'); // 'MY' | 'ALL_ACADEMY'
+  const [assignSearchQuery, setAssignSearchQuery] = useState('');
 
   // 학생 개별 배정 드롭다운
   const [selectedClassMap, setSelectedClassMap] = useState({});
@@ -96,12 +104,18 @@ export default function TeacherDashboard() {
 
   const applyTeacherData = (data) => {
     setClasses(data.classes || []);
+    setAllClasses(data.allClasses || data.classes || []);
     const sortedStudents = [...(data.students || [])].sort((a, b) =>
       (a.name || '').localeCompare(b.name || '', 'ko')
     );
     setStudents(sortedStudents);
+    const sortedAllAcademy = [...(data.allAcademyStudents || data.students || [])].sort((a, b) =>
+      (a.name || '').localeCompare(b.name || '', 'ko')
+    );
+    setAllAcademyStudents(sortedAllAcademy);
     setTeachers(data.teachers || []);
     setClassStudents(data.classStudents || []);
+    setAllClassStudents(data.allClassStudents || data.classStudents || []);
     setRepliedEvaluations(data.repliedEvaluations || []);
 
     const parsedQna = (data.qna || []).map((q) => {
@@ -274,6 +288,8 @@ export default function TeacherDashboard() {
       const studentsPayload = nameList.map((name, index) => ({
         name,
         phone: phoneList[index] || '',
+        grade_code: batchGradeCode || undefined,
+        school_name: batchSchoolName.trim() || undefined,
       }));
 
       const res = await fetch('/api/teacher/students/batch', {
@@ -287,6 +303,7 @@ export default function TeacherDashboard() {
       alert(`${studentsPayload.length}명의 학생 계정이 신규 등록되었습니다.`);
       setBatchNamesText('');
       setBatchPhonesText('');
+      setBatchSchoolName('');
       fetchTeacherData(user.id);
     } catch (err) {
       alert(`학생 등록 실패: ${err.message}`);
@@ -309,6 +326,8 @@ export default function TeacherDashboard() {
           email: editingStudent.email,
           parentPhone: editingStudent.parent_phone,
           teacherId: targetTeacherId,
+          schoolName: editingStudent.school_name ?? '',
+          gradeCode: editingStudent.grade_code || 'H1',
         }),
       });
       const data = await res.json();
@@ -367,7 +386,7 @@ export default function TeacherDashboard() {
 
   const handleAssignClass = async (studentId) => {
     const classId = selectedClassMap[studentId];
-    if (!classId) return alert('배정할 반을 선택해 주세요.');
+    if (!classId) return alert('추가 배정할 반을 선택해 주세요.');
 
     try {
       const res = await fetch(`/api/teacher/students/${studentId}/assign`, {
@@ -377,15 +396,40 @@ export default function TeacherDashboard() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '배정 실패');
-      alert('반 배정이 완료되었습니다.');
+      if (data.alreadyAssigned) {
+        alert('이미 해당 반에 배정되어 있는 학생입니다.');
+      } else {
+        alert('반 추가 배정이 완료되었습니다. (기존 반 수강 내역도 함께 유지됩니다)');
+      }
+      setSelectedClassMap((prev) => ({ ...prev, [studentId]: '' }));
       fetchTeacherData(user.id);
     } catch (err) {
       alert(`배정 실패: ${err.message}`);
     }
   };
 
+  const handleUnassignSingleClass = async (studentId, classId, studentName, className) => {
+    if (!confirm(`[${studentName}] 학생을 [${className}] 반에서만 배정 해제하시겠습니까?\n(다른 수강 중인 반은 그대로 유지됩니다)`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/teacher/students/${studentId}/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ classId, action: 'remove' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '배정 해제 실패');
+      fetchTeacherData(user.id);
+    } catch (err) {
+      alert(`배정 해제 실패: ${err.message}`);
+    }
+  };
+
   const openClassAssignModal = (cls) => {
     setAssignTargetClass(cls);
+    setAssignModalScope('MY');
+    setAssignSearchQuery('');
     const currentStudentIds = classStudents
       .filter((cs) => String(cs.class_id) === String(cls.id))
       .map((cs) => cs.student_id);
@@ -1017,9 +1061,63 @@ export default function TeacherDashboard() {
 
           <form onSubmit={handleBatchCreateStudents} className="space-y-4">
             <div className="bg-amber-50/80 p-3.5 rounded-2xl border border-amber-200/80 text-xs text-slate-700 space-y-1">
-              <p className="font-bold text-amber-900">💡 엑셀 복사/붙여넣기 및 입력 방법:</p>
-              <p>• 1명 등록 시: 왼쪽 박스에 <span className="font-bold text-slate-900">홍길동</span>, 오른쪽 박스에 <span className="font-bold text-slate-900">01012345678</span> 입력</p>
-              <p>• 엑셀 붙여넣기 시: 엑셀의 <span className="font-bold text-slate-900">[학생 이름 열]</span>과 <span className="font-bold text-slate-900">[학부모 연락처 열]</span>을 각각 복사(Ctrl+C)하여 아래 2개 박스에 각각 붙여넣으세요.</p>
+              <p className="font-bold text-amber-900">💡 엑셀 복사/붙여넣기 및 학년 설정 안내:</p>
+              <p>• 1명 등록 시: 아래에서 <span className="font-bold text-slate-900">학년(중1~고3)</span>과 <span className="font-bold text-slate-900">학교명</span>을 선택한 뒤 이름과 연락처를 입력해 주세요.</p>
+              <p>• 엑셀 붙여넣기 시: 엑셀의 <span className="font-bold text-slate-900">[학생 이름 열]</span>과 <span className="font-bold text-slate-900">[학부모 연락처 열]</span>을 각각 복사(Ctrl+C)하여 붙여넣으세요. (학년은 등록 후 개별 수정도 가능합니다)</p>
+            </div>
+
+            {/* 신규 등록 시 기본 학년(중1~고3) 및 학교명 선택 바 */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50/90 p-3.5 rounded-2xl border border-slate-200/80">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  🎓 학년 구분 (선택 시 성적표 모드 자동 연동)
+                </label>
+                <div className="grid grid-cols-7 gap-1">
+                  {[
+                    { code: '', label: '미지정' },
+                    { code: 'M1', label: '중1' },
+                    { code: 'M2', label: '중2' },
+                    { code: 'M3', label: '중3' },
+                    { code: 'H1', label: '고1' },
+                    { code: 'H2', label: '고2' },
+                    { code: 'H3', label: '고3' },
+                  ].map((opt) => {
+                    const active = batchGradeCode === opt.code;
+                    const isMiddle = opt.code.startsWith('M');
+                    return (
+                      <button
+                        key={opt.code || 'NONE'}
+                        type="button"
+                        onClick={() => setBatchGradeCode(opt.code)}
+                        className={`py-2 rounded-xl text-xs font-extrabold border transition whitespace-nowrap ${
+                          active
+                            ? isMiddle
+                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                              : opt.code
+                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                              : 'bg-slate-800 text-white border-slate-800'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  🏫 재학 학교명 (선택사항 · 나중에 입력 가능)
+                </label>
+                <input
+                  type="text"
+                  placeholder="예: 서현중, 내정중, 분당고, 낙생고"
+                  value={batchSchoolName}
+                  onChange={(e) => setBatchSchoolName(e.target.value)}
+                  className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1065,103 +1163,198 @@ export default function TeacherDashboard() {
 
         {/* 👥 4. 내 담당 학생 목록 */}
         <section className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-5">
-          <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
             <div>
               <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
                 <span>👥</span> 내 담당 학생 목록 ({students.length}명)
               </h2>
-              <p className="text-xs text-slate-400 mt-0.5">학생 개별 수정 및 개별 반 변경이 가능합니다.</p>
+              <p className="text-xs text-slate-400 mt-0.5">학생 개별 학년(중1~고3)·학교 수정 및 개별 반 변경이 가능합니다.</p>
+            </div>
+
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {[
+                { id: 'ALL', label: '전체' },
+                { id: 'MIDDLE', label: '중등 (중1~중3)' },
+                { id: 'HIGH', label: '고등 (고1~고3)' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setStudentGradeFilter(tab.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-extrabold border transition whitespace-nowrap ${
+                    studentGradeFilter === tab.id
+                      ? 'bg-slate-800 text-white border-slate-800'
+                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
           </div>
 
           <div className="space-y-3">
-            {students.length === 0 ? (
-              <p className="text-center py-12 text-slate-400 text-xs font-bold">등록된 학생이 없습니다.</p>
+            {students.filter((st) => {
+              if (studentGradeFilter === 'ALL') return true;
+              if (studentGradeFilter === 'MIDDLE') return st.school_level === 'MIDDLE';
+              if (studentGradeFilter === 'HIGH') return st.school_level !== 'MIDDLE';
+              return st.grade_code === studentGradeFilter;
+            }).length === 0 ? (
+              <p className="text-center py-12 text-slate-400 text-xs font-bold">해당 조건의 학생이 없습니다.</p>
             ) : (
-              students.map((st) => {
-                const assignedClassInfo = classStudents.find((cs) => cs.student_id === st.id);
-                const assignedClass = classes.find((c) => String(c.id) === String(assignedClassInfo?.class_id));
+              students
+                .filter((st) => {
+                  if (studentGradeFilter === 'ALL') return true;
+                  if (studentGradeFilter === 'MIDDLE') return st.school_level === 'MIDDLE';
+                  if (studentGradeFilter === 'HIGH') return st.school_level !== 'MIDDLE';
+                  return st.grade_code === studentGradeFilter;
+                })
+                .map((st) => {
+                  const myAssignedClasses = classStudents
+                    .filter((cs) => cs.student_id === st.id)
+                    .map((cs) => classes.find((c) => String(c.id) === String(cs.class_id)))
+                    .filter(Boolean);
+                  const myAssignedClassIds = new Set(myAssignedClasses.map((c) => String(c.id)));
 
-                return (
-                  <div
-                    key={st.id}
-                    className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition"
-                  >
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-extrabold text-sm text-slate-800">{st.name}</span>
-                        <span className="text-slate-400 text-xs font-semibold">({st.email})</span>
+                  const otherAssignedClasses = allClassStudents
+                    .filter((cs) => cs.student_id === st.id && !myAssignedClassIds.has(String(cs.class_id)))
+                    .map((cs) => {
+                      const cls = allClasses.find((c) => String(c.id) === String(cs.class_id));
+                      if (!cls || cls.teacher_id === user?.id) return null;
+                      const tName = teachers.find((t) => t.id === cls.teacher_id)?.name || '타선생님';
+                      return { ...cls, teacherName: tName };
+                    })
+                    .filter(Boolean);
 
-                        {st.teacher_id && st.teacher_id !== user?.id && (
-                          <span className="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded-full font-bold text-[10px]">
-                            수강생 (주담당: {teachers.find((t) => t.id === st.teacher_id)?.name || '선생님'}T)
-                          </span>
-                        )}
+                  const availableMyClasses = classes.filter((c) => !myAssignedClassIds.has(String(c.id)));
+                  const isMiddle = st.school_level === 'MIDDLE';
+                  const displayGradeBadge = st.grade_label || (st.school_name ? `${isMiddle ? '중' : '고'}${st.school_grade || 1}` : '');
 
-                        
-                        {st.parent_phone ? (
-                          <span className="bg-amber-100 text-amber-900 border border-amber-200 px-2.5 py-0.5 rounded-full font-bold text-[11px]">
-                            📱 학부모: {st.parent_phone}
-                          </span>
-                        ) : (
-                          <span className="bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full font-semibold text-[10px]">
-                            연락처 미등록
-                          </span>
-                        )}
+                  return (
+                    <div
+                      key={st.id}
+                      className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition"
+                    >
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-extrabold text-sm text-slate-800">{st.name}</span>
+                          {(displayGradeBadge || st.school_name) && (
+                            <span
+                              className={`px-2 py-0.5 rounded-md font-extrabold text-[11px] border whitespace-nowrap ${
+                                isMiddle
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                              }`}
+                            >
+                              {[displayGradeBadge, st.school_name].filter(Boolean).join(' · ')}
+                            </span>
+                          )}
+                          <span className="text-slate-400 text-xs font-semibold">({st.email})</span>
+
+                          {st.teacher_id && st.teacher_id !== user?.id && (
+                            <span className="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded-full font-bold text-[10px]">
+                              타반 겸임 수강생 (주담당: {teachers.find((t) => t.id === st.teacher_id)?.name || '선생님'}T)
+                            </span>
+                          )}
+
+                          {st.parent_phone ? (
+                            <span className="bg-amber-100 text-amber-900 border border-amber-200 px-2.5 py-0.5 rounded-full font-bold text-[11px]">
+                              📱 학부모: {st.parent_phone}
+                            </span>
+                          ) : (
+                            <span className="bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full font-semibold text-[10px]">
+                              연락처 미등록
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                          <span className="text-slate-500 font-bold mr-0.5">수강 반({myAssignedClasses.length + otherAssignedClasses.length}):</span>
+                          {myAssignedClasses.length === 0 && otherAssignedClasses.length === 0 ? (
+                            <span className="bg-rose-50 text-rose-600 border border-rose-100 px-2.5 py-0.5 rounded-full font-bold">
+                              미배정
+                            </span>
+                          ) : (
+                            <>
+                              {myAssignedClasses.map((cls) => (
+                                <span
+                                  key={cls.id}
+                                  className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 pl-2.5 pr-1.5 py-0.5 rounded-full font-extrabold"
+                                >
+                                  <span>📘 {cls.name}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUnassignSingleClass(st.id, cls.id, st.name, cls.name)}
+                                    className="w-4 h-4 rounded-full bg-indigo-100 hover:bg-rose-500 hover:text-white text-indigo-600 text-[10px] font-black flex items-center justify-center transition cursor-pointer"
+                                    title={`[${cls.name}] 반에서만 배정 해제`}
+                                  >
+                                    ✕
+                                  </button>
+                                </span>
+                              ))}
+                              {otherAssignedClasses.map((cls) => (
+                                <span
+                                  key={cls.id}
+                                  className="inline-flex items-center gap-1 bg-purple-50 text-purple-700 border border-purple-200 px-2.5 py-0.5 rounded-full font-bold text-[11px]"
+                                  title="다른 선생님 반에서 동시 수강 중인 수업입니다"
+                                >
+                                  <span>🟣 [{cls.teacherName}T] {cls.name}</span>
+                                </span>
+                              ))}
+                            </>
+                          )}
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="text-slate-500 font-bold">소속 반:</span>
-                        {assignedClass ? (
-                          <span className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-0.5 rounded-full font-bold">
-                            📘 {assignedClass.name}
-                          </span>
-                        ) : (
-                          <span className="bg-rose-50 text-rose-600 border border-rose-100 px-2.5 py-0.5 rounded-full font-bold">
-                            미배정
-                          </span>
-                        )}
+                      <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                        <select
+                          value={selectedClassMap[st.id] || ''}
+                          onChange={(e) => setSelectedClassMap({ ...selectedClassMap, [st.id]: e.target.value })}
+                          className="p-2 border rounded-xl text-xs font-bold text-slate-700 bg-white"
+                        >
+                          <option value="">
+                            {availableMyClasses.length > 0 ? '+ 반 추가 선택...' : '모든 내 반 배정됨'}
+                          </option>
+                          {availableMyClasses.map((cls) => (
+                            <option key={cls.id} value={cls.id}>📘 {cls.name}</option>
+                          ))}
+                        </select>
+
+                        <button
+                          onClick={() => handleAssignClass(st.id)}
+                          disabled={availableMyClasses.length === 0}
+                          className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold px-3 py-2 rounded-xl text-xs transition whitespace-nowrap shadow-xs cursor-pointer"
+                          title="기존 반을 유지하면서 선택한 반(특강 등)을 추가로 배정합니다"
+                        >
+                          + 반 추가
+                        </button>
+
+                        <button
+                          onClick={() =>
+                            setEditingStudent({
+                              ...st,
+                              grade_code:
+                                st.grade_code ||
+                                `${st.school_level === 'MIDDLE' ? 'M' : 'H'}${st.school_grade || 1}`,
+                            })
+                          }
+                          className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold px-3 py-2 rounded-xl text-xs transition whitespace-nowrap"
+                        >
+                          수정
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteStudent(st.id, st.name)}
+                          className="text-rose-500 hover:text-rose-700 hover:underline font-bold px-1 text-xs cursor-pointer"
+                          title={isHeadTeacher ? '원생을 학원에서 영구 삭제합니다' : '내 담당 수업에서 이 학생을 제외합니다 (학생 계정 유지)'}
+                        >
+                          {isHeadTeacher ? '삭제' : '제외'}
+                        </button>
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={selectedClassMap[st.id] || (assignedClass ? String(assignedClass.id) : '')}
-                        onChange={(e) => setSelectedClassMap({ ...selectedClassMap, [st.id]: e.target.value })}
-                        className="p-2 border rounded-xl text-xs font-bold text-slate-700 bg-white"
-                      >
-                        <option value="">-- 반 선택 --</option>
-                        {classes.map((cls) => (
-                          <option key={cls.id} value={cls.id}>📘 {cls.name}</option>
-                        ))}
-                      </select>
-
-                      <button
-                        onClick={() => handleAssignClass(st.id)}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3.5 py-2 rounded-xl text-xs transition whitespace-nowrap shadow-xs"
-                      >
-                        배정
-                      </button>
-
-                      <button
-                        onClick={() => setEditingStudent(st)}
-                        className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold px-3 py-2 rounded-xl text-xs transition whitespace-nowrap"
-                      >
-                        수정
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteStudent(st.id, st.name)}
-                        className="text-rose-500 hover:text-rose-700 hover:underline font-bold px-1 text-xs cursor-pointer"
-                        title={isHeadTeacher ? '원생을 학원에서 영구 삭제합니다' : '내 담당 수업에서 이 학생을 제외합니다 (학생 계정 유지)'}
-                      >
-                        {isHeadTeacher ? '삭제' : '제외'}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
+                  );
+                })
             )}
           </div>
         </section>
@@ -1177,26 +1370,99 @@ export default function TeacherDashboard() {
         />
       )}
 
-      {/* 🎯 모달 1: 반 학생 일괄 배정 */}
+      {/* 🎯 모달 1: 반 학생 일괄 배정 (내 담당 학생 + 타 선생님 학생 특강 겸임 배정 지원) */}
       {assignTargetClass && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-lg space-y-5 shadow-2xl animate-in fade-in zoom-in-95 my-8">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-lg space-y-4 shadow-2xl animate-in fade-in zoom-in-95 my-8">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-base font-extrabold text-slate-800">
                   📘 [{assignTargetClass.name}] 반 학생 일괄 배정
                 </h3>
-                <p className="text-xs text-slate-400 mt-0.5">배정할 학생들을 체크박스로 선택해 주세요.</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  내 담당 학생뿐만 아니라 다른 선생님 반 학생도 특강/겸임 수업으로 함께 배정할 수 있습니다.
+                </p>
               </div>
               <button onClick={() => setAssignTargetClass(null)} className="text-slate-400 hover:text-slate-600 font-bold text-xs">✕</button>
             </div>
 
+            {/* 범위 전환 탭: 내 담당 학생 vs 학원 전체 원생 (타 강사 학생 포함) */}
+            <div className="flex gap-1.5 p-1 bg-slate-100 rounded-2xl border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setAssignModalScope('MY')}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-extrabold transition ${
+                  assignModalScope === 'MY'
+                    ? 'bg-indigo-600 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                👤 내 담당 학생 ({students.length}명)
+              </button>
+              <button
+                type="button"
+                onClick={() => setAssignModalScope('ALL_ACADEMY')}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-extrabold transition ${
+                  assignModalScope === 'ALL_ACADEMY'
+                    ? 'bg-purple-600 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                🌐 학원 전체 원생 ({allAcademyStudents.length}명 · 타반 특강 배정)
+              </button>
+            </div>
+
+            {/* 이름 / 학교 / 학년 검색창 */}
+            <div>
+              <input
+                type="text"
+                placeholder="🔍 학생 이름, 학교명, 학년(예: 중3, 고1)으로 빠른 검색..."
+                value={assignSearchQuery}
+                onChange={(e) => setAssignSearchQuery(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+
             <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
-              {students.length === 0 ? (
-                <p className="text-xs text-slate-400 py-4 text-center">등록된 학생이 없습니다.</p>
-              ) : (
-                students.map((st) => {
+              {(() => {
+                const basePool = assignModalScope === 'ALL_ACADEMY' ? allAcademyStudents : students;
+                const q = assignSearchQuery.trim().toLowerCase();
+                const filteredPool = q
+                  ? basePool.filter(
+                      (st) =>
+                        (st.name || '').toLowerCase().includes(q) ||
+                        (st.school_name || '').toLowerCase().includes(q) ||
+                        (st.grade_label || '').toLowerCase().includes(q) ||
+                        (st.email || '').toLowerCase().includes(q)
+                    )
+                  : basePool;
+
+                if (filteredPool.length === 0) {
+                  return (
+                    <div className="py-6 text-center space-y-2">
+                      <p className="text-xs text-slate-400 font-bold">검색 조건에 맞는 학생이 없습니다.</p>
+                      {assignModalScope === 'MY' && (
+                        <button
+                          type="button"
+                          onClick={() => setAssignModalScope('ALL_ACADEMY')}
+                          className="text-xs font-extrabold text-purple-600 hover:underline"
+                        >
+                          🌐 다른 선생님 반 학생인가요? [학원 전체 원생] 탭에서 찾기 →
+                        </button>
+                      )}
+                    </div>
+                  );
+                }
+
+                return filteredPool.map((st) => {
                   const isChecked = selectedStudentIds.includes(st.id);
+                  const isOtherTeacherPrimary = st.teacher_id && st.teacher_id !== user?.id;
+                  const primaryTeacherName = teachers.find((t) => t.id === st.teacher_id)?.name || '선생님';
+                  const enrolledClassesForSt = allClassStudents
+                    .filter((cs) => cs.student_id === st.id && String(cs.class_id) !== String(assignTargetClass.id))
+                    .map((cs) => allClasses.find((c) => String(c.id) === String(cs.class_id))?.name)
+                    .filter(Boolean);
+
                   return (
                     <label
                       key={st.id}
@@ -1204,30 +1470,49 @@ export default function TeacherDashboard() {
                         isChecked ? 'bg-indigo-50/80 border-indigo-300' : 'bg-slate-50 border-slate-200'
                       }`}
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
                         <input
                           type="checkbox"
                           checked={isChecked}
                           onChange={() => toggleStudentSelection(st.id)}
-                          className="w-4 h-4 text-indigo-600 accent-indigo-600 rounded"
+                          className="w-4 h-4 text-indigo-600 accent-indigo-600 rounded shrink-0"
                         />
-                        <div>
-                          <span className="text-xs font-bold text-slate-800 block">{st.name}</span>
-                          <span className="text-[10px] text-slate-400">{st.email}</span>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs font-bold text-slate-800">{st.name}</span>
+                            {(st.grade_label || st.school_name) && (
+                              <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-slate-200/80 text-slate-700">
+                                {[st.grade_label, st.school_name].filter(Boolean).join(' · ')}
+                              </span>
+                            )}
+                            {isOtherTeacherPrimary && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                                주담당: {primaryTeacherName}T
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                            <span className="text-[10px] text-slate-400">{st.email}</span>
+                            {enrolledClassesForSt.length > 0 && (
+                              <span className="text-[10px] font-bold text-indigo-600">
+                                · 타 수업 수강중: {enrolledClassesForSt.join(', ')}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
 
                       {isChecked && (
-                        <span className="text-xs font-bold text-indigo-600">선택됨 ✓</span>
+                        <span className="text-xs font-bold text-indigo-600 shrink-0 ml-2">선택됨 ✓</span>
                       )}
                     </label>
                   );
-                })
-              )}
+                });
+              })()}
             </div>
 
             <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl text-xs font-bold">
-              <span className="text-slate-600">선택된 학생:</span>
+              <span className="text-slate-600">이 반에 배정될 총 학생:</span>
               <span className="text-indigo-600 font-extrabold">{selectedStudentIds.length}명</span>
             </div>
 
@@ -1266,6 +1551,46 @@ export default function TeacherDashboard() {
                   onChange={(e) => setEditingStudent({ ...editingStudent, name: e.target.value })}
                   className="w-full p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500"
                 />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">🎓 학년 구분 (중1~고3)</label>
+                  <select
+                    value={
+                      editingStudent.grade_code ||
+                      `${editingStudent.school_level === 'MIDDLE' ? 'M' : 'H'}${editingStudent.school_grade || 1}`
+                    }
+                    onChange={(e) =>
+                      setEditingStudent({ ...editingStudent, grade_code: e.target.value })
+                    }
+                    className="w-full p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-500"
+                  >
+                    <optgroup label="중학교 (성취도 A~E + 고교 환산)">
+                      <option value="M1">중학교 1학년 (중1)</option>
+                      <option value="M2">중학교 2학년 (중2)</option>
+                      <option value="M3">중학교 3학년 (중3)</option>
+                    </optgroup>
+                    <optgroup label="고등학교 (내신·모의고사 등급)">
+                      <option value="H1">고등학교 1학년 (고1 · 5등급제)</option>
+                      <option value="H2">고등학교 2학년 (고2 · 9등급제)</option>
+                      <option value="H3">고등학교 3학년 (고3 · 9등급제)</option>
+                    </optgroup>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">🏫 재학 학교명</label>
+                  <input
+                    type="text"
+                    placeholder="예: 서현중, 분당고"
+                    value={editingStudent.school_name || ''}
+                    onChange={(e) =>
+                      setEditingStudent({ ...editingStudent, school_name: e.target.value })
+                    }
+                    className="w-full p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
               </div>
 
               <div>

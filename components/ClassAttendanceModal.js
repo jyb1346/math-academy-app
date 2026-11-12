@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { getTodayKstDateString } from '@/lib/evalUtils';
+import { getTodayKstDateString, isEvalMatchingClass } from '@/lib/evalUtils';
 
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -86,6 +86,9 @@ export default function ClassAttendanceModal({
     const enrolledIds = new Set(enrolledStudents.map((s) => s.id));
 
     (evaluations || []).forEach((ev) => {
+      if (selectedClassId !== 'ALL' && !isEvalMatchingClass(ev, selectedClassId, user?.id)) {
+        return;
+      }
       if (ev.eval_date && (selectedClassId === 'ALL' || enrolledIds.has(ev.student_id))) {
         datesSet.add(ev.eval_date);
       }
@@ -119,6 +122,9 @@ export default function ClassAttendanceModal({
     // eval_date -> student_id -> evaluation
     const dateStudentMap = {};
     (evaluations || []).forEach((ev) => {
+      if (selectedClassId !== 'ALL' && !isEvalMatchingClass(ev, selectedClassId, user?.id)) {
+        return;
+      }
       if (!dateStudentMap[ev.eval_date]) {
         dateStudentMap[ev.eval_date] = {};
       }

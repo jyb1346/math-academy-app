@@ -24,9 +24,11 @@ export default function AdminDashboard() {
   const [assignTargetClass, setAssignTargetClass] = useState(null);
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
 
-  // 🔍 원생 검색, 강사 필터, 수정 모달 상태
+  // 🔍 원생 검색, 강사 필터, 학년 필터, 반 개별 추가, 수정 모달 상태
   const [studentSearch, setStudentSearch] = useState('');
   const [filterTeacher, setFilterTeacher] = useState('ALL');
+  const [studentGradeFilter, setStudentGradeFilter] = useState('ALL'); // ALL | MIDDLE | HIGH
+  const [selectedClassMap, setSelectedClassMap] = useState({});
   const [editingStudent, setEditingStudent] = useState(null);
 
   // 🎯 반 원생 배정 모달 내 실시간 검색 및 필터 상태
@@ -207,6 +209,44 @@ export default function AdminDashboard() {
     }
   };
 
+  // 📘 원생 반 추가 배정 및 단일 반 배정 해제 (다중 수강/특강 지원)
+  const handleAssignClass = async (studentId) => {
+    const classId = selectedClassMap[studentId];
+    if (!classId) return alert('추가 배정할 반을 선택해 주세요.');
+
+    try {
+      const res = await fetch(`/api/teacher/students/${studentId}/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ classId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '배정 실패');
+      setSelectedClassMap((prev) => ({ ...prev, [studentId]: '' }));
+      fetchAdminData(user.id);
+    } catch (err) {
+      alert(`반 추가 배정 실패: ${err.message}`);
+    }
+  };
+
+  const handleUnassignSingleClass = async (studentId, classId, studentName, className) => {
+    if (!confirm(`[${studentName}] 원생을 [${className}] 반에서만 배정 해제하시겠습니까?\n(다른 수강 중인 반은 그대로 유지됩니다)`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/teacher/students/${studentId}/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ classId, action: 'remove' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '배정 해제 실패');
+      fetchAdminData(user.id);
+    } catch (err) {
+      alert(`배정 해제 실패: ${err.message}`);
+    }
+  };
+
   // 👨‍🏫 원생 담당 선생님 원클릭 즉시 변경
   const handleQuickChangeTeacher = async (studentId, newTeacherId) => {
     try {
@@ -276,7 +316,13 @@ export default function AdminDashboard() {
       (st.email || '').toLowerCase().includes(studentSearch.toLowerCase()) ||
       (st.school_name || '').toLowerCase().includes(studentSearch.toLowerCase());
     const matchTeacher = filterTeacher === 'ALL' || st.teacher_id === filterTeacher;
-    return matchSearch && matchTeacher;
+    const matchGrade =
+      studentGradeFilter === 'ALL'
+        ? true
+        : studentGradeFilter === 'MIDDLE'
+        ? st.school_level === 'MIDDLE'
+        : st.school_level !== 'MIDDLE';
+    return matchSearch && matchTeacher && matchGrade;
   });
 
   const modalFilteredStudents = allStudents.filter((st) => {
@@ -540,7 +586,7 @@ export default function AdminDashboard() {
             <div className="flex-1 relative">
               <input
                 type="text"
-                placeholder="🔍 학생 이름 또는 아이디로 검색..."
+                placeholder="🔍 학생 이름, 학교명 또는 아이디로 검색..."
                 value={studentSearch}
                 onChange={(e) => setStudentSearch(e.target.value)}
                 className="w-full p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
@@ -554,6 +600,27 @@ export default function AdminDashboard() {
                   ✕
                 </button>
               )}
+            </div>
+
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {[
+                { id: 'ALL', label: '전체 학년' },
+                { id: 'MIDDLE', label: '중등 (중1~중3)' },
+                { id: 'HIGH', label: '고등 (고1~고3)' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setStudentGradeFilter(tab.id)}
+                  className={`px-3 py-2.5 rounded-2xl text-xs font-extrabold border transition whitespace-nowrap ${
+                    studentGradeFilter === tab.id
+                      ? 'bg-slate-800 text-white border-slate-800'
+                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
 
             <select
@@ -584,6 +651,9 @@ export default function AdminDashboard() {
 
                 const assignedClasses = allClasses.filter((c) =>
                   studentEnrolledClassIds.includes(String(c.id))
+                );
+                const availableClassesForSt = allClasses.filter(
+                  (c) => !studentEnrolledClassIds.includes(String(c.id))
                 );
                 const teacherObj = allTeachers.find((t) => t.id === st.teacher_id);
                 const isMiddle = st.school_level === 'MIDDLE';
@@ -623,13 +693,30 @@ export default function AdminDashboard() {
 
                       <div className="flex items-center gap-3 text-xs flex-wrap">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-slate-400 font-bold">소속 반:</span>
+                          <span className="text-slate-400 font-bold">수강 반({assignedClasses.length}):</span>
                           {assignedClasses.length > 0 ? (
-                            assignedClasses.map((cls) => (
-                              <span key={cls.id} className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded-lg font-bold text-[11px]">
-                                📘 {cls.name}
-                              </span>
-                            ))
+                            assignedClasses.map((cls) => {
+                              const clsTeacher = allTeachers.find((t) => t.id === cls.teacher_id);
+                              return (
+                                <span
+                                  key={cls.id}
+                                  className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 pl-2.5 pr-1.5 py-0.5 rounded-full font-bold text-[11px]"
+                                >
+                                  <span>
+                                    📘 {cls.name}
+                                    {clsTeacher ? ` (${clsTeacher.name}T)` : ''}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUnassignSingleClass(st.id, cls.id, st.name, cls.name)}
+                                    className="w-4 h-4 rounded-full bg-indigo-100 hover:bg-rose-500 hover:text-white text-indigo-600 text-[10px] font-black flex items-center justify-center transition cursor-pointer"
+                                    title={`[${cls.name}] 반에서만 배정 해제`}
+                                  >
+                                    ✕
+                                  </button>
+                                </span>
+                              );
+                            })
                           ) : (
                             <span className="bg-rose-50 text-rose-600 border border-rose-100 px-2 py-0.5 rounded-lg font-bold text-[11px]">
                               미배정
@@ -647,6 +734,34 @@ export default function AdminDashboard() {
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                      {/* 반 추가 배정 드롭다운 */}
+                      <select
+                        value={selectedClassMap[st.id] || ''}
+                        onChange={(e) => setSelectedClassMap({ ...selectedClassMap, [st.id]: e.target.value })}
+                        className="p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700"
+                      >
+                        <option value="">
+                          {availableClassesForSt.length > 0 ? '+ 반 추가 선택...' : '전체 반 배정됨'}
+                        </option>
+                        {availableClassesForSt.map((cls) => {
+                          const clsTeacher = allTeachers.find((t) => t.id === cls.teacher_id);
+                          return (
+                            <option key={cls.id} value={cls.id}>
+                              📘 {cls.name} ({clsTeacher?.name || '선생님'}T)
+                            </option>
+                          );
+                        })}
+                      </select>
+
+                      <button
+                        type="button"
+                        onClick={() => handleAssignClass(st.id)}
+                        disabled={availableClassesForSt.length === 0}
+                        className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold px-3 py-2 rounded-xl text-xs transition whitespace-nowrap shadow-xs cursor-pointer"
+                      >
+                        + 반 추가
+                      </button>
+
                       {/* 빠른 담당 선생님 변경 드롭다운 */}
                       <select
                         value={st.teacher_id || ''}

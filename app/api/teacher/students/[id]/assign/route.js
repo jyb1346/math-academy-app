@@ -15,7 +15,7 @@ export async function POST(req, { params }) {
   const db = getSupabaseAdmin(req);
 
   const { data: cls } = await db.from('classes').select('id, teacher_id').eq('id', classId).maybeSingle();
-  if (!cls || cls.teacher_id !== user.id) {
+  if (!cls || (cls.teacher_id !== user.id && user.role !== 'HEAD_TEACHER')) {
     return NextResponse.json({ error: '본인이 담당하는 반에만 배정/해제할 수 있습니다.' }, { status: 403 });
   }
 

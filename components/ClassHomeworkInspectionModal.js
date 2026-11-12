@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import {
   parseEvaluationRecord,
+  isEvalMatchingClass,
   HOMEWORK_STATUS_OPTIONS,
   analyzeStudentLearningState,
 } from '@/lib/evalUtils';
@@ -30,10 +31,13 @@ export default function ClassHomeworkInspectionModal({
   showToast,
   isLoading = false,
 }) {
-  // 1. 과제가 부여된 과거/현재 수업 날짜 목록 추출 (최신순 정렬)
+  // 1. 과제가 부여된 과거/현재 수업 날짜 목록 추출 (최신순 정렬 + 선택된 반 필터링)
   const availableDates = useMemo(() => {
     const datesMap = new Map();
     (classAllEvals || []).forEach((ev) => {
+      if (selectedClassId && selectedClassId !== 'ALL' && !isEvalMatchingClass(ev, selectedClassId)) {
+        return;
+      }
       const parsed = parseEvaluationRecord(ev);
       if (parsed.homeworkBooks && parsed.homeworkBooks.length > 0) {
         datesMap.set(ev.eval_date, (datesMap.get(ev.eval_date) || 0) + 1);
@@ -41,7 +45,7 @@ export default function ClassHomeworkInspectionModal({
     });
 
     return Array.from(datesMap.keys()).sort((a, b) => new Date(b) - new Date(a));
-  }, [classAllEvals]);
+  }, [classAllEvals, selectedClassId]);
 
   // 2. 검사 범위 필터: 'ALL' (모든 날짜 누적 통합) | 'YYYY-MM-DD' (특정 날짜)
   const [selectedDateFilter, setSelectedDateFilter] = useState('ALL');
@@ -99,6 +103,9 @@ export default function ClassHomeworkInspectionModal({
 
     const evalsByStudentMap = new Map();
     (classAllEvals || []).forEach((ev) => {
+      if (selectedClassId && selectedClassId !== 'ALL' && !isEvalMatchingClass(ev, selectedClassId)) {
+        return;
+      }
       const list = evalsByStudentMap.get(ev.student_id) || [];
       list.push(ev);
       evalsByStudentMap.set(ev.student_id, list);
@@ -143,6 +150,8 @@ export default function ClassHomeworkInspectionModal({
             evalId: ev.id,
             evalDate: ev.eval_date,
             formattedDate,
+            classId: ev.parsed.classId || '',
+            className: ev.parsed.className || '',
             bookName: b.name,
             range: b.range || '',
             status: b.status || '미체크',
@@ -955,6 +964,11 @@ export default function ClassHomeworkInspectionModal({
                                         <span className="text-[10px] font-black px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 shrink-0">
                                           {task.formattedDate}
                                         </span>
+                                        {task.className && (
+                                          <span className="text-[9.5px] font-extrabold px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                                            {task.className}
+                                          </span>
+                                        )}
                                         <span
                                           className="font-extrabold text-slate-800 truncate"
                                           title={task.bookName}

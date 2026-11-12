@@ -115,6 +115,12 @@ function StudentReportContent() {
             <span className="bg-white/20 text-white text-xs px-3.5 py-1 rounded-full font-bold">
               {evalData.attendance_status === 'ABSENT' ? '품수학 결석 진도 및 과제 안내' : '품수학 일일 학습 보고서'}
             </span>
+            {parsed.className && (
+              <span className="bg-emerald-300 text-slate-950 text-xs px-3 py-1 rounded-full font-black shadow-xs flex items-center gap-1">
+                <span>📘</span>
+                <span>{parsed.className}</span>
+              </span>
+            )}
             {authorTeacherName && (
               <span className="bg-amber-400 text-slate-950 text-xs px-3 py-1 rounded-full font-black shadow-xs flex items-center gap-1">
                 <span>👨‍🏫</span>

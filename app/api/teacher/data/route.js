@@ -10,10 +10,11 @@ export async function GET(req) {
 
   const db = getSupabaseAdmin(req);
 
-  // 서로 무관한 조회 6개를 병렬 실행
-  const [classesRes, directStRes, teachersRes, qnaRes, repliedEvalRes, scoreStore] = await Promise.all([
-    db.from('classes').select('*').eq('teacher_id', user.id),
-    db.from('users').select('id, name, email, role, parent_phone, teacher_id, created_at').eq('role', 'STUDENT').eq('teacher_id', user.id),
+  // 서로 무관한 조회 6개를 단일 병렬 라운드로 실행 (타 강사 학생의 특강 배정 및 다중 수강 조회 지원)
+  const [allClassesRes, allStRes, allCSRes, teachersRes, qnaRes, repliedEvalRes, scoreStore] = await Promise.all([
+    db.from('classes').select('*'),
+    db.from('users').select('id, name, email, role, parent_phone, teacher_id, created_at').eq('role', 'STUDENT'),
+    db.from('class_students').select('student_id, class_id'),
     db.from('users').select('id, name, email, role').in('role', ['TEACHER', 'HEAD_TEACHER', 'ADMIN']).order('name'),
     db.from('qna').select('id, status, replies').eq('teacher_id', user.id),
     db
@@ -25,41 +26,28 @@ export async function GET(req) {
     loadScoreStore(db),
   ]);
 
-  if (classesRes.error) return NextResponse.json({ error: classesRes.error.message }, { status: 500 });
-  if (directStRes.error) return NextResponse.json({ error: directStRes.error.message }, { status: 500 });
+  if (allClassesRes.error) return NextResponse.json({ error: allClassesRes.error.message }, { status: 500 });
+  if (allStRes.error) return NextResponse.json({ error: allStRes.error.message }, { status: 500 });
 
-  const myClasses = classesRes.data || [];
-  const myClassIds = myClasses.map((c) => c.id);
+  const allClasses = allClassesRes.data || [];
+  const myClasses = allClasses.filter((c) => c.teacher_id === user.id);
+  const myClassIds = new Set(myClasses.map((c) => c.id));
 
-  let enrolledStudentIds = [];
-  let myClassStudents = [];
-  if (myClassIds.length > 0) {
-    const { data: enrolledCS } = await db
-      .from('class_students')
-      .select('student_id, class_id')
-      .in('class_id', myClassIds);
-    myClassStudents = enrolledCS || [];
-    enrolledStudentIds = myClassStudents.map((item) => item.student_id);
-  }
+  const allClassStudents = allCSRes.data || [];
+  const myClassStudents = allClassStudents.filter((cs) => myClassIds.has(cs.class_id));
+  const enrolledStudentIds = new Set(myClassStudents.map((item) => item.student_id));
 
-  let allTeacherStudents = directStRes.data || [];
-  const missingIds = enrolledStudentIds.filter((id) => !allTeacherStudents.some((s) => s.id === id));
+  const rawAllStudents = allStRes.data || [];
+  rawAllStudents.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
 
-  if (missingIds.length > 0) {
-    const { data: extraStData } = await db
-      .from('users')
-      .select('id, name, email, role, parent_phone, teacher_id, created_at')
-      .in('id', missingIds);
-    if (extraStData) {
-      allTeacherStudents = [...allTeacherStudents, ...extraStData];
-    }
-  }
-
-  // 🎯 학생 목록 가나다(이름) 순 정렬 + 학년/학교 프로필 병합
-  allTeacherStudents.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
-  const enrichedStudents = enrichStudentsWithProfiles(
-    allTeacherStudents,
+  const enrichedAllAcademyStudents = enrichStudentsWithProfiles(
+    rawAllStudents,
     scoreStore?.studentProfiles || {}
+  );
+
+  // 내 담당 학생 = 주담당(teacher_id === user.id) 이거나 내 반(특강 포함)에 1개 이상 배정된 학생
+  const enrichedStudents = enrichedAllAcademyStudents.filter(
+    (s) => s.teacher_id === user.id || enrolledStudentIds.has(s.id)
   );
 
   const tData = teachersRes.data;
@@ -70,9 +58,12 @@ export async function GET(req) {
 
   return NextResponse.json({
     classes: myClasses,
+    allClasses,
     students: enrichedStudents,
+    allAcademyStudents: enrichedAllAcademyStudents,
     teachers: tData || [],
     classStudents: myClassStudents,
+    allClassStudents,
     qna: qnaData || [],
     repliedEvaluations,
   });

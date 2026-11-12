@@ -100,6 +100,24 @@ export default function TeacherDashboard() {
   // 학생 개별 배정 드롭다운
   const [selectedClassMap, setSelectedClassMap] = useState({});
 
+  // ⚡ 학년·학교 빠른 편집 & 다중 선택 일괄 적용 상태 (1번 + 2번 통합)
+  const [quickProfileMode, setQuickProfileMode] = useState(false);
+  const [bulkProfileStudentIds, setBulkProfileStudentIds] = useState([]);
+  const [bulkProfileGradeCode, setBulkProfileGradeCode] = useState('KEEP');
+  const [bulkProfileSchoolName, setBulkProfileSchoolName] = useState('');
+  const [inlineSchoolDrafts, setInlineSchoolDrafts] = useState({});
+  const [savingProfileIds, setSavingProfileIds] = useState([]);
+  const [customSchoolChips, setCustomSchoolChips] = useState([]);
+
+  useEffect(() => {
+    try {
+      const savedChips = localStorage.getItem('poom_custom_school_chips');
+      if (savedChips) {
+        setCustomSchoolChips(JSON.parse(savedChips));
+      }
+    } catch (e) {}
+  }, []);
+
   const router = useRouter();
 
   const applyTeacherData = (data) => {
@@ -465,6 +483,194 @@ export default function TeacherDashboard() {
     }
   };
 
+  // 🏫 학원 내 등록된 학교명 + 사용자 추가 학교 칩 목록 자동 추출
+  const availableSchoolChips = Array.from(
+    new Set([
+      ...customSchoolChips,
+      ...allAcademyStudents.map((s) => (s.school_name || '').trim()).filter(Boolean),
+      ...students.map((s) => (s.school_name || '').trim()).filter(Boolean),
+    ])
+  );
+
+  const rememberSchoolChip = (schoolName) => {
+    const clean = (schoolName || '').trim();
+    if (!clean) return;
+    setCustomSchoolChips((prev) => {
+      if (prev.includes(clean)) return prev;
+      const next = [clean, ...prev].slice(0, 20);
+      try {
+        localStorage.setItem('poom_custom_school_chips', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+  };
+
+  const applyUpdatedProfilesLocally = (updatedProfilesMap) => {
+    if (!updatedProfilesMap) return;
+    setStudents((prev) =>
+      prev.map((st) => (updatedProfilesMap[st.id] ? { ...st, ...updatedProfilesMap[st.id] } : st))
+    );
+    setAllAcademyStudents((prev) =>
+      prev.map((st) => (updatedProfilesMap[st.id] ? { ...st, ...updatedProfilesMap[st.id] } : st))
+    );
+  };
+
+  const toggleBulkProfileStudent = (stId) => {
+    setBulkProfileStudentIds((prev) =>
+      prev.includes(stId) ? prev.filter((id) => id !== stId) : [...prev, stId]
+    );
+  };
+
+  const toggleSelectClassStudentsForProfile = (classId) => {
+    const classStIds = classStudents
+      .filter((cs) => String(cs.class_id) === String(classId))
+      .map((cs) => cs.student_id)
+      .filter((id) => students.some((s) => s.id === id));
+
+    if (classStIds.length === 0) {
+      alert('해당 반에 배정된 담당 학생이 없습니다.');
+      return;
+    }
+
+    const allAlreadySelected = classStIds.every((id) => bulkProfileStudentIds.includes(id));
+    if (allAlreadySelected) {
+      setBulkProfileStudentIds((prev) => prev.filter((id) => !classStIds.includes(id)));
+    } else {
+      setBulkProfileStudentIds((prev) => Array.from(new Set([...prev, ...classStIds])));
+    }
+  };
+
+  // 1번 기능: 체크박스로 선택한 학생들에게 학년·학교 일괄 적용
+  const handleBulkApplyProfiles = async () => {
+    if (bulkProfileStudentIds.length === 0) {
+      alert('일괄 적용할 학생을 먼저 체크해 주세요.');
+      return;
+    }
+    const hasGrade = bulkProfileGradeCode && bulkProfileGradeCode !== 'KEEP';
+    const cleanSchool = bulkProfileSchoolName.trim();
+    if (!hasGrade && !cleanSchool) {
+      alert('일괄 적용할 [학년]을 선택하거나 [학교명]을 입력해 주세요.');
+      return;
+    }
+
+    setSavingProfileIds((prev) => Array.from(new Set([...prev, ...bulkProfileStudentIds])));
+    try {
+      const res = await fetch('/api/teacher/students/bulk-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentIds: bulkProfileStudentIds,
+          gradeCode: hasGrade ? bulkProfileGradeCode : undefined,
+          schoolName: cleanSchool || undefined,
+          updateGrade: Boolean(hasGrade),
+          updateSchool: Boolean(cleanSchool),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '일괄 적용 실패');
+
+      if (cleanSchool) rememberSchoolChip(cleanSchool);
+      applyUpdatedProfilesLocally(data.updatedProfiles);
+      setInlineSchoolDrafts((prev) => {
+        if (!cleanSchool) return prev;
+        const next = { ...prev };
+        bulkProfileStudentIds.forEach((id) => {
+          next[id] = cleanSchool;
+        });
+        return next;
+      });
+      alert(`✅ 선택한 ${bulkProfileStudentIds.length}명의 학년·학교 정보가 한 번에 적용되었습니다!`);
+      setBulkProfileStudentIds([]);
+      fetchTeacherData(user.id);
+    } catch (err) {
+      alert(`일괄 적용 실패: ${err.message}`);
+    } finally {
+      setSavingProfileIds((prev) => prev.filter((id) => !bulkProfileStudentIds.includes(id)));
+    }
+  };
+
+  // 2번 기능: 모달 없이 목록에서 학년 버튼 1클릭 즉시 변경
+  const handleInlineQuickGrade = async (st, gradeCode) => {
+    const isMiddle = gradeCode.startsWith('M');
+    const gradeNum = Number(gradeCode.slice(1)) || 1;
+    const optimisticLabel = `${isMiddle ? '중' : '고'}${gradeNum}`;
+
+    applyUpdatedProfilesLocally({
+      [st.id]: {
+        school_level: isMiddle ? 'MIDDLE' : 'HIGH',
+        school_grade: gradeNum,
+        grade_code: gradeCode,
+        grade_label: optimisticLabel,
+      },
+    });
+    setSavingProfileIds((prev) => Array.from(new Set([...prev, st.id])));
+
+    try {
+      const res = await fetch('/api/teacher/students/bulk-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          updates: [{ studentId: st.id, gradeCode }],
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '학년 저장 실패');
+      applyUpdatedProfilesLocally(data.updatedProfiles);
+    } catch (err) {
+      alert(`학년 변경 실패: ${err.message}`);
+      fetchTeacherData(user.id);
+    } finally {
+      setSavingProfileIds((prev) => prev.filter((id) => id !== st.id));
+    }
+  };
+
+  // 2번 기능: 모달 없이 목록에서 학교명 즉시 저장
+  const handleInlineQuickSchool = async (st, schoolValueOverride) => {
+    const rawVal =
+      schoolValueOverride !== undefined
+        ? schoolValueOverride
+        : inlineSchoolDrafts[st.id] !== undefined
+        ? inlineSchoolDrafts[st.id]
+        : st.school_name || '';
+    const cleanSchool = String(rawVal).trim();
+
+    if (cleanSchool === (st.school_name || '').trim()) return;
+
+    const inferMiddle = cleanSchool.endsWith('중') || cleanSchool.endsWith('중학교');
+    applyUpdatedProfilesLocally({
+      [st.id]: {
+        school_name: cleanSchool,
+      },
+    });
+    setInlineSchoolDrafts((prev) => ({ ...prev, [st.id]: cleanSchool }));
+    setSavingProfileIds((prev) => Array.from(new Set([...prev, st.id])));
+
+    try {
+      const res = await fetch('/api/teacher/students/bulk-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          updates: [
+            {
+              studentId: st.id,
+              schoolName: cleanSchool,
+              gradeCode: st.grade_code || (inferMiddle ? 'M1' : undefined),
+            },
+          ],
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '학교명 저장 실패');
+      if (cleanSchool) rememberSchoolChip(cleanSchool);
+      applyUpdatedProfilesLocally(data.updatedProfiles);
+    } catch (err) {
+      alert(`학교명 저장 실패: ${err.message}`);
+      fetchTeacherData(user.id);
+    } finally {
+      setSavingProfileIds((prev) => prev.filter((id) => id !== st.id));
+    }
+  };
+
   // 💌 교무실 대시보드에서 학부모 답장 1클릭 확인 완료 처리 (0초 낙관적 UI)
   const syncReplyCommentToCaches = (updatedMap) => {
     if (!user?.id) return;
@@ -603,6 +809,7 @@ export default function TeacherDashboard() {
 
           {/* 2층: 액션 버튼 그룹 (모바일에서 가로로 시원하게 배치) */}
           <div className="flex items-center gap-2 overflow-x-auto pb-0.5 pt-1 md:pt-0 scrollbar-none">
+
             <button
               onClick={() => router.push('/teacher/timer')}
               className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-black px-3.5 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0"
@@ -889,7 +1096,9 @@ export default function TeacherDashboard() {
             </div>
           )}
 
+          {/* 피드백 내역 바로가기 */}
           <div className="flex justify-end">
+
             <button
               onClick={() =>
                 router.push(
@@ -1112,11 +1321,31 @@ export default function TeacherDashboard() {
                 </label>
                 <input
                   type="text"
+                  list="teacher-academy-schools-datalist"
                   placeholder="예: 서현중, 내정중, 분당고, 낙생고"
                   value={batchSchoolName}
                   onChange={(e) => setBatchSchoolName(e.target.value)}
                   className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500"
                 />
+                {availableSchoolChips.length > 0 && (
+                  <div className="flex items-center gap-1 flex-wrap mt-1.5">
+                    <span className="text-[10px] font-bold text-slate-400 mr-0.5">빠른 선택:</span>
+                    {availableSchoolChips.slice(0, 8).map((sch) => (
+                      <button
+                        key={sch}
+                        type="button"
+                        onClick={() => setBatchSchoolName(sch)}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold border transition cursor-pointer ${
+                          batchSchoolName === sch
+                            ? 'bg-indigo-600 text-white border-indigo-600'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-indigo-50 hover:text-indigo-700'
+                        }`}
+                      >
+                        🏫 {sch}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1163,15 +1392,36 @@ export default function TeacherDashboard() {
 
         {/* 👥 4. 내 담당 학생 목록 */}
         <section className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-5">
+          <datalist id="teacher-academy-schools-datalist">
+            {availableSchoolChips.map((sch) => (
+              <option key={sch} value={sch} />
+            ))}
+          </datalist>
+
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
             <div>
               <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
                 <span>👥</span> 내 담당 학생 목록 ({students.length}명)
               </h2>
-              <p className="text-xs text-slate-400 mt-0.5">학생 개별 학년(중1~고3)·학교 수정 및 개별 반 변경이 가능합니다.</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                [⚡ 학년·학교 빠른 설정]을 켜면 모달을 열지 않고 여러 명 일괄 적용 또는 1클릭 즉시 변경이 가능합니다.
+              </p>
             </div>
 
             <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setQuickProfileMode((prev) => !prev)}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold border transition flex items-center gap-1.5 cursor-pointer shadow-2xs ${
+                  quickProfileMode
+                    ? 'bg-indigo-600 text-white border-indigo-600 ring-2 ring-indigo-200'
+                    : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
+                }`}
+              >
+                <span>⚡</span>
+                <span>{quickProfileMode ? '학년·학교 빠른 설정 닫기' : '학년·학교 빠른 일괄 설정'}</span>
+              </button>
+
               {[
                 { id: 'ALL', label: '전체' },
                 { id: 'MIDDLE', label: '중등 (중1~중3)' },
@@ -1192,6 +1442,229 @@ export default function TeacherDashboard() {
               ))}
             </div>
           </div>
+
+          {/* ⚡ 1번 + 2번 통합: 체크박스/반별 다중 선택 + 학년·학교 일괄 적용 패널 */}
+          {quickProfileMode && (() => {
+            const visibleStudents = students.filter((st) => {
+              if (studentGradeFilter === 'ALL') return true;
+              if (studentGradeFilter === 'MIDDLE') return st.school_level === 'MIDDLE';
+              if (studentGradeFilter === 'HIGH') return st.school_level !== 'MIDDLE';
+              return st.grade_code === studentGradeFilter;
+            });
+            const visibleIds = visibleStudents.map((s) => s.id);
+            const allVisibleSelected =
+              visibleIds.length > 0 && visibleIds.every((id) => bulkProfileStudentIds.includes(id));
+            const unenteredIds = visibleStudents
+              .filter((s) => !(s.school_name || '').trim())
+              .map((s) => s.id);
+
+            return (
+              <div className="bg-indigo-50/70 border-2 border-indigo-200/90 rounded-2xl p-4 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-indigo-200/60 pb-3">
+                  <div>
+                    <div className="text-xs font-black text-indigo-950 flex items-center gap-1.5">
+                      <span>⚡</span>
+                      <span>방법 1 · 다중 체크 후 학년·학교 한 번에 일괄 적용</span>
+                      <span className="bg-indigo-600 text-white px-2 py-0.5 rounded-full text-[11px]">
+                        선택됨 {bulkProfileStudentIds.length}명
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-indigo-700 font-semibold mt-0.5">
+                      반 버튼을 눌러 반 학생 전체를 한 번에 체크하거나, 아래 학생 목록에서 바로 [중1~고3] 버튼을 눌러 1초 만에 수정하세요.
+                    </p>
+                  </div>
+                  {bulkProfileStudentIds.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setBulkProfileStudentIds([])}
+                      className="text-[11px] font-extrabold text-rose-600 hover:underline self-start sm:self-center cursor-pointer"
+                    >
+                      선택 전체 해제 ({bulkProfileStudentIds.length}명)
+                    </button>
+                  )}
+                </div>
+
+                {/* 빠른 학생 선택 버튼 줄 (전체 / 학교 미입력 / 반별 1클릭 선택) */}
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-extrabold text-slate-700 block">
+                    1️⃣ 적용할 학생 빠르게 선택하기 (클릭 시 체크박스 자동 선택)
+                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (allVisibleSelected) {
+                          setBulkProfileStudentIds((prev) =>
+                            prev.filter((id) => !visibleIds.includes(id))
+                          );
+                        } else {
+                          setBulkProfileStudentIds((prev) =>
+                            Array.from(new Set([...prev, ...visibleIds]))
+                          );
+                        }
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-extrabold border transition cursor-pointer ${
+                        allVisibleSelected
+                          ? 'bg-slate-800 text-white border-slate-800'
+                          : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                      }`}
+                    >
+                      {allVisibleSelected
+                        ? `☑️ 현재 목록 전체 해제 (${visibleIds.length}명)`
+                        : `☑️ 현재 목록 전체 선택 (${visibleIds.length}명)`}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (unenteredIds.length === 0) {
+                          alert('학교명이 비어 있는 학생이 없습니다.');
+                          return;
+                        }
+                        setBulkProfileStudentIds(unenteredIds);
+                      }}
+                      className="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 transition cursor-pointer"
+                    >
+                      🔍 학교 미입력 학생만 선택 ({unenteredIds.length}명)
+                    </button>
+
+                    {classes.map((cls) => {
+                      const clsStIds = classStudents
+                        .filter((cs) => String(cs.class_id) === String(cls.id))
+                        .map((cs) => cs.student_id)
+                        .filter((id) => students.some((s) => s.id === id));
+                      if (clsStIds.length === 0) return null;
+                      const isClsSelected = clsStIds.every((id) =>
+                        bulkProfileStudentIds.includes(id)
+                      );
+                      return (
+                        <button
+                          key={cls.id}
+                          type="button"
+                          onClick={() => toggleSelectClassStudentsForProfile(cls.id)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-extrabold border transition cursor-pointer ${
+                            isClsSelected
+                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                              : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-100'
+                          }`}
+                        >
+                          📘 {cls.name} 전체 선택 ({clsStIds.length}명)
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 일괄 적용할 학년 & 학교명 컨트롤 */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end bg-white p-3.5 rounded-2xl border border-indigo-100">
+                  <div className="lg:col-span-5">
+                    <label className="block text-[11px] font-extrabold text-slate-700 mb-1.5">
+                      2️⃣ 일괄 변경할 학년 선택
+                    </label>
+                    <div className="grid grid-cols-7 gap-1">
+                      {[
+                        { code: 'KEEP', label: '변경안함' },
+                        { code: 'M1', label: '중1' },
+                        { code: 'M2', label: '중2' },
+                        { code: 'M3', label: '중3' },
+                        { code: 'H1', label: '고1' },
+                        { code: 'H2', label: '고2' },
+                        { code: 'H3', label: '고3' },
+                      ].map((opt) => {
+                        const active = bulkProfileGradeCode === opt.code;
+                        const isMid = opt.code.startsWith('M');
+                        return (
+                          <button
+                            key={opt.code}
+                            type="button"
+                            onClick={() => setBulkProfileGradeCode(opt.code)}
+                            className={`py-2 rounded-xl text-xs font-extrabold border transition whitespace-nowrap cursor-pointer ${
+                              active
+                                ? isMid
+                                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                                  : opt.code === 'KEEP'
+                                  ? 'bg-slate-700 text-white border-slate-700'
+                                  : 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="lg:col-span-4">
+                    <label className="block text-[11px] font-extrabold text-slate-700 mb-1.5">
+                      3️⃣ 일괄 적용할 학교명 (비워두면 기존 학교 유지)
+                    </label>
+                    <input
+                      type="text"
+                      list="teacher-academy-schools-datalist"
+                      placeholder="예: 분당고, 낙생고, 서현중 (아래 칩 클릭 가능)"
+                      value={bulkProfileSchoolName}
+                      onChange={(e) => setBulkProfileSchoolName(e.target.value)}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white"
+                    />
+                  </div>
+
+                  <div className="lg:col-span-3">
+                    <button
+                      type="button"
+                      onClick={handleBulkApplyProfiles}
+                      disabled={bulkProfileStudentIds.length === 0}
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-black py-2.5 px-4 rounded-xl text-xs shadow-sm transition cursor-pointer whitespace-nowrap"
+                    >
+                      ⚡ 선택한 {bulkProfileStudentIds.length}명 일괄 적용
+                    </button>
+                  </div>
+
+                  {/* 자주 쓰는 학교 빠른 선택 칩 (클릭 시 학교명 입력란에 자동 입력 + 개별 학생 행에도 '바로 찍기' 버튼 활성화) */}
+                  <div className="lg:col-span-12 pt-1 border-t border-slate-100 flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] font-extrabold text-slate-500 mr-1">
+                      🏫 학교 빠른 칩 (클릭하여 선택):
+                    </span>
+                    {availableSchoolChips.length === 0 ? (
+                      <span className="text-[11px] text-slate-400">
+                        학교명을 한 번이라도 입력하면 이곳에 빠른 선택 칩 버튼이 자동 생성됩니다.
+                      </span>
+                    ) : (
+                      availableSchoolChips.map((sch) => (
+                        <button
+                          key={sch}
+                          type="button"
+                          onClick={() =>
+                            setBulkProfileSchoolName((prev) => (prev === sch ? '' : sch))
+                          }
+                          className={`px-2.5 py-1 rounded-lg text-xs font-extrabold border transition cursor-pointer ${
+                            bulkProfileSchoolName === sch
+                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                              : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-indigo-50 hover:text-indigo-700'
+                          }`}
+                        >
+                          🏫 {sch}
+                        </button>
+                      ))
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const added = prompt('자주 쓰는 학교명을 입력해 주세요 (예: 분당고, 낙생고, 서현중):');
+                        if (added && added.trim()) {
+                          rememberSchoolChip(added.trim());
+                          setBulkProfileSchoolName(added.trim());
+                        }
+                      }}
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-white hover:bg-slate-100 text-indigo-600 border border-dashed border-indigo-300 transition cursor-pointer"
+                    >
+                      + 학교 칩 추가
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           <div className="space-y-3">
             {students.filter((st) => {
@@ -1229,129 +1702,255 @@ export default function TeacherDashboard() {
                   const availableMyClasses = classes.filter((c) => !myAssignedClassIds.has(String(c.id)));
                   const isMiddle = st.school_level === 'MIDDLE';
                   const displayGradeBadge = st.grade_label || (st.school_name ? `${isMiddle ? '중' : '고'}${st.school_grade || 1}` : '');
+                  const isBulkChecked = bulkProfileStudentIds.includes(st.id);
+                  const isRowSaving = savingProfileIds.includes(st.id);
+                  const currentDraftSchool =
+                    inlineSchoolDrafts[st.id] !== undefined
+                      ? inlineSchoolDrafts[st.id]
+                      : st.school_name || '';
 
                   return (
                     <div
                       key={st.id}
-                      className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition"
+                      className={`p-4 rounded-2xl border flex flex-col gap-3 transition ${
+                        quickProfileMode && isBulkChecked
+                          ? 'bg-indigo-50/60 border-indigo-300 ring-1 ring-indigo-200'
+                          : 'bg-slate-50/70 border-slate-200/70'
+                      }`}
                     >
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-extrabold text-sm text-slate-800">{st.name}</span>
-                          {(displayGradeBadge || st.school_name) && (
-                            <span
-                              className={`px-2 py-0.5 rounded-md font-extrabold text-[11px] border whitespace-nowrap ${
-                                isMiddle
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                  : 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                              }`}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="flex items-start gap-3">
+                          {quickProfileMode && (
+                            <input
+                              type="checkbox"
+                              checked={isBulkChecked}
+                              onChange={() => toggleBulkProfileStudent(st.id)}
+                              className="mt-1 w-4 h-4 accent-indigo-600 rounded cursor-pointer shrink-0"
+                              title="체크하여 일괄 적용 대상에 포함"
+                            />
+                          )}
+                          <div className="space-y-1.5">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span
+                                onClick={() => {
+                                  if (quickProfileMode) toggleBulkProfileStudent(st.id);
+                                }}
+                                className={`font-extrabold text-sm text-slate-800 ${
+                                  quickProfileMode ? 'cursor-pointer hover:text-indigo-700' : ''
+                                }`}
+                              >
+                                {st.name}
+                              </span>
+                              {(displayGradeBadge || st.school_name) && (
+                                <span
+                                  className={`px-2 py-0.5 rounded-md font-extrabold text-[11px] border whitespace-nowrap ${
+                                    isMiddle
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                      : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                  }`}
+                                >
+                                  {[displayGradeBadge, st.school_name].filter(Boolean).join(' · ')}
+                                </span>
+                              )}
+                              <span className="text-slate-400 text-xs font-semibold">({st.email})</span>
+
+                              {st.teacher_id && st.teacher_id !== user?.id && (
+                                <span className="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded-full font-bold text-[10px]">
+                                  타반 겸임 수강생 (주담당: {teachers.find((t) => t.id === st.teacher_id)?.name || '선생님'}T)
+                                </span>
+                              )}
+
+                              {st.parent_phone ? (
+                                <span className="bg-amber-100 text-amber-900 border border-amber-200 px-2.5 py-0.5 rounded-full font-bold text-[11px]">
+                                  📱 학부모: {st.parent_phone}
+                                </span>
+                              ) : (
+                                <span className="bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full font-semibold text-[10px]">
+                                  연락처 미등록
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                              <span className="text-slate-500 font-bold mr-0.5">수강 반({myAssignedClasses.length + otherAssignedClasses.length}):</span>
+                              {myAssignedClasses.length === 0 && otherAssignedClasses.length === 0 ? (
+                                <span className="bg-rose-50 text-rose-600 border border-rose-100 px-2.5 py-0.5 rounded-full font-bold">
+                                  미배정
+                                </span>
+                              ) : (
+                                <>
+                                  {myAssignedClasses.map((cls) => (
+                                    <span
+                                      key={cls.id}
+                                      className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 pl-2.5 pr-1.5 py-0.5 rounded-full font-extrabold"
+                                    >
+                                      <span>📘 {cls.name}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUnassignSingleClass(st.id, cls.id, st.name, cls.name)}
+                                        className="w-4 h-4 rounded-full bg-indigo-100 hover:bg-rose-500 hover:text-white text-indigo-600 text-[10px] font-black flex items-center justify-center transition cursor-pointer"
+                                        title={`[${cls.name}] 반에서만 배정 해제`}
+                                      >
+                                        ✕
+                                      </button>
+                                    </span>
+                                  ))}
+                                  {otherAssignedClasses.map((cls) => (
+                                    <span
+                                      key={cls.id}
+                                      className="inline-flex items-center gap-1 bg-purple-50 text-purple-700 border border-purple-200 px-2.5 py-0.5 rounded-full font-bold text-[11px]"
+                                      title="다른 선생님 반에서 동시 수강 중인 수업입니다"
+                                    >
+                                      <span>🟣 [{cls.teacherName}T] {cls.name}</span>
+                                    </span>
+                                  ))}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                          <select
+                            value={selectedClassMap[st.id] || ''}
+                            onChange={(e) => setSelectedClassMap({ ...selectedClassMap, [st.id]: e.target.value })}
+                            className="p-2 border rounded-xl text-xs font-bold text-slate-700 bg-white"
+                          >
+                            <option value="">
+                              {availableMyClasses.length > 0 ? '+ 반 추가 선택...' : '모든 내 반 배정됨'}
+                            </option>
+                            {availableMyClasses.map((cls) => (
+                              <option key={cls.id} value={cls.id}>📘 {cls.name}</option>
+                            ))}
+                          </select>
+
+                          <button
+                            onClick={() => handleAssignClass(st.id)}
+                            disabled={availableMyClasses.length === 0}
+                            className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold px-3 py-2 rounded-xl text-xs transition whitespace-nowrap shadow-xs cursor-pointer"
+                            title="기존 반을 유지하면서 선택한 반(특강 등)을 추가로 배정합니다"
+                          >
+                            + 반 추가
+                          </button>
+
+                          <button
+                            onClick={() =>
+                              setEditingStudent({
+                                ...st,
+                                grade_code:
+                                  st.grade_code ||
+                                  `${st.school_level === 'MIDDLE' ? 'M' : 'H'}${st.school_grade || 1}`,
+                              })
+                            }
+                            className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold px-3 py-2 rounded-xl text-xs transition whitespace-nowrap"
+                          >
+                            수정
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteStudent(st.id, st.name)}
+                            className="text-rose-500 hover:text-rose-700 hover:underline font-bold px-1 text-xs cursor-pointer"
+                            title={isHeadTeacher ? '원생을 학원에서 영구 삭제합니다' : '내 담당 수업에서 이 학생을 제외합니다 (학생 계정 유지)'}
+                          >
+                            {isHeadTeacher ? '삭제' : '제외'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* ⚡ 방법 2: 모달 없이 학생 행에서 바로 누르는 1클릭 학년 버튼 + 인라인 학교 입력 */}
+                      {quickProfileMode && (
+                        <div className="pt-2.5 border-t border-slate-200/80 flex flex-col md:flex-row md:items-center justify-between gap-2.5 bg-white/90 p-2.5 rounded-xl">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[11px] font-extrabold text-slate-500 mr-1">
+                              🎓 1클릭 학년:
+                            </span>
+                            {[
+                              { code: 'M1', label: '중1' },
+                              { code: 'M2', label: '중2' },
+                              { code: 'M3', label: '중3' },
+                              { code: 'H1', label: '고1' },
+                              { code: 'H2', label: '고2' },
+                              { code: 'H3', label: '고3' },
+                            ].map((g) => {
+                              const isCurrentGrade =
+                                Boolean(displayGradeBadge) && st.grade_code === g.code;
+                              const isMidG = g.code.startsWith('M');
+                              return (
+                                <button
+                                  key={g.code}
+                                  type="button"
+                                  onClick={() => handleInlineQuickGrade(st, g.code)}
+                                  className={`px-2.5 py-1 rounded-lg text-xs font-extrabold border transition cursor-pointer ${
+                                    isCurrentGrade
+                                      ? isMidG
+                                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                                        : 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  {g.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
+                            <span className="text-[11px] font-extrabold text-slate-500 whitespace-nowrap">
+                              🏫 학교:
+                            </span>
+                            <input
+                              type="text"
+                              list="teacher-academy-schools-datalist"
+                              placeholder="학교명 입력 후 Enter"
+                              value={currentDraftSchool}
+                              onChange={(e) =>
+                                setInlineSchoolDrafts((prev) => ({
+                                  ...prev,
+                                  [st.id]: e.target.value,
+                                }))
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleInlineQuickSchool(st, currentDraftSchool);
+                                }
+                              }}
+                              onBlur={() => {
+                                if (currentDraftSchool.trim() !== (st.school_name || '').trim()) {
+                                  handleInlineQuickSchool(st, currentDraftSchool);
+                                }
+                              }}
+                              className="w-36 sm:w-44 px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleInlineQuickSchool(st, currentDraftSchool)}
+                              className="px-2.5 py-1 rounded-lg text-xs font-extrabold bg-slate-800 hover:bg-slate-900 text-white transition cursor-pointer whitespace-nowrap"
                             >
-                              {[displayGradeBadge, st.school_name].filter(Boolean).join(' · ')}
-                            </span>
-                          )}
-                          <span className="text-slate-400 text-xs font-semibold">({st.email})</span>
-
-                          {st.teacher_id && st.teacher_id !== user?.id && (
-                            <span className="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded-full font-bold text-[10px]">
-                              타반 겸임 수강생 (주담당: {teachers.find((t) => t.id === st.teacher_id)?.name || '선생님'}T)
-                            </span>
-                          )}
-
-                          {st.parent_phone ? (
-                            <span className="bg-amber-100 text-amber-900 border border-amber-200 px-2.5 py-0.5 rounded-full font-bold text-[11px]">
-                              📱 학부모: {st.parent_phone}
-                            </span>
-                          ) : (
-                            <span className="bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full font-semibold text-[10px]">
-                              연락처 미등록
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-1.5 flex-wrap text-xs">
-                          <span className="text-slate-500 font-bold mr-0.5">수강 반({myAssignedClasses.length + otherAssignedClasses.length}):</span>
-                          {myAssignedClasses.length === 0 && otherAssignedClasses.length === 0 ? (
-                            <span className="bg-rose-50 text-rose-600 border border-rose-100 px-2.5 py-0.5 rounded-full font-bold">
-                              미배정
-                            </span>
-                          ) : (
-                            <>
-                              {myAssignedClasses.map((cls) => (
-                                <span
-                                  key={cls.id}
-                                  className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 pl-2.5 pr-1.5 py-0.5 rounded-full font-extrabold"
+                              저장
+                            </button>
+                            {bulkProfileSchoolName.trim() &&
+                              bulkProfileSchoolName.trim() !== (st.school_name || '').trim() && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleInlineQuickSchool(st, bulkProfileSchoolName.trim())
+                                  }
+                                  className="px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition cursor-pointer whitespace-nowrap"
+                                  title="상단에 선택된 학교명을 이 학생에게 1클릭으로 즉시 적용합니다"
                                 >
-                                  <span>📘 {cls.name}</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUnassignSingleClass(st.id, cls.id, st.name, cls.name)}
-                                    className="w-4 h-4 rounded-full bg-indigo-100 hover:bg-rose-500 hover:text-white text-indigo-600 text-[10px] font-black flex items-center justify-center transition cursor-pointer"
-                                    title={`[${cls.name}] 반에서만 배정 해제`}
-                                  >
-                                    ✕
-                                  </button>
-                                </span>
-                              ))}
-                              {otherAssignedClasses.map((cls) => (
-                                <span
-                                  key={cls.id}
-                                  className="inline-flex items-center gap-1 bg-purple-50 text-purple-700 border border-purple-200 px-2.5 py-0.5 rounded-full font-bold text-[11px]"
-                                  title="다른 선생님 반에서 동시 수강 중인 수업입니다"
-                                >
-                                  <span>🟣 [{cls.teacherName}T] {cls.name}</span>
-                                </span>
-                              ))}
-                            </>
-                          )}
+                                  🏫 &apos;{bulkProfileSchoolName.trim()}&apos; 찍기
+                                </button>
+                              )}
+                            {isRowSaving && (
+                              <span className="text-[10px] font-bold text-indigo-600 animate-pulse whitespace-nowrap">
+                                저장중...
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-                        <select
-                          value={selectedClassMap[st.id] || ''}
-                          onChange={(e) => setSelectedClassMap({ ...selectedClassMap, [st.id]: e.target.value })}
-                          className="p-2 border rounded-xl text-xs font-bold text-slate-700 bg-white"
-                        >
-                          <option value="">
-                            {availableMyClasses.length > 0 ? '+ 반 추가 선택...' : '모든 내 반 배정됨'}
-                          </option>
-                          {availableMyClasses.map((cls) => (
-                            <option key={cls.id} value={cls.id}>📘 {cls.name}</option>
-                          ))}
-                        </select>
-
-                        <button
-                          onClick={() => handleAssignClass(st.id)}
-                          disabled={availableMyClasses.length === 0}
-                          className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold px-3 py-2 rounded-xl text-xs transition whitespace-nowrap shadow-xs cursor-pointer"
-                          title="기존 반을 유지하면서 선택한 반(특강 등)을 추가로 배정합니다"
-                        >
-                          + 반 추가
-                        </button>
-
-                        <button
-                          onClick={() =>
-                            setEditingStudent({
-                              ...st,
-                              grade_code:
-                                st.grade_code ||
-                                `${st.school_level === 'MIDDLE' ? 'M' : 'H'}${st.school_grade || 1}`,
-                            })
-                          }
-                          className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold px-3 py-2 rounded-xl text-xs transition whitespace-nowrap"
-                        >
-                          수정
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteStudent(st.id, st.name)}
-                          className="text-rose-500 hover:text-rose-700 hover:underline font-bold px-1 text-xs cursor-pointer"
-                          title={isHeadTeacher ? '원생을 학원에서 영구 삭제합니다' : '내 담당 수업에서 이 학생을 제외합니다 (학생 계정 유지)'}
-                        >
-                          {isHeadTeacher ? '삭제' : '제외'}
-                        </button>
-                      </div>
+                      )}
                     </div>
                   );
                 })
